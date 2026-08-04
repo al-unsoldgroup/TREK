@@ -11,6 +11,7 @@ import { registerPlaceTools } from './tools/places';
 import { registerDayTools } from './tools/days';
 import { registerBudgetTools } from './tools/budget';
 import { registerPackingTools } from './tools/packing';
+import { registerProfileTools } from './tools/profile';
 import { registerCollabTools } from './tools/collab';
 import { registerTripTools } from './tools/trips';
 import { registerTransportTools } from './tools/transports';
@@ -26,6 +27,8 @@ export function registerTools(server: McpServer, userId: number, scopes: string[
   registerBudgetTools(server, userId, scopes);
 
   registerPackingTools(server, userId, scopes);
+
+  registerProfileTools(server, userId, scopes);
 
   registerReservationTools(server, userId, scopes);
 

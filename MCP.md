@@ -17,6 +17,7 @@ structured API.
 - [Resources (read-only)](#resources-read-only)
 - [Tools (read-write)](#tools-read-write)
   - [Compound Tools](#compound-tools)
+  - [Travel Profile](#travel-profile)
 - [Prompts](#prompts)
 - [Example](#example)
 
@@ -126,6 +127,8 @@ that match your granted scopes for that session.
 | `places:write` | Manage places | Places |
 | `atlas:read` | View Atlas | Atlas |
 | `atlas:write` | Manage Atlas | Atlas |
+| `profile:read` | View travel profile | Travel Profile |
+| `profile:write` | Manage travel profile | Travel Profile |
 | `packing:read` | View packing lists | Packing |
 | `packing:write` | Manage packing lists | Packing |
 | `todos:read` | View to-do lists | To-dos |
@@ -202,6 +205,7 @@ making changes.
 | Collab Notes          | `trek://trips/{tripId}/collab-notes`            | Shared collaborative notes                                                            |
 | To-Dos                | `trek://trips/{tripId}/todos`                   | To-do items ordered by position                                                       |
 | Categories            | `trek://categories`                             | Available place categories (for use when creating places)                             |
+| Travel Profile        | `trek://travel-profile`                         | Your travel preferences, loyalty programs, and constraints                            |
 | Bucket List           | `trek://bucket-list`                            | Your personal travel bucket list                                                      |
 | Visited Countries     | `trek://visited-countries`                      | Countries marked as visited in Atlas                                                  |
 | Notifications         | `trek://notifications/in-app`                   | Your in-app notifications (most recent 50, unread first)                              |
@@ -250,6 +254,36 @@ Compound tools collapse common multi-step workflows into a single atomic call. E
 | `create_budget_item_with_members` | `create_budget_item` + `set_budget_item_members` | Create a budget item and optionally set which members are splitting it. Accepts all `create_budget_item` fields plus an optional `userIds` array. If `userIds` is omitted or empty, behaves identically to `create_budget_item`. Returns `{ item }` with members populated. |
 
 **Scope requirements** match the underlying tools: `places:write` for `create_and_assign_place`, `trips:write` for `create_place_accommodation`, `budget:write` for `create_budget_item_with_members` (Budget addon required).
+
+---
+
+### Travel Profile
+
+The travel profile stores personal preferences independently of any trip. Reading requires `profile:read`; writing requires `profile:write` (which also grants read access).
+
+| Tool                 | Description                                                                                  |
+|----------------------|----------------------------------------------------------------------------------------------|
+| `get_travel_profile` | Get the current user's travel profile, or an empty object when no profile has been stored.   |
+| `set_travel_profile` | Update the current user's travel profile using an RFC 7386 JSON merge-patch.                  |
+
+`set_travel_profile` accepts a single `patch` object. Nested objects are merged, arrays and scalar values replace the existing value, and `null` deletes a field. For example:
+
+```json
+{
+  "patch": {
+    "loyalty": [
+      { "program": "Flying Blue", "number": "123456789", "status": "Gold" }
+    ],
+    "airlines": {
+      "preferred": ["Air France", "KLM"],
+      "avoid": null
+    },
+    "seats": "Aisle, near the front",
+    "cabin": "Premium economy for long-haul flights",
+    "notes": "Prefer nonstop routes when practical."
+  }
+}
+```
 
 ---
 

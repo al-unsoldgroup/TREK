@@ -17,6 +17,7 @@ import { isAddonEnabled, getCollabFeatures } from '../services/adminService';
 import { ADDON_IDS } from '../addons';
 import { canAccessJourney, getJourneyFull, listEntries, listJourneys } from '../services/journeyService';
 import { canRead, canReadTrips } from './scopes';
+import { getTravelProfile } from './tools/profile';
 
 function parseId(value: string | string[]): number | null {
   const n = Number(Array.isArray(value) ? value[0] : value);
@@ -223,6 +224,16 @@ export function registerResources(server: McpServer, userId: number, scopes: str
     async (uri) => {
       const categories = listCategories();
       return jsonContent(uri.href, categories);
+    }
+  );
+
+  // User's travel profile
+  if (canRead(scopes, 'profile')) server.registerResource(
+    'travel-profile',
+    'trek://travel-profile',
+    { description: 'Your travel preferences, loyalty programs, and constraints', mimeType: 'application/json' },
+    async (uri) => {
+      return jsonContent(uri.href, getTravelProfile(userId));
     }
   );
 

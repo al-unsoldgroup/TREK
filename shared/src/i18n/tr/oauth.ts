@@ -4,6 +4,7 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Geziler',
   'oauth.scope.group.places': 'Yer',
   'oauth.scope.group.atlas': 'Atlas',
+  'oauth.scope.group.profile': 'Seyahat Profili',
   'oauth.scope.group.packing': 'Ambalaj',
   'oauth.scope.group.todos': 'Yapılacaklar',
   'oauth.scope.group.budget': 'Bütçe',
@@ -32,6 +33,10 @@ const oauth: TranslationStrings = {
   'oauth.scope.atlas:write.label': "Atlas'ı Yönet",
   'oauth.scope.atlas:write.description':
     'Ülke ve bölgeleri ziyaret edildi olarak işaretle, yapılacaklar listesini yönet',
+  'oauth.scope.profile:read.label': 'Seyahat profilini görüntüle',
+  'oauth.scope.profile:read.description': 'Seyahat tercihlerini, sadakat programlarını ve kısıtlamaları oku',
+  'oauth.scope.profile:write.label': 'Seyahat profilini yönet',
+  'oauth.scope.profile:write.description': 'Seyahat tercihlerini, sadakat programlarını ve kısıtlamaları güncelle',
   'oauth.scope.packing:read.label': 'Paket listelerini görüntüle',
   'oauth.scope.packing:read.description': 'Paket öğelerini, çantaları ve kategori atamalarını oku',
   'oauth.scope.packing:write.label': 'Paket listelerini yönet',

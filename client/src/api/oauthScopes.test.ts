@@ -8,6 +8,7 @@ describe('SCOPE_GROUPS', () => {
       'trips:read', 'trips:write', 'trips:delete', 'trips:share',
       'places:read', 'places:write',
       'atlas:read', 'atlas:write',
+      'profile:read', 'profile:write',
       'packing:read', 'packing:write',
       'todos:read', 'todos:write',
       'budget:read', 'budget:write',
@@ -32,8 +33,8 @@ describe('SCOPE_GROUPS', () => {
 })
 
 describe('ALL_SCOPES', () => {
-  it('FE-OAUTH-SCOPES-003: contains exactly 27 scopes', () => {
-    expect(ALL_SCOPES).toHaveLength(27)
+  it('FE-OAUTH-SCOPES-003: contains exactly 29 scopes', () => {
+    expect(ALL_SCOPES).toHaveLength(29)
   })
 
   it('FE-OAUTH-SCOPES-004: matches Object.keys(SCOPE_GROUPS)', () => {
@@ -50,6 +51,7 @@ describe('SCOPE_GROUP_NAMES', () => {
     const expected = [
       'oauth.scope.group.trips',
       'oauth.scope.group.places',
+      'oauth.scope.group.profile',
       'oauth.scope.group.packing',
       'oauth.scope.group.budget',
     ]

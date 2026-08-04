@@ -432,6 +432,31 @@ describe('Resource: trek://categories', () => {
   });
 });
 
+describe('Resource: trek://travel-profile', () => {
+  it('returns an empty object when no profile is stored', async () => {
+    const { user } = createUser(testDb);
+
+    await withHarness(user.id, async (harness) => {
+      const result = await harness.client.readResource({ uri: 'trek://travel-profile' });
+      expect(parseResourceResult(result)).toEqual({});
+    });
+  });
+
+  it('returns the current user\'s stored profile', async () => {
+    const { user } = createUser(testDb);
+    const { user: other } = createUser(testDb);
+    testDb.prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'travel_profile', ?)")
+      .run(user.id, JSON.stringify({ seats: 'aisle' }));
+    testDb.prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'travel_profile', ?)")
+      .run(other.id, JSON.stringify({ seats: 'window' }));
+
+    await withHarness(user.id, async (harness) => {
+      const result = await harness.client.readResource({ uri: 'trek://travel-profile' });
+      expect(parseResourceResult(result)).toEqual({ seats: 'aisle' });
+    });
+  });
+});
+
 describe('Resource: trek://bucket-list', () => {
   it('returns only the current user\'s bucket list items', async () => {
     const { user } = createUser(testDb);
