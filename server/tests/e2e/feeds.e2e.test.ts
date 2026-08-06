@@ -7,6 +7,8 @@
  *   - public unguarded feeds (/api/feed/trip/:token.ics, /api/feed/user/:token.ics):
  *     valid token → 200 text/calendar with the injected REFRESH-INTERVAL / X-PUBLISHED-TTL
  *     hints, unknown token → 404, all-trips feed excludes archived + >90-day-old trips
+ *   - all-trips scope knobs: ?history=all|<days> widens the window (junk falls back to the
+ *     default), ?detail=trips keeps only the trip-level span
  *
  * exportICS is mocked so the test owns the ICS payload and can assert which trips
  * the all-trips feed pulled in without seeding the full trip/day/reservation schema.
@@ -210,6 +212,91 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
 
     const calledIds = exportICS.mock.calls.map((c) => c[0]).sort();
     expect(calledIds).toEqual([5, 8]); // owned trip 5 AND member trip 8
+  });
+
+  // ── All-trips feed scope knobs (?history= / ?detail=) ──────────────────────
+
+  /** Enable the user feed and return its bare token. */
+  async function userToken(): Promise<string> {
+    const gen = await request(server).post('/api/feed/user/token').set('Cookie', sessionCookie(1));
+    return gen.body.feed_url.match(/user\/([0-9a-f-]+)\.ics$/)![1];
+  }
+
+  it('?history=all reaches past the 90-day cutoff; archived trips stay excluded', async () => {
+    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (6, 1, 'Archived', 1, '2026-01-01', '2099-01-01')").run();
+    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (7, 1, 'Old', 0, '2000-01-01', '2000-01-10')").run();
+    const token = await userToken();
+
+    const res = await request(server).get(`/api/feed/user/${token}.ics?history=all`);
+    expect(res.status).toBe(200);
+    const calledIds = exportICS.mock.calls.map((c) => c[0]).sort();
+    expect(calledIds).toEqual([5, 7]); // the long-finished trip is now in; archived 6 is not
+  });
+
+  it('?history=<days> sets an explicit window, and a junk value falls back to 90 days', async () => {
+    // Ended ~1 year ago: outside the 90-day default, inside a 730-day window.
+    const lastYear = new Date();
+    lastYear.setDate(lastYear.getDate() - 365);
+    const stamp = lastYear.toISOString().slice(0, 10);
+    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (9, 1, 'Last year', 0, ?, ?)").run(stamp, stamp);
+    const token = await userToken();
+
+    await request(server).get(`/api/feed/user/${token}.ics?history=730`);
+    expect(exportICS.mock.calls.map((c) => c[0]).sort()).toEqual([5, 9]);
+
+    // Unparseable → default window, not a 500 and not an absurd date.
+    exportICS.mockClear();
+    const junk = await request(server).get(`/api/feed/user/${token}.ics?history=not-a-number`);
+    expect(junk.status).toBe(200);
+    expect(exportICS.mock.calls.map((c) => c[0])).toEqual([5]);
+  });
+
+  it('?detail=trips keeps only the trip-level event, dropping day/reservation events', async () => {
+    const MIXED_ICS =
+      'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//TREK//Travel Planner//EN\r\nCALSCALE:GREGORIAN\r\n' +
+      'METHOD:PUBLISH\r\nX-WR-CALNAME:Mixed\r\n' +
+      'BEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nBEGIN:STANDARD\r\nDTSTART:19700101T000000\r\n' +
+      'TZOFFSETFROM:+0100\r\nTZOFFSETTO:+0100\r\nTZNAME:Europe/Paris\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n' +
+      'BEGIN:VEVENT\r\nUID:trek-trip-5@trek\r\nDTSTAMP:20260101T000000Z\r\n' +
+      'DTSTART;VALUE=DATE:20260101\r\nDTEND;VALUE=DATE:20260110\r\nSUMMARY:The Trip\r\nEND:VEVENT\r\n' +
+      'BEGIN:VEVENT\r\nUID:trek-day-1@trek\r\nDTSTAMP:20260101T000000Z\r\n' +
+      'DTSTART;VALUE=DATE:20260102\r\nSUMMARY:Day 2\r\nEND:VEVENT\r\n' +
+      'BEGIN:VEVENT\r\nUID:trek-res-1@trek\r\nDTSTAMP:20260101T000000Z\r\n' +
+      'DTSTART;TZID=Europe/Paris:20260102T090000\r\nSUMMARY:Flight\r\nEND:VEVENT\r\n' +
+      'END:VCALENDAR\r\n';
+    exportICS.mockReturnValue({ ics: MIXED_ICS, filename: 'mixed.ics' });
+    const token = await userToken();
+
+    const res = await request(server).get(`/api/feed/user/${token}.ics?detail=trips`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('SUMMARY:The Trip');
+    expect(res.text).not.toContain('SUMMARY:Day 2');
+    expect(res.text).not.toContain('SUMMARY:Flight');
+    // Nothing left references a TZID, so the zone block is dropped with them.
+    expect(res.text).not.toContain('BEGIN:VTIMEZONE');
+
+    // Default detail still emits everything.
+    const full = await request(server).get(`/api/feed/user/${token}.ics`);
+    expect(full.text).toContain('SUMMARY:Day 2');
+    expect(full.text).toContain('SUMMARY:Flight');
+    expect(full.text).toContain('BEGIN:VTIMEZONE');
+  });
+
+  it('?detail=trips is not fooled by a UID-lookalike inside event text', async () => {
+    // A place name escaped onto a SUMMARY line can contain anything, including
+    // something that reads like a trip UID. Only a real UID: line counts.
+    const SPOOF_ICS =
+      'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//TREK//Travel Planner//EN\r\nCALSCALE:GREGORIAN\r\n' +
+      'METHOD:PUBLISH\r\nX-WR-CALNAME:Spoof\r\n' +
+      'BEGIN:VEVENT\r\nUID:trek-day-1@trek\r\nDTSTAMP:20260101T000000Z\r\n' +
+      'DTSTART;VALUE=DATE:20260102\r\nSUMMARY:Cafe UID:trek-trip-99@trek\r\nEND:VEVENT\r\n' +
+      'END:VCALENDAR\r\n';
+    exportICS.mockReturnValue({ ics: SPOOF_ICS, filename: 'spoof.ics' });
+    const token = await userToken();
+
+    const res = await request(server).get(`/api/feed/user/${token}.ics?detail=trips`);
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('SUMMARY:Cafe');
   });
 
   it('public user feed: 404 for an unknown token', async () => {

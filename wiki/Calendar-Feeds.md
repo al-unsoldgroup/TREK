@@ -19,11 +19,29 @@ Both open the same dialog.
 |---------------------|-----------------------------------|-------------------------------------------------------------|
 | Covers              | One trip                          | Every trip you own **or** are a member of                    |
 | Calendar name       | The trip title                    | *{your username} – All Trips*                                |
-| Excludes            | —                                 | Archived trips, and trips that ended more than 90 days ago   |
+| Excludes            | —                                 | Archived trips, and (by default) trips that ended more than 90 days ago |
 | URL                 | `/api/feed/trip/{token}.ics`      | `/api/feed/user/{token}.ics`                                 |
 | Token lives on      | The trip                          | Your user account                                            |
 
 The all-trips feed merges every qualifying trip into one calendar, sorted by start date, and de-duplicates the time-zone definitions so each event still resolves to the right local time.
+
+### Choosing what the all-trips feed covers
+
+The **Subscribe to all trips** dialog has two extra pickers that the per-trip dialog does not:
+
+- **Past trips** — *Last 90 days* (the default), *Last 2 years*, or *Everything*. This only moves the cutoff for trips that have already **ended**; upcoming trips are always included, and archived trips are always excluded whichever you pick.
+- **Include** — *Full itinerary* (the default) or *Trips only*. **Trips only** puts a single all-day event on your calendar per trip — its title, dates, and description — and leaves out the per-day summaries, timed assignments, and reservations. That is usually what you want once the window covers years of past travel, where a full itinerary would bury your calendar under old restaurant bookings.
+
+Your picks are written into the feed URL as query parameters, so they are captured the moment you subscribe:
+
+| Parameter  | Values                          | Default |
+|------------|---------------------------------|---------|
+| `history`  | a number of days, or `all`      | `90`    |
+| `detail`   | `full` or `trips`               | `full`  |
+
+For example, `…/api/feed/user/{token}.ics?history=all&detail=trips` is every trip you have ever logged, one all-day event each. A value that cannot be parsed falls back to the default rather than erroring, so a mangled URL keeps working instead of going dark.
+
+Because the options live in the URL and not on the server, changing a picker after you have already subscribed does nothing to the existing subscription — copy the new URL and re-add it in your calendar app. You can also subscribe more than once with different settings (say, a full-detail feed for the next 90 days and a trips-only feed for the whole archive) since both URLs share the same token.
 
 ## Turning a feed on
 
@@ -53,7 +71,7 @@ Use **Regenerate** if a link leaked; use **Turn off** if you no longer want a pu
 
 ## What appears in the feed
 
-The feed carries the same events as the ICS export:
+The feed carries the same events as the ICS export (all four kinds with the all-trips feed's default *Full itinerary*; only the first with *Trips only*):
 
 - **The trip itself** — an all-day event spanning the trip's start and end dates, with the trip description.
 - **Timed day assignments** — one event per place that has a time, using the place name as the title, its address as the location, and its notes in the description. Times are anchored to the place's own time zone.

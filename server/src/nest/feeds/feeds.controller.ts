@@ -6,12 +6,13 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { FeedsService } from './feeds.service';
+import { FeedsService, parseUserFeedOptions } from './feeds.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { User } from '../../types';
@@ -51,9 +52,18 @@ export class FeedsPublicController {
     res.send(result.ics);
   }
 
+  // `?history=<days>|all` widens the window past the default 90 days of finished
+  // trips; `?detail=trips` drops the per-day and reservation events, leaving one
+  // all-day span per trip. Both ride in the URL because a calendar client stores
+  // the URL and re-fetches it verbatim — there is no session to hang them off.
   @Get('user/:token.ics')
-  userFeed(@Param('token') token: string, @Res() res: Response): void {
-    const result = this.feeds.buildUserIcs(token);
+  userFeed(
+    @Param('token') token: string,
+    @Query('history') history: string | undefined,
+    @Query('detail') detail: string | undefined,
+    @Res() res: Response,
+  ): void {
+    const result = this.feeds.buildUserIcs(token, parseUserFeedOptions(history, detail));
     if (!result) {
       res.status(404).json({ error: 'Feed not found' });
       return;
