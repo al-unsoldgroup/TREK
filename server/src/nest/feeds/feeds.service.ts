@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { db } from '../../db/database';
 import { exportICS } from '../../services/tripService';
+import { FEED_CACHE_TTL_SECONDS } from '../../config';
+import { TtlCache, icsEtag } from './feeds.cache';
 
-const ninetyDaysAgo = () => {
+const daysAgo = (days: number) => {
   const d = new Date();
-  d.setDate(d.getDate() - 90);
+  d.setDate(d.getDate() - days);
   return d.toISOString().slice(0, 10);
 };
 
@@ -13,8 +15,82 @@ function feedUrl(token: string, scope: 'trip' | 'user', base: string): string {
   return `${base.replace(/\/$/, '')}/api/feed/${scope}/${token}.ics`;
 }
 
+/** How far back the all-trips feed reaches, and how much of each trip it emits. */
+export interface UserFeedOptions {
+  /** Include trips that ended within this many days. `null` = no cutoff (full history). */
+  historyDays: number | null;
+  /** `full` = every itinerary/reservation event; `trips` = one all-day event per trip. */
+  detail: 'full' | 'trips';
+}
+
+/** Back-compat default: the window and detail the feed used before it was tunable. */
+export const DEFAULT_USER_FEED_OPTIONS: UserFeedOptions = { historyDays: 90, detail: 'full' };
+
+// A century of history is well past "everything anyone has planned in TREK"; the
+// cap only exists so a junk value can't turn into an absurd date string.
+const MAX_HISTORY_DAYS = 36500;
+
+/**
+ * Parse the all-trips feed's query knobs. Calendar clients re-fetch a stored URL
+ * verbatim, so the options have to travel in the URL rather than in server state —
+ * and anything unparseable falls back to the default rather than erroring, so a
+ * mangled subscription keeps working instead of going dark.
+ */
+export function parseUserFeedOptions(history?: string, detail?: string): UserFeedOptions {
+  let historyDays = DEFAULT_USER_FEED_OPTIONS.historyDays;
+  const h = typeof history === 'string' ? history.trim().toLowerCase() : '';
+  if (h === 'all') {
+    historyDays = null;
+  } else if (h) {
+    const n = Number(h);
+    if (Number.isInteger(n) && n >= 0) historyDays = Math.min(n, MAX_HISTORY_DAYS);
+  }
+  const d = typeof detail === 'string' ? detail.trim().toLowerCase() : '';
+  return { historyDays, detail: d === 'trips' ? 'trips' : 'full' };
+}
+
+const CACHE_TTL_MS = FEED_CACHE_TTL_SECONDS * 1000;
+
 @Injectable()
 export class FeedsService {
+  // Built feed bodies, keyed by the *resolved* trip/user id rather than by the
+  // feed token. The token is looked up on every request before the cache is
+  // consulted, so disabling or rotating one takes effect immediately instead of
+  // lingering for the TTL — a revoked link must never keep serving.
+  //
+  // The all-trips body can be megabytes at `history=all`, so its cache is kept
+  // to a handful of entries (one per distinct option combination in use).
+  private readonly tripFeedCache = new TtlCache<{ ics: string; filename: string; etag: string }>(
+    CACHE_TTL_MS,
+    16,
+  );
+  private readonly userFeedCache = new TtlCache<{ ics: string; calName: string; etag: string }>(
+    CACHE_TTL_MS,
+    4,
+  );
+
+  // Per-trip exportICS output, shared by every feed that includes the trip: its
+  // own per-trip feed, and each all-trips feed whose window covers it. This is
+  // what keeps a second subscription (say, trips-only over full history
+  // alongside a detailed 90-day one) from re-rendering all the same trips.
+  private readonly tripIcsCache = new TtlCache<{ ics: string; filename: string }>(CACHE_TTL_MS, 256);
+
+  private exportCached(tripId: number): { ics: string; filename: string } {
+    const key = String(tripId);
+    const hit = this.tripIcsCache.get(key);
+    if (hit) return hit;
+    const built = exportICS(tripId);
+    this.tripIcsCache.set(key, built);
+    return built;
+  }
+
+  /** Drop every cached body. Tests only — there is no runtime invalidation path. */
+  clearCaches(): void {
+    this.tripFeedCache.clear();
+    this.userFeedCache.clear();
+    this.tripIcsCache.clear();
+  }
+
   // ── Trip feed token ─────────────────────────────────────────────────────
 
   private tripTokenRow(tripId: string, userId: number) {
@@ -80,13 +156,18 @@ export class FeedsService {
 
   // ── ICS generation ───────────────────────────────────────────────────────
 
-  buildTripIcs(token: string): { ics: string; filename: string } | null {
+  buildTripIcs(token: string): { ics: string; filename: string; etag: string } | null {
     const row = db.prepare('SELECT id FROM trips WHERE feed_token = ?').get(token) as
       | { id: number }
       | undefined;
     if (!row) return null;
+
+    const cacheKey = String(row.id);
+    const cached = this.tripFeedCache.get(cacheKey);
+    if (cached) return cached;
+
     try {
-      const { ics, filename } = exportICS(row.id);
+      const { ics, filename } = this.exportCached(row.id);
       // Inject calendar-subscription refresh hints into the VCALENDAR header so
       // clients re-fetch hourly. The one-time download path (exportICS) is left
       // untouched; this is feed-only.
@@ -94,31 +175,44 @@ export class FeedsService {
         'METHOD:PUBLISH\r\n',
         'METHOD:PUBLISH\r\nREFRESH-INTERVAL;VALUE=DURATION:PT1H\r\nX-PUBLISHED-TTL:PT1H\r\n',
       );
-      return { ics: withHints, filename };
+      const built = { ics: withHints, filename, etag: icsEtag(withHints) };
+      this.tripFeedCache.set(cacheKey, built);
+      return built;
     } catch {
       return null;
     }
   }
 
-  buildUserIcs(token: string): { ics: string; calName: string } | null {
+  buildUserIcs(
+    token: string,
+    options: UserFeedOptions = DEFAULT_USER_FEED_OPTIONS,
+  ): { ics: string; calName: string; etag: string } | null {
     const user = db.prepare('SELECT id, username FROM users WHERE feed_token = ?').get(token) as
       | { id: number; username: string }
       | undefined;
     if (!user) return null;
 
-    const cutoff = ninetyDaysAgo();
+    // Options are part of the key: two subscriptions on one account can ask for
+    // different windows or detail levels and must not serve each other's body.
+    const cacheKey = `${user.id}|${options.historyDays ?? 'all'}|${options.detail}`;
+    const cached = this.userFeedCache.get(cacheKey);
+    if (cached) return cached;
+
     // "All Trips" means every trip the user can open — trips they own AND trips shared with
     // them as a member — mirroring the single-trip feed's access (tripTokenRow/assertAccess).
     // A membership WHERE on trips selects each row once, so owned + member trips don't dupe.
+    const where = [
+      '(user_id = ? OR id IN (SELECT trip_id FROM trip_members WHERE user_id = ?))',
+      'is_archived = 0',
+    ];
+    const params: unknown[] = [user.id, user.id];
+    if (options.historyDays !== null) {
+      where.push('(end_date IS NULL OR end_date >= ?)');
+      params.push(daysAgo(options.historyDays));
+    }
     const trips = db
-      .prepare(
-        `SELECT id FROM trips
-         WHERE (user_id = ? OR id IN (SELECT trip_id FROM trip_members WHERE user_id = ?))
-           AND is_archived = 0
-           AND (end_date IS NULL OR end_date >= ?)
-         ORDER BY start_date ASC`,
-      )
-      .all(user.id, user.id, cutoff) as { id: number }[];
+      .prepare(`SELECT id FROM trips WHERE ${where.join(' AND ')} ORDER BY start_date ASC`)
+      .all(...params) as { id: number }[];
 
     const esc = (s: string) =>
       s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
@@ -132,23 +226,32 @@ export class FeedsService {
     // VTIMEZONE blocks are deduped by TZID across all trips and emitted once in
     // the combined header, before any VEVENT, so per-trip TZID references still
     // resolve after extractVEvents strips everything but the events (#1453).
+    // In `trips` detail the only surviving events are the trip's all-day span,
+    // which carries VALUE=DATE and never a TZID — so no zones are collected.
     const zones = new Map<string, string>();
     let events = '';
     for (const { id } of trips) {
       try {
-        const { ics } = exportICS(id);
-        for (const vtz of extractVTimezones(ics)) {
-          const tzid = vtz.match(/\r\nTZID:(.+)\r\n/)?.[1];
-          if (tzid && !zones.has(tzid)) zones.set(tzid, vtz);
+        const { ics } = this.exportCached(id);
+        const blocks =
+          options.detail === 'trips' ? extractVEvents(ics).filter(isTripEvent) : extractVEvents(ics);
+        if (!blocks.length) continue;
+        if (options.detail !== 'trips') {
+          for (const vtz of extractVTimezones(ics)) {
+            const tzid = vtz.match(/\r\nTZID:(.+)\r\n/)?.[1];
+            if (tzid && !zones.has(tzid)) zones.set(tzid, vtz);
+          }
         }
-        events += extractVEvents(ics);
+        events += blocks.join('');
       } catch {
         // skip failed trips
       }
     }
 
     const combined = header + [...zones.values()].join('') + events + 'END:VCALENDAR\r\n';
-    return { ics: combined, calName };
+    const built = { ics: combined, calName, etag: icsEtag(combined) };
+    this.userFeedCache.set(cacheKey, built);
+    return built;
   }
 }
 
@@ -158,15 +261,30 @@ export class FeedsService {
 // "END:VEVENT", which a non-greedy regex would mistake for a terminator and
 // truncate the event. Folded continuation lines always begin with a space, so a
 // bare "BEGIN:VEVENT"/"END:VEVENT" only ever appears as a real delimiter.
-function extractVEvents(ics: string): string {
-  let out = '';
+function extractVEvents(ics: string): string[] {
+  const blocks: string[] = [];
+  let current = '';
   let inside = false;
   for (const line of ics.split('\r\n')) {
-    if (line === 'BEGIN:VEVENT') inside = true;
-    if (inside) out += line + '\r\n';
-    if (line === 'END:VEVENT') inside = false;
+    if (line === 'BEGIN:VEVENT') {
+      inside = true;
+      current = '';
+    }
+    if (inside) current += line + '\r\n';
+    if (line === 'END:VEVENT') {
+      inside = false;
+      blocks.push(current);
+    }
   }
-  return out;
+  return blocks;
+}
+
+// The trip-level all-day span, as opposed to the per-day / per-assignment /
+// per-reservation events. exportICS stamps each event kind into its UID
+// (`trek-<kind>-<id>@trek`), so the prefix is the discriminator. Matched at the
+// start of a line so an escaped UID quoted inside a DESCRIPTION can't pass.
+function isTripEvent(block: string): boolean {
+  return /(^|\r\n)UID:trek-trip-/.test(block);
 }
 
 // Pull out each VTIMEZONE block (same structural line scan as extractVEvents) so

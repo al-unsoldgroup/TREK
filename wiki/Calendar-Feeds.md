@@ -19,11 +19,29 @@ Both open the same dialog.
 |---------------------|-----------------------------------|-------------------------------------------------------------|
 | Covers              | One trip                          | Every trip you own **or** are a member of                    |
 | Calendar name       | The trip title                    | *{your username} – All Trips*                                |
-| Excludes            | —                                 | Archived trips, and trips that ended more than 90 days ago   |
+| Excludes            | —                                 | Archived trips, and (by default) trips that ended more than 90 days ago |
 | URL                 | `/api/feed/trip/{token}.ics`      | `/api/feed/user/{token}.ics`                                 |
 | Token lives on      | The trip                          | Your user account                                            |
 
 The all-trips feed merges every qualifying trip into one calendar, sorted by start date, and de-duplicates the time-zone definitions so each event still resolves to the right local time.
+
+### Choosing what the all-trips feed covers
+
+The **Subscribe to all trips** dialog has two extra pickers that the per-trip dialog does not:
+
+- **Past trips** — *Last 90 days* (the default), *Last 2 years*, or *Everything*. This only moves the cutoff for trips that have already **ended**; upcoming trips are always included, and archived trips are always excluded whichever you pick.
+- **Include** — *Full itinerary* (the default) or *Trips only*. **Trips only** puts a single all-day event on your calendar per trip — its title, dates, and description — and leaves out the per-day summaries, timed assignments, and reservations. That is usually what you want once the window covers years of past travel, where a full itinerary would bury your calendar under old restaurant bookings.
+
+Your picks are written into the feed URL as query parameters, so they are captured the moment you subscribe:
+
+| Parameter  | Values                          | Default |
+|------------|---------------------------------|---------|
+| `history`  | a number of days, or `all`      | `90`    |
+| `detail`   | `full` or `trips`               | `full`  |
+
+For example, `…/api/feed/user/{token}.ics?history=all&detail=trips` is every trip you have ever logged, one all-day event each. A value that cannot be parsed falls back to the default rather than erroring, so a mangled URL keeps working instead of going dark.
+
+Because the options live in the URL and not on the server, changing a picker after you have already subscribed does nothing to the existing subscription — copy the new URL and re-add it in your calendar app. You can also subscribe more than once with different settings (say, a full-detail feed for the next 90 days and a trips-only feed for the whole archive) since both URLs share the same token.
 
 ## Turning a feed on
 
@@ -53,14 +71,27 @@ Use **Regenerate** if a link leaked; use **Turn off** if you no longer want a pu
 
 ## What appears in the feed
 
-The feed carries the same events as the ICS export:
+The feed carries the same events as the ICS export (all four kinds with the all-trips feed's default *Full itinerary*; only the first with *Trips only*):
 
 - **The trip itself** — an all-day event spanning the trip's start and end dates, with the trip description.
 - **Timed day assignments** — one event per place that has a time, using the place name as the title, its address as the location, and its notes in the description. Times are anchored to the place's own time zone.
 - **A per-day summary event** — an all-day event for each day that has untimed places or notes, titled with the day title (or *Day N*), listing those places and notes in the description.
 - **Reservations** — hotels, restaurants, and transport. Flights and other transport take their start and end from the departure and arrival endpoints, each in its own time zone. Reservations with no placeable date are skipped.
 
-Feeds are served with cache headers that tell clients not to cache, plus an hourly refresh hint (`REFRESH-INTERVAL` / `X-PUBLISHED-TTL` of one hour). Most calendar apps treat that as a suggestion — Google in particular refreshes on its own schedule, often much slower — so an edit may take a while to show up.
+Feeds carry an hourly refresh hint (`REFRESH-INTERVAL` / `X-PUBLISHED-TTL` of one hour). Most calendar apps treat that as a suggestion — Google in particular refreshes on its own schedule, often much slower — so an edit may take a while to show up.
+
+## Caching and freshness
+
+A feed is a read path that anyone with the link can hit without logging in, and at `history=all` it re-renders every trip on the account. Two things keep that from being re-done on every fetch:
+
+- **A short server-side cache.** A built feed is reused for `FEED_CACHE_TTL_SECONDS` (default 60 — see [Environment-Variables](Environment-Variables)). Several devices subscribed to the same URL arrive as a burst and share one build. Individual trips are cached separately from the assembled feed, so a second subscription with different settings reuses the per-trip work rather than re-rendering everything. Set the variable to `0` to turn caching off.
+- **`ETag` / `If-None-Match`.** Each response carries a validator. When your calendar re-fetches and nothing has changed, TREK answers `304 Not Modified` with no body — the difference between a few hundred bytes and several megabytes on a full-history feed, every refresh, forever.
+
+The validator deliberately ignores the `DTSTAMP` field. TREK stamps that with the moment the file was generated, so it differs on every build even when no trip has changed; including it would mean the `ETag` never matched and no client ever got a `304`. Everything a calendar actually displays — events, times, titles, descriptions — is covered, so a `304` genuinely means your copy is current.
+
+Responses are marked `Cache-Control: private, no-cache`. `private` keeps the feed out of shared or proxy caches, since the token in the URL is a credential; `no-cache` means your calendar app may keep its copy but must revalidate before using it, which is what makes the `304` path work.
+
+**What this means for freshness:** an edit can take up to the cache TTL to reach a feed, on top of however long your calendar app waits before refreshing. The second delay dominates by a wide margin. Revoking a feed is *not* subject to either: **Regenerate** and **Turn off** take effect immediately, because the token is checked before any cached body is served.
 
 ## Permissions
 

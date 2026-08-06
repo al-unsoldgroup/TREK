@@ -8,8 +8,23 @@ interface IcsSubscribeModalProps {
   endpoint: string
   title: string
   description: string
+  /** Show the history-window / detail pickers. All-trips feed only — the
+   *  per-trip feed has one trip and always emits it in full. */
+  scopeOptions?: boolean
   onClose: () => void
 }
+
+// `history` values map to the server's `?history=` param: a day count, or `all`
+// for no cutoff. `detail=trips` collapses each trip to its all-day span.
+const HISTORY_CHOICES = [
+  { value: '90', label: 'Last 90 days' },
+  { value: '730', label: 'Last 2 years' },
+  { value: 'all', label: 'Everything' },
+]
+const DETAIL_CHOICES = [
+  { value: 'full', label: 'Full itinerary' },
+  { value: 'trips', label: 'Trips only' },
+]
 
 // A server that has no APP_URL configured hands back a host-relative path; the
 // webcal:// handoff and Google deep link need an absolute URL, so resolve it
@@ -26,13 +41,23 @@ function absolutize(url: string): string {
  * only *reads* the current token — it never mints one silently. The user
  * explicitly enables the public link, and can rotate or fully turn it off.
  */
-export function IcsSubscribeModal({ endpoint, title, description, onClose }: IcsSubscribeModalProps) {
+export function IcsSubscribeModal({ endpoint, title, description, scopeOptions, onClose }: IcsSubscribeModalProps) {
   const tokenUrl = `${endpoint}/token`
   const [feedUrl, setFeedUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [history, setHistory] = useState('90')
+  const [detail, setDetail] = useState('full')
 
-  const httpsUrl = feedUrl ? absolutize(feedUrl) : ''
+  // The picks travel in the subscription URL, not in server state — a calendar
+  // client stores this URL and re-fetches it verbatim on every refresh. Only
+  // non-defaults are appended so the common link stays clean.
+  const query = scopeOptions
+    ? [history !== '90' ? `history=${history}` : '', detail !== 'full' ? `detail=${detail}` : '']
+        .filter(Boolean).join('&')
+    : ''
+  const baseUrl = feedUrl ? absolutize(feedUrl) : ''
+  const httpsUrl = baseUrl && query ? `${baseUrl}?${query}` : baseUrl
   const webcalUrl = httpsUrl ? httpsUrl.replace(/^https?:\/\//, 'webcal://') : ''
 
   const load = useCallback(async () => {
@@ -130,6 +155,28 @@ export function IcsSubscribeModal({ endpoint, title, description, onClose }: Ics
           </>
         ) : (
           <>
+            {scopeOptions && (
+              <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <ChoiceRow
+                  label="Past trips"
+                  choices={HISTORY_CHOICES}
+                  value={history}
+                  onChange={setHistory}
+                />
+                <ChoiceRow
+                  label="Include"
+                  choices={DETAIL_CHOICES}
+                  value={detail}
+                  onChange={setDetail}
+                />
+                <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                  “Trips only” puts a single all-day event per trip on your calendar instead of
+                  every activity and booking — the readable choice for a long travel history.
+                  Archived trips are always excluded.
+                </p>
+              </div>
+            )}
+
             <SubscribeLinks httpsUrl={httpsUrl} webcalUrl={webcalUrl} />
 
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-faint)', display: 'flex', gap: 8 }}>
@@ -174,5 +221,43 @@ export function IcsSubscribeModal({ endpoint, title, description, onClose }: Ics
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>,
   document.body
+  )
+}
+
+/** Labelled segmented picker for the all-trips feed's scope knobs. */
+function ChoiceRow({ label, choices, value, onChange }: {
+  label: string
+  choices: { value: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, minWidth: 62 }}>
+        {label}
+      </span>
+      <div role="group" aria-label={label} style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {choices.map(c => {
+          const on = c.value === value
+          return (
+            <button
+              key={c.value}
+              onClick={() => onChange(c.value)}
+              aria-pressed={on}
+              style={{
+                padding: '4px 9px', borderRadius: 7, fontSize: 11, fontFamily: 'inherit',
+                cursor: 'pointer',
+                border: `1px solid ${on ? 'var(--accent, #6366f1)' : 'var(--border-primary)'}`,
+                background: on ? 'var(--accent, #6366f1)' : 'none',
+                color: on ? 'var(--accent-text, #fff)' : 'var(--text-muted)',
+                fontWeight: on ? 600 : 400,
+              }}
+            >
+              {c.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }

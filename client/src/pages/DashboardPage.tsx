@@ -204,7 +204,8 @@ export default function DashboardPage(): React.ReactElement {
                 <IcsSubscribeModal
                   endpoint="/api/feed/user"
                   title="Subscribe to all trips"
-                  description="One calendar feed for all your active trips, kept in sync automatically. Excludes archived trips and trips that ended more than 90 days ago."
+                  description="One calendar feed for all your trips, kept in sync automatically. Choose how far back it reaches and how much of each trip it shows."
+                  scopeOptions
                   onClose={() => setAllSubOpen(false)}
                 />
               )}
