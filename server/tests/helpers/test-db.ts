@@ -265,4 +265,8 @@ export const TEST_CONFIG = {
   SESSION_DURATION: '24h',
   SESSION_DURATION_MS: 86400000,
   SESSION_DURATION_SECONDS: 86400,
+  // Feed caching off by default in tests: a suite that asserts on a feed's
+  // contents should see the current database, not a body built moments earlier.
+  // The cache has its own coverage in tests/e2e/feeds.e2e.test.ts.
+  FEED_CACHE_TTL_SECONDS: 0,
 };

@@ -78,7 +78,20 @@ The feed carries the same events as the ICS export (all four kinds with the all-
 - **A per-day summary event** — an all-day event for each day that has untimed places or notes, titled with the day title (or *Day N*), listing those places and notes in the description.
 - **Reservations** — hotels, restaurants, and transport. Flights and other transport take their start and end from the departure and arrival endpoints, each in its own time zone. Reservations with no placeable date are skipped.
 
-Feeds are served with cache headers that tell clients not to cache, plus an hourly refresh hint (`REFRESH-INTERVAL` / `X-PUBLISHED-TTL` of one hour). Most calendar apps treat that as a suggestion — Google in particular refreshes on its own schedule, often much slower — so an edit may take a while to show up.
+Feeds carry an hourly refresh hint (`REFRESH-INTERVAL` / `X-PUBLISHED-TTL` of one hour). Most calendar apps treat that as a suggestion — Google in particular refreshes on its own schedule, often much slower — so an edit may take a while to show up.
+
+## Caching and freshness
+
+A feed is a read path that anyone with the link can hit without logging in, and at `history=all` it re-renders every trip on the account. Two things keep that from being re-done on every fetch:
+
+- **A short server-side cache.** A built feed is reused for `FEED_CACHE_TTL_SECONDS` (default 60 — see [Environment-Variables](Environment-Variables)). Several devices subscribed to the same URL arrive as a burst and share one build. Individual trips are cached separately from the assembled feed, so a second subscription with different settings reuses the per-trip work rather than re-rendering everything. Set the variable to `0` to turn caching off.
+- **`ETag` / `If-None-Match`.** Each response carries a validator. When your calendar re-fetches and nothing has changed, TREK answers `304 Not Modified` with no body — the difference between a few hundred bytes and several megabytes on a full-history feed, every refresh, forever.
+
+The validator deliberately ignores the `DTSTAMP` field. TREK stamps that with the moment the file was generated, so it differs on every build even when no trip has changed; including it would mean the `ETag` never matched and no client ever got a `304`. Everything a calendar actually displays — events, times, titles, descriptions — is covered, so a `304` genuinely means your copy is current.
+
+Responses are marked `Cache-Control: private, no-cache`. `private` keeps the feed out of shared or proxy caches, since the token in the URL is a credential; `no-cache` means your calendar app may keep its copy but must revalidate before using it, which is what makes the `304` path work.
+
+**What this means for freshness:** an edit can take up to the cache TTL to reach a feed, on top of however long your calendar app waits before refreshing. The second delay dominates by a wide margin. Revoking a feed is *not* subject to either: **Regenerate** and **Turn off** take effect immediately, because the token is checked before any cached body is served.
 
 ## Permissions
 

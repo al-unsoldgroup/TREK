@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { db } from '../../db/database';
 import { exportICS } from '../../services/tripService';
+import { FEED_CACHE_TTL_SECONDS } from '../../config';
+import { TtlCache, icsEtag } from './feeds.cache';
 
 const daysAgo = (days: number) => {
   const d = new Date();
@@ -47,8 +49,48 @@ export function parseUserFeedOptions(history?: string, detail?: string): UserFee
   return { historyDays, detail: d === 'trips' ? 'trips' : 'full' };
 }
 
+const CACHE_TTL_MS = FEED_CACHE_TTL_SECONDS * 1000;
+
 @Injectable()
 export class FeedsService {
+  // Built feed bodies, keyed by the *resolved* trip/user id rather than by the
+  // feed token. The token is looked up on every request before the cache is
+  // consulted, so disabling or rotating one takes effect immediately instead of
+  // lingering for the TTL — a revoked link must never keep serving.
+  //
+  // The all-trips body can be megabytes at `history=all`, so its cache is kept
+  // to a handful of entries (one per distinct option combination in use).
+  private readonly tripFeedCache = new TtlCache<{ ics: string; filename: string; etag: string }>(
+    CACHE_TTL_MS,
+    16,
+  );
+  private readonly userFeedCache = new TtlCache<{ ics: string; calName: string; etag: string }>(
+    CACHE_TTL_MS,
+    4,
+  );
+
+  // Per-trip exportICS output, shared by every feed that includes the trip: its
+  // own per-trip feed, and each all-trips feed whose window covers it. This is
+  // what keeps a second subscription (say, trips-only over full history
+  // alongside a detailed 90-day one) from re-rendering all the same trips.
+  private readonly tripIcsCache = new TtlCache<{ ics: string; filename: string }>(CACHE_TTL_MS, 256);
+
+  private exportCached(tripId: number): { ics: string; filename: string } {
+    const key = String(tripId);
+    const hit = this.tripIcsCache.get(key);
+    if (hit) return hit;
+    const built = exportICS(tripId);
+    this.tripIcsCache.set(key, built);
+    return built;
+  }
+
+  /** Drop every cached body. Tests only — there is no runtime invalidation path. */
+  clearCaches(): void {
+    this.tripFeedCache.clear();
+    this.userFeedCache.clear();
+    this.tripIcsCache.clear();
+  }
+
   // ── Trip feed token ─────────────────────────────────────────────────────
 
   private tripTokenRow(tripId: string, userId: number) {
@@ -114,13 +156,18 @@ export class FeedsService {
 
   // ── ICS generation ───────────────────────────────────────────────────────
 
-  buildTripIcs(token: string): { ics: string; filename: string } | null {
+  buildTripIcs(token: string): { ics: string; filename: string; etag: string } | null {
     const row = db.prepare('SELECT id FROM trips WHERE feed_token = ?').get(token) as
       | { id: number }
       | undefined;
     if (!row) return null;
+
+    const cacheKey = String(row.id);
+    const cached = this.tripFeedCache.get(cacheKey);
+    if (cached) return cached;
+
     try {
-      const { ics, filename } = exportICS(row.id);
+      const { ics, filename } = this.exportCached(row.id);
       // Inject calendar-subscription refresh hints into the VCALENDAR header so
       // clients re-fetch hourly. The one-time download path (exportICS) is left
       // untouched; this is feed-only.
@@ -128,7 +175,9 @@ export class FeedsService {
         'METHOD:PUBLISH\r\n',
         'METHOD:PUBLISH\r\nREFRESH-INTERVAL;VALUE=DURATION:PT1H\r\nX-PUBLISHED-TTL:PT1H\r\n',
       );
-      return { ics: withHints, filename };
+      const built = { ics: withHints, filename, etag: icsEtag(withHints) };
+      this.tripFeedCache.set(cacheKey, built);
+      return built;
     } catch {
       return null;
     }
@@ -137,11 +186,17 @@ export class FeedsService {
   buildUserIcs(
     token: string,
     options: UserFeedOptions = DEFAULT_USER_FEED_OPTIONS,
-  ): { ics: string; calName: string } | null {
+  ): { ics: string; calName: string; etag: string } | null {
     const user = db.prepare('SELECT id, username FROM users WHERE feed_token = ?').get(token) as
       | { id: number; username: string }
       | undefined;
     if (!user) return null;
+
+    // Options are part of the key: two subscriptions on one account can ask for
+    // different windows or detail levels and must not serve each other's body.
+    const cacheKey = `${user.id}|${options.historyDays ?? 'all'}|${options.detail}`;
+    const cached = this.userFeedCache.get(cacheKey);
+    if (cached) return cached;
 
     // "All Trips" means every trip the user can open — trips they own AND trips shared with
     // them as a member — mirroring the single-trip feed's access (tripTokenRow/assertAccess).
@@ -177,7 +232,7 @@ export class FeedsService {
     let events = '';
     for (const { id } of trips) {
       try {
-        const { ics } = exportICS(id);
+        const { ics } = this.exportCached(id);
         const blocks =
           options.detail === 'trips' ? extractVEvents(ics).filter(isTripEvent) : extractVEvents(ics);
         if (!blocks.length) continue;
@@ -194,7 +249,9 @@ export class FeedsService {
     }
 
     const combined = header + [...zones.values()].join('') + events + 'END:VCALENDAR\r\n';
-    return { ics: combined, calName };
+    const built = { ics: combined, calName, etag: icsEtag(combined) };
+    this.userFeedCache.set(cacheKey, built);
+    return built;
   }
 }
 

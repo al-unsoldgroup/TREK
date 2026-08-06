@@ -47,6 +47,7 @@ const { exportICS } = vi.hoisted(() => ({ exportICS: vi.fn() }));
 vi.mock('../../src/services/tripService', () => ({ exportICS }));
 
 import { FeedsModule } from '../../src/nest/feeds/feeds.module';
+import { FeedsService } from '../../src/nest/feeds/feeds.service';
 import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 const BASE = 'https://trek.example.test';
@@ -54,6 +55,7 @@ const BASE = 'https://trek.example.test';
 describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
   let app: Awaited<ReturnType<typeof build>>;
+  let feeds: FeedsService;
   let prevAppUrl: string | undefined;
 
   async function build() {
@@ -71,6 +73,7 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
     seedUser(db as never, { id: 1, username: 'e2e-user' });
     seedUser(db as never, { id: 2, username: 'other-user', email: 'other@example.test' });
     app = await build();
+    feeds = app.get(FeedsService);
     server = app.getHttpServer();
   });
 
@@ -79,6 +82,10 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
     exportICS.mockReturnValue({ ics: SAMPLE_ICS, filename: 'sample.ics' });
     // Reset feed tokens + trips between tests for isolation.
     db.exec('DELETE FROM trips; DELETE FROM trip_members; UPDATE users SET feed_token = NULL;');
+    // The Nest app — and so FeedsService with its caches — is built once for the
+    // whole suite, while trip ids are recycled between tests. Without this, a
+    // test would serve the previous test's cached body.
+    feeds.clearCaches();
     db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (5, 1, 'Owned', 0, '2026-01-01', '2099-01-01')").run();
   });
 
@@ -246,6 +253,7 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
 
     // Unparseable → default window, not a 500 and not an absurd date.
     exportICS.mockClear();
+    feeds.clearCaches(); // assert on real build work, not on a warm per-trip cache
     const junk = await request(server).get(`/api/feed/user/${token}.ics?history=not-a-number`);
     expect(junk.status).toBe(200);
     expect(exportICS.mock.calls.map((c) => c[0])).toEqual([5]);
@@ -297,6 +305,117 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
     const res = await request(server).get(`/api/feed/user/${token}.ics?detail=trips`);
     expect(res.status).toBe(200);
     expect(res.text).not.toContain('SUMMARY:Cafe');
+  });
+
+  // ── Caching + conditional requests ─────────────────────────────────────────
+
+  it('serves a repeat request from cache instead of rebuilding', async () => {
+    const token = await userToken();
+
+    const first = await request(server).get(`/api/feed/user/${token}.ics`);
+    const second = await request(server).get(`/api/feed/user/${token}.ics`);
+
+    expect(second.status).toBe(200);
+    expect(second.text).toBe(first.text);
+    expect(exportICS).toHaveBeenCalledTimes(1); // built once, served twice
+  });
+
+  it('a second feed with different options reuses the per-trip render, not the body', async () => {
+    const token = await userToken();
+
+    await request(server).get(`/api/feed/user/${token}.ics`);
+    expect(exportICS).toHaveBeenCalledTimes(1);
+
+    // Different options ⇒ different body, but trip 5's ICS is already rendered.
+    const other = await request(server).get(`/api/feed/user/${token}.ics?detail=trips`);
+    expect(other.status).toBe(200);
+    expect(exportICS).toHaveBeenCalledTimes(1);
+  });
+
+  it('If-None-Match with the current ETag gets a bodiless 304', async () => {
+    const token = await userToken();
+
+    const first = await request(server).get(`/api/feed/user/${token}.ics`);
+    expect(first.headers.etag).toMatch(/^"[\w-]+"$/);
+    expect(first.headers['cache-control']).toBe('private, no-cache');
+
+    const revalidated = await request(server)
+      .get(`/api/feed/user/${token}.ics`)
+      .set('If-None-Match', first.headers.etag);
+    expect(revalidated.status).toBe(304);
+    expect(revalidated.text).toBeFalsy();
+    expect(revalidated.headers.etag).toBe(first.headers.etag);
+
+    // A weak-prefixed echo of the same tag still matches (RFC 9110 allows it).
+    const weak = await request(server)
+      .get(`/api/feed/user/${token}.ics`)
+      .set('If-None-Match', `W/${first.headers.etag}`);
+    expect(weak.status).toBe(304);
+  });
+
+  it('the ETag survives a rebuild when only DTSTAMP moved', async () => {
+    // The whole point of the validator: exportICS stamps DTSTAMP with "now", so
+    // a client refreshing an unchanged feed forever must still get a 304 rather
+    // than re-downloading a body that differs only in that generation stamp.
+    const token = await userToken();
+    const first = await request(server).get(`/api/feed/user/${token}.ics`);
+
+    exportICS.mockReturnValue({
+      ics: SAMPLE_ICS.replace('DTSTAMP:20260101T000000Z', 'DTSTAMP:20260202T111111Z'),
+      filename: 'sample.ics',
+    });
+    feeds.clearCaches(); // force a genuine rebuild, as a TTL expiry would
+
+    const rebuilt = await request(server)
+      .get(`/api/feed/user/${token}.ics`)
+      .set('If-None-Match', first.headers.etag);
+    expect(rebuilt.status).toBe(304);
+  });
+
+  it('the ETag changes when the trip content actually changes', async () => {
+    const token = await userToken();
+    const first = await request(server).get(`/api/feed/user/${token}.ics`);
+
+    exportICS.mockReturnValue({
+      ics: SAMPLE_ICS.replace('SUMMARY:Sample', 'SUMMARY:Renamed'),
+      filename: 'sample.ics',
+    });
+    feeds.clearCaches();
+
+    const changed = await request(server)
+      .get(`/api/feed/user/${token}.ics`)
+      .set('If-None-Match', first.headers.etag);
+    expect(changed.status).toBe(200);
+    expect(changed.headers.etag).not.toBe(first.headers.etag);
+    expect(changed.text).toContain('SUMMARY:Renamed');
+  });
+
+  it('revoking a token stops the feed immediately, even with a body cached', async () => {
+    // The cache is keyed by resolved user id and consulted only after the token
+    // lookup, so a disabled link cannot keep serving for the rest of the TTL.
+    const token = await userToken();
+    expect((await request(server).get(`/api/feed/user/${token}.ics`)).status).toBe(200);
+
+    await request(server).delete('/api/feed/user/token').set('Cookie', sessionCookie(1));
+
+    const after = await request(server).get(`/api/feed/user/${token}.ics`);
+    expect(after.status).toBe(404);
+    expect(after.text).not.toContain('BEGIN:VCALENDAR');
+  });
+
+  it('the per-trip feed caches and revalidates the same way', async () => {
+    const gen = await request(server).post('/api/trips/5/feed/token').set('Cookie', sessionCookie(1));
+    const token = gen.body.feed_url.match(/trip\/([0-9a-f-]+)\.ics$/)![1];
+
+    const first = await request(server).get(`/api/feed/trip/${token}.ics`);
+    expect(first.status).toBe(200);
+    expect(first.headers.etag).toMatch(/^"[\w-]+"$/);
+
+    const second = await request(server)
+      .get(`/api/feed/trip/${token}.ics`)
+      .set('If-None-Match', first.headers.etag);
+    expect(second.status).toBe(304);
+    expect(exportICS).toHaveBeenCalledTimes(1);
   });
 
   it('public user feed: 404 for an unknown token', async () => {

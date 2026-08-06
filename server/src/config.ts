@@ -174,3 +174,26 @@ export const SESSION_DURATION_REMEMBER =
 export const SESSION_DURATION_REMEMBER_MS = parsedRememberMs ?? parseDurationMs(DEFAULT_SESSION_DURATION_REMEMBER)!;
 /** "Remember me" session length in seconds — passed to `jwt.sign({ expiresIn })`. */
 export const SESSION_DURATION_REMEMBER_SECONDS = Math.floor(SESSION_DURATION_REMEMBER_MS / 1000);
+
+// FEED_CACHE_TTL_SECONDS bounds how long a built calendar-feed body is reused.
+// The all-trips feed can re-render an entire account's travel history on one
+// unauthenticated GET, and several devices subscribed to the same URL arrive as
+// a burst; caching collapses that into a single build. The cost is staleness: an
+// edit can take up to this long to reach a feed. Calendar clients refresh on the
+// order of an hour, so a minute of lag is invisible in practice. Set 0 to
+// disable caching entirely.
+const DEFAULT_FEED_CACHE_TTL_SECONDS = 60;
+const rawFeedCacheTtl = process.env.FEED_CACHE_TTL_SECONDS?.trim();
+let parsedFeedCacheTtl: number | null = null;
+if (rawFeedCacheTtl) {
+  const n = Number(rawFeedCacheTtl);
+  // Cap at an hour: past the clients' own refresh cadence, a longer TTL only
+  // buys staleness. Negative/NaN falls through to the default with a warning.
+  if (Number.isFinite(n) && n >= 0) parsedFeedCacheTtl = Math.min(Math.floor(n), 3600);
+  else
+    console.warn(
+      `FEED_CACHE_TTL_SECONDS="${rawFeedCacheTtl}" is not a non-negative number of seconds. Falling back to ${DEFAULT_FEED_CACHE_TTL_SECONDS}.`,
+    );
+}
+/** How long a built feed body may be reused, in seconds. 0 disables the cache. */
+export const FEED_CACHE_TTL_SECONDS = parsedFeedCacheTtl ?? DEFAULT_FEED_CACHE_TTL_SECONDS;
