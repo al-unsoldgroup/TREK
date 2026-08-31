@@ -18,13 +18,14 @@ So structured tickets keep being parsed the fast, deterministic way; the AI only
 
 ## Choosing a provider
 
-The addon supports three providers:
+The addon supports four providers:
 
 | Provider | Runs where | Notes |
 |----------|-----------|-------|
 | **Local (Ollama)** | Your own hardware | No booking data leaves your network. Recommended for privacy; works on CPU. |
 | **OpenAI** | OpenAI's API, or any **OpenAI-compatible** endpoint via a custom base URL | Needs an API key. |
 | **Anthropic** | Anthropic's API | Needs an API key. **Reads PDFs — including scans — natively.** |
+| **Cloudflare AI Gateway** | DeepSeek, reached through your own Cloudflare AI Gateway | Needs a DeepSeek API key. Gives you Cloudflare's logging, caching and rate limiting in front of the model. See [below](#cloudflare-ai-gateway-deepseek). |
 
 > **Scanned PDFs:** Local and OpenAI-compatible models receive the document's *extracted text*. A scanned or image-only PDF has no text layer, so those providers return nothing for it. Only **Anthropic** ingests the raw PDF and can read scans.
 
@@ -34,10 +35,12 @@ When you enable the addon, a configuration panel appears directly under it in [A
 
 > *Set instance-wide config (applies to all users). Leave blank to let each user configure their own provider.*
 
-- **Provider** — Local · OpenAI-compatible, OpenAI, or Anthropic.
-- **Base URL** — shown for every provider except Anthropic. Defaults to `http://localhost:11434/v1` for a local Ollama server, or `https://api.openai.com/v1` for OpenAI. Point it at any OpenAI-compatible endpoint here.
+- **Provider** — Local · OpenAI-compatible, OpenAI, Anthropic, or Cloudflare AI Gateway.
+- **Base URL** — shown for Local and OpenAI. Defaults to `http://localhost:11434/v1` for a local Ollama server, or `https://api.openai.com/v1` for OpenAI. Point it at any OpenAI-compatible endpoint here. Hidden for Anthropic and for Cloudflare AI Gateway (which derives its endpoint — see below).
+- **Cloudflare account ID** / **Gateway ID** — shown only for Cloudflare AI Gateway.
 - **API key** — optional for a local server (`(often not required)`), required for the cloud providers. Stored **encrypted**; it is shown masked (`••••••••`) once saved, and leaving it unchanged keeps the stored key.
-- **Model** — the model id (e.g. `qwen3:8b`, `gpt-4o`, `claude-opus-4-8`).
+- **Gateway token** — shown only for Cloudflare AI Gateway, and only needed when the gateway has authentication enabled. Stored **encrypted** and masked exactly like the API key.
+- **Model** — the model id (e.g. `qwen3:8b`, `gpt-4o`, `claude-opus-4-8`, `deepseek-v4-flash`).
 
 If you set a provider and model here, it applies to **all users** and overrides their personal settings. Leave the panel blank to let each user bring their own model (see below).
 
@@ -50,13 +53,33 @@ With the **Local** provider selected, the panel manages your Ollama server direc
 
 You can also select any other model already installed on the server, or type a model id by hand.
 
+### Cloudflare AI Gateway (DeepSeek)
+
+[Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) sits between TREK and DeepSeek and gives you request logs, caching, rate limiting and spend visibility without changing anything in TREK.
+
+Select **Cloudflare AI Gateway** as the provider and fill in:
+
+| Field | Where it comes from |
+|-------|--------------------|
+| **Cloudflare account ID** | Cloudflare dashboard → **AI** → **AI Gateway** → your gateway → *API Endpoints*. It is also the `{account_id}` in the dashboard URL. |
+| **Gateway ID** | The name you gave the gateway when you created it. |
+| **API key** | Your **DeepSeek** API key (from platform.deepseek.com) — *not* a Cloudflare token. The gateway forwards it upstream. |
+| **Gateway token** | Only if you turned **Authenticated Gateway** on in the gateway's settings. Leave blank otherwise. |
+| **Model** | `deepseek-v4-flash` (DeepSeek V4 Flash). `deepseek-v4-pro` and `deepseek-chat` work too. |
+
+TREK builds the endpoint itself — `https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/deepseek` — so there is no Base URL to type and no way to typo it. The account and gateway ids are validated before use, so a malformed value is rejected rather than producing a request to somewhere unexpected.
+
+If the gateway is authenticated, the gateway token is sent as `cf-aig-authorization`; without it Cloudflare rejects every request, and imports fail with an *AI parsing failed* warning.
+
+> **Why DeepSeek V4 Flash:** its 1M-token context means TREK can send a much larger slice of a document than it does to the other cloud providers (16 000 characters rather than 4 000), which is what lets a long multi-leg flight itinerary come back complete.
+
 ## Per-user configuration
 
 If an admin leaves the instance config blank, each user can configure their own model under **Settings → Integrations → AI parsing** (the section only appears when the addon is enabled):
 
 > *Use your own AI model to extract bookings from uploaded files. This applies only when your administrator has not configured a model for the whole instance.*
 
-The fields mirror the admin panel — provider, model, base URL (for local / OpenAI), and an API key that is *stored encrypted* (leave blank to keep the current key). There is also a **Send documents as images** toggle for vision-capable models.
+The fields mirror the admin panel — provider, model, base URL (for local / OpenAI), the account and gateway ids (for Cloudflare AI Gateway), and an API key that is *stored encrypted* (leave blank to keep the current key). The Cloudflare **Gateway token** is stored encrypted the same way. There is also a **Send documents as images** toggle for vision-capable models.
 
 > **Precedence:** an admin instance model always wins. Personal settings only take effect when no instance-wide model is configured.
 
@@ -85,7 +108,7 @@ The model is asked to capture the full booking — including **every leg of a mu
 - **No new environment variables and no manual migration** — the addon is configured entirely in the UI.
 - **Local inference can be slow.** On a CPU-only host a single booking can take tens of seconds to a couple of minutes; TREK allows local models up to 5 minutes per document. Uploads are parsed **one at a time** per user, so several files queue rather than run in parallel.
 - **Parse jobs are kept for about 10 minutes** after they finish. Start the review within that window.
-- **Privacy** — with the Local provider nothing leaves your network. With OpenAI or Anthropic, the document's text (or, for Anthropic, the PDF itself) is sent to that provider for extraction.
+- **Privacy** — with the Local provider nothing leaves your network. With OpenAI or Anthropic, the document's text (or, for Anthropic, the PDF itself) is sent to that provider for extraction. With Cloudflare AI Gateway the text passes through **both** Cloudflare and DeepSeek, and the gateway logs the request by default — turn logging off in the gateway settings if that matters to you.
 - **API keys are never returned in plaintext** — they are encrypted at rest and only ever shown masked.
 
 ## Related pages

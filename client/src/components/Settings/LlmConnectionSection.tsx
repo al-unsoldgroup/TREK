@@ -30,6 +30,10 @@ export default function LlmConnectionSection(): React.ReactElement {
   const [apiKey, setApiKey] = useState('')
   const [multimodal, setMultimodal] = useState(false)
   const [hasStoredKey, setHasStoredKey] = useState(false)
+  const [gatewayAccountId, setGatewayAccountId] = useState('')
+  const [gatewayId, setGatewayId] = useState('')
+  const [gatewayToken, setGatewayToken] = useState('')
+  const [hasStoredGatewayToken, setHasStoredGatewayToken] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // Hydrate from the loaded settings. llm_api_key arrives masked, so we only use
@@ -41,9 +45,25 @@ export default function LlmConnectionSection(): React.ReactElement {
     setBaseUrl(settings.llm_base_url || '')
     setMultimodal(settings.llm_multimodal === true)
     setHasStoredKey(!!settings.llm_api_key)
-  }, [isLoaded, settings.llm_provider, settings.llm_model, settings.llm_base_url, settings.llm_multimodal, settings.llm_api_key])
+    setGatewayAccountId(settings.llm_gateway_account_id || '')
+    setGatewayId(settings.llm_gateway_id || '')
+    setHasStoredGatewayToken(!!settings.llm_gateway_token)
+  }, [
+    isLoaded,
+    settings.llm_provider,
+    settings.llm_model,
+    settings.llm_base_url,
+    settings.llm_multimodal,
+    settings.llm_api_key,
+    settings.llm_gateway_account_id,
+    settings.llm_gateway_id,
+    settings.llm_gateway_token,
+  ])
 
   const needsKey = provider !== 'local'
+  // Cloudflare has no base URL field — the server derives the endpoint from the
+  // account + gateway ids (see server llmConfig.buildCloudflareGatewayBaseUrl).
+  const isCloudflare = provider === 'cloudflare'
   const showBaseUrl = provider === 'local' || provider === 'openai'
 
   const handleSave = async () => {
@@ -54,14 +74,20 @@ export default function LlmConnectionSection(): React.ReactElement {
         llm_model: model.trim(),
         llm_base_url: showBaseUrl ? baseUrl.trim() : '',
         llm_multimodal: multimodal,
+        llm_gateway_account_id: isCloudflare ? gatewayAccountId.trim() : '',
+        llm_gateway_id: isCloudflare ? gatewayId.trim() : '',
       }
-      // Send the key only when the user typed a new one — a blank field means
-      // "keep the stored key".
+      // Send a secret only when the user typed a new one — a blank field means
+      // "keep the stored value".
       const key = apiKey.trim()
       if (key) payload.llm_api_key = key
+      const token = gatewayToken.trim()
+      if (token) payload.llm_gateway_token = token
       await updateSettings(payload)
       setApiKey('')
+      setGatewayToken('')
       if (key) setHasStoredKey(true)
+      if (token) setHasStoredGatewayToken(true)
       toast.success(t('settings.aiParsing.toast.saved'))
     } catch {
       toast.error(t('settings.aiParsing.toast.saveError'))
@@ -84,6 +110,7 @@ export default function LlmConnectionSection(): React.ReactElement {
               { value: 'local', label: t('settings.aiParsing.providerLocal') },
               { value: 'openai', label: t('settings.aiParsing.providerOpenai') },
               { value: 'anthropic', label: t('settings.aiParsing.providerAnthropic') },
+              { value: 'cloudflare', label: t('settings.aiParsing.providerCloudflare') },
             ]}
           />
         </div>
@@ -95,7 +122,7 @@ export default function LlmConnectionSection(): React.ReactElement {
             autoComplete="off"
             value={model}
             onChange={e => setModel(e.target.value)}
-            placeholder="qwen3:8b"
+            placeholder={isCloudflare ? 'deepseek-v4-flash' : 'qwen3:8b'}
             className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
           />
         </div>
@@ -115,6 +142,32 @@ export default function LlmConnectionSection(): React.ReactElement {
           </div>
         )}
 
+        {isCloudflare && (
+          <>
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.gatewayAccountId')}</label>
+              <input
+                type="text"
+                autoComplete="off"
+                value={gatewayAccountId}
+                onChange={e => setGatewayAccountId(e.target.value)}
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.gatewayId')}</label>
+              <input
+                type="text"
+                autoComplete="off"
+                value={gatewayId}
+                onChange={e => setGatewayId(e.target.value)}
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+              />
+              <p className="mt-1 text-xs text-content-faint">{t('settings.aiParsing.gatewayHint')}</p>
+            </div>
+          </>
+        )}
+
         {needsKey && (
           <div>
             <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.apiKey')}</label>
@@ -126,7 +179,24 @@ export default function LlmConnectionSection(): React.ReactElement {
               placeholder={hasStoredKey && !apiKey ? '••••••••' : t('settings.aiParsing.apiKey')}
               className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
             />
-            <p className="mt-1 text-xs text-content-faint">{t('settings.aiParsing.apiKeyHint')}</p>
+            <p className="mt-1 text-xs text-content-faint">
+              {isCloudflare ? t('settings.aiParsing.gatewayApiKeyHint') : t('settings.aiParsing.apiKeyHint')}
+            </p>
+          </div>
+        )}
+
+        {isCloudflare && (
+          <div>
+            <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.gatewayToken')}</label>
+            <input
+              type="password"
+              value={gatewayToken}
+              onChange={e => setGatewayToken(e.target.value)}
+              autoComplete="off"
+              placeholder={hasStoredGatewayToken && !gatewayToken ? '••••••••' : t('settings.aiParsing.gatewayToken')}
+              className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+            />
+            <p className="mt-1 text-xs text-content-faint">{t('settings.aiParsing.gatewayTokenHint')}</p>
           </div>
         )}
 

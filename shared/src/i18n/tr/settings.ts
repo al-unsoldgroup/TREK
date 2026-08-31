@@ -350,6 +350,15 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerLocal': 'Yerel (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare hesap kimliği',
+  'settings.aiParsing.gatewayId': 'Ağ geçidi kimliği',
+  'settings.aiParsing.gatewayHint': 'TREK uç noktayı bu iki kimlikten oluşturur — temel URL gerekmez.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'DeepSeek API anahtarınız. Şifreli olarak saklanır. Mevcut anahtarı korumak için boş bırakın.',
+  'settings.aiParsing.gatewayToken': 'Ağ geçidi belirteci',
+  'settings.aiParsing.gatewayTokenHint':
+    'Yalnızca ağ geçidinizde kimlik doğrulama etkinse gereklidir. Şifreli olarak saklanır.',
   'settings.aiParsing.model': 'Model',
   'settings.aiParsing.baseUrl': 'Temel URL',
   'settings.aiParsing.baseUrlHint':

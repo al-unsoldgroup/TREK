@@ -130,12 +130,18 @@ export interface Settings {
   dashboard_fx_to?: string
   dashboard_timezones?: string[]
   // AI booking-import fallback (per-user config; used when the admin has not set
-  // instance-wide config on the llm_parsing addon). llm_api_key is masked on read.
-  llm_provider?: 'local' | 'openai' | 'anthropic'
+  // instance-wide config on the llm_parsing addon). llm_api_key and
+  // llm_gateway_token are masked on read.
+  llm_provider?: 'local' | 'openai' | 'anthropic' | 'cloudflare'
   llm_model?: string
   llm_base_url?: string
   llm_multimodal?: boolean
   llm_api_key?: string
+  // Cloudflare AI Gateway: the server derives the endpoint from these two ids, so
+  // there is no base URL to store for that provider.
+  llm_gateway_account_id?: string
+  llm_gateway_id?: string
+  llm_gateway_token?: string
   /** Per-user appearance/customization config (theming, transparency, typography, dashboard widgets). */
   appearance?: AppearanceConfig
 }

@@ -12,9 +12,12 @@ describe('createLlmClient', () => {
     expect(createLlmClient(cfg('anthropic'))).toBeInstanceOf(AnthropicClient);
   });
 
-  it('returns the OpenAI-compatible client for openai and local', () => {
+  it('returns the OpenAI-compatible client for openai, local and cloudflare', () => {
     expect(createLlmClient(cfg('openai'))).toBeInstanceOf(OpenAiCompatibleClient);
     expect(createLlmClient(cfg('local'))).toBeInstanceOf(OpenAiCompatibleClient);
+    // The Cloudflare AI Gateway's provider-native DeepSeek route is an
+    // OpenAI-compatible /chat/completions endpoint.
+    expect(createLlmClient(cfg('cloudflare'))).toBeInstanceOf(OpenAiCompatibleClient);
   });
 
   it('falls back to the OpenAI-compatible client for an unknown provider', () => {

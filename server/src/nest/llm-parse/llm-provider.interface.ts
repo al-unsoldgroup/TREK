@@ -17,6 +17,12 @@ export interface LlmExtractionInput {
   text?: string;
   /** Native binary (PDF) for multimodal providers. */
   file?: LlmExtractionFile;
+  /**
+   * Extra request headers beyond `authorization` (e.g. `cf-aig-authorization` for
+   * an authenticated Cloudflare AI Gateway). Kept generic so clients stay
+   * provider-agnostic.
+   */
+  extraHeaders?: Record<string, string>;
 }
 
 /**

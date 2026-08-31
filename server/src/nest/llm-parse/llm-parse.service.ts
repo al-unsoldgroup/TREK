@@ -42,6 +42,7 @@ export class LlmParseService {
       model: config.model,
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
+      extraHeaders: config.extraHeaders,
     };
 
     // Native PDF only for Anthropic (its document block reads text AND scans).
@@ -58,9 +59,18 @@ export class LlmParseService {
         // Cap the text fed to the model. A flight itinerary lists its legs throughout a long
         // document, so it keeps a generous window; a single booking has the essentials up top,
         // so cap it tighter to keep CPU prompt-eval fast (a 11-page rental voucher was ~200s at
-        // 16k, the booking data sits in the first ~2k). Cloud single-shot keeps the tight cap.
+        // 16k, the booking data sits in the first ~2k). OpenAI/Anthropic single-shot keeps the
+        // tight cap; the Cloudflare gateway targets DeepSeek V4 Flash (1M-token context, cheap
+        // and fast), where 4k is the thing that truncates a multi-leg itinerary, so it gets the
+        // generous window unconditionally.
         const MAX_EXTRACT_CHARS =
-          config.provider !== 'local' ? 4000 : detectFlightNumbers(input.text).length > 0 ? 16000 : 6000;
+          config.provider === 'cloudflare'
+            ? 16000
+            : config.provider !== 'local'
+              ? 4000
+              : detectFlightNumbers(input.text).length > 0
+                ? 16000
+                : 6000;
         if (input.text.length > MAX_EXTRACT_CHARS) input.text = input.text.slice(0, MAX_EXTRACT_CHARS);
         console.debug(`[DEBUG] Extracted text from ${file.originalName} (${input.text.length} chars):\n`, input.text);
         if (!input.text.trim()) {

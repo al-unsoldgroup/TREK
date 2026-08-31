@@ -58,6 +58,43 @@ describe('OpenAiCompatibleClient', () => {
     expect(safeFetchLlmMock).toHaveBeenCalledTimes(1); // no retry on non-400
   });
 
+  it('sends extraHeaders alongside the bearer key, without clobbering it', async () => {
+    const fetchFn = mockFetch(() => jsonResponse({ choices: [{ message: { content: '{"reservations":[]}' } }] }));
+    await new OpenAiCompatibleClient().extract({
+      ...baseInput,
+      apiKey: 'sk-deepseek',
+      extraHeaders: { 'cf-aig-authorization': 'Bearer cf-token' },
+    });
+    const headers = (fetchFn.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers.authorization).toBe('Bearer sk-deepseek');
+    expect(headers['cf-aig-authorization']).toBe('Bearer cf-token');
+  });
+
+  it('omits extraHeaders when none are configured', async () => {
+    const fetchFn = mockFetch(() => jsonResponse({ choices: [{ message: { content: '{"reservations":[]}' } }] }));
+    await new OpenAiCompatibleClient().extract({ ...baseInput, apiKey: 'sk-deepseek' });
+    const headers = (fetchFn.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers['cf-aig-authorization']).toBeUndefined();
+  });
+
+  // DeepSeek only supports json_object, so the gateway path always takes the retry —
+  // the gateway header has to survive it or the second request is rejected as unauthorized.
+  it('keeps extraHeaders on the json_object retry', async () => {
+    const fetchFn = mockFetch(() => jsonResponse({}, false, 400));
+    safeFetchLlmMock
+      .mockResolvedValueOnce(jsonResponse({ error: 'no json_schema' }, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"reservations":[]}' } }] }));
+    await new OpenAiCompatibleClient().extract({
+      ...baseInput,
+      apiKey: 'sk-deepseek',
+      extraHeaders: { 'cf-aig-authorization': 'Bearer cf-token' },
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const retryHeaders = (fetchFn.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
+    expect(retryHeaders['cf-aig-authorization']).toBe('Bearer cf-token');
+    expect(retryHeaders.authorization).toBe('Bearer sk-deepseek');
+  });
+
   it('retries once with json_object when the server rejects json_schema (400)', async () => {
     safeFetchLlmMock
       .mockResolvedValueOnce(jsonResponse({ error: { message: 'response_format type is unavailable' } }, false, 400))

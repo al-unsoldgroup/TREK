@@ -353,6 +353,16 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerLocal': 'Lokalny (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Identyfikator konta Cloudflare',
+  'settings.aiParsing.gatewayId': 'Identyfikator bramy',
+  'settings.aiParsing.gatewayHint':
+    'TREK tworzy adres punktu końcowego z tych dwóch identyfikatorów — bazowy adres URL nie jest potrzebny.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Twój klucz API DeepSeek. Przechowywany w postaci zaszyfrowanej. Pozostaw puste, aby zachować bieżący klucz.',
+  'settings.aiParsing.gatewayToken': 'Token bramy',
+  'settings.aiParsing.gatewayTokenHint':
+    'Potrzebny tylko wtedy, gdy brama ma włączone uwierzytelnianie. Przechowywany w postaci zaszyfrowanej.',
   'settings.aiParsing.model': 'Model',
   'settings.aiParsing.baseUrl': 'Bazowy adres URL',
   'settings.aiParsing.baseUrlHint':
