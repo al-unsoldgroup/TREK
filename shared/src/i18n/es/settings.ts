@@ -355,6 +355,16 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerLocal': 'Local (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'ID de cuenta de Cloudflare',
+  'settings.aiParsing.gatewayId': 'ID de la pasarela',
+  'settings.aiParsing.gatewayHint':
+    'TREK construye el punto de acceso a partir de estos dos identificadores — no hace falta URL base.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Tu clave de API de DeepSeek. Se guarda cifrada. Déjalo en blanco para mantener la clave actual.',
+  'settings.aiParsing.gatewayToken': 'Token de la pasarela',
+  'settings.aiParsing.gatewayTokenHint':
+    'Solo es necesario si tu pasarela tiene la autenticación activada. Se guarda cifrado.',
   'settings.aiParsing.model': 'Modelo',
   'settings.aiParsing.baseUrl': 'URL base',
   'settings.aiParsing.baseUrlHint':

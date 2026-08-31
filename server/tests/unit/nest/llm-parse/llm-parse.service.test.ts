@@ -159,6 +159,42 @@ describe('LlmParseService', () => {
     expect(routeExtraction.mock.calls[0][0]).toHaveLength(6000); // single booking → tighter cap
   });
 
+  // Cloudflare AI Gateway fronts DeepSeek V4 Flash: a strong cloud model, so it takes the
+  // single-shot path like the other cloud providers rather than the local grammar router.
+  it('routes the cloudflare provider through the single-shot client, not the local router', async () => {
+    resolveLlmConfig.mockReturnValue(
+      cfg({ provider: 'cloudflare', baseUrl: 'https://gateway.ai.cloudflare.com/v1/a/g/deepseek' }),
+    );
+    await svc().parse(file('a.txt'), 1);
+    expect(routeExtraction).not.toHaveBeenCalled();
+    expect(extract).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the gateway auth header through to the client', async () => {
+    resolveLlmConfig.mockReturnValue(
+      cfg({ provider: 'cloudflare', extraHeaders: { 'cf-aig-authorization': 'Bearer cf-token' } }),
+    );
+    await svc().parse(file('a.txt'), 1);
+    expect(extract.mock.calls[0][0].extraHeaders).toEqual({ 'cf-aig-authorization': 'Bearer cf-token' });
+  });
+
+  // 4k is what truncates a multi-leg itinerary; DeepSeek V4 Flash has a 1M-token context,
+  // so the gateway path gets the wide cap unconditionally while OpenAI keeps the tight one.
+  it('gives the cloudflare provider the wide 16k cap where openai keeps 4k', async () => {
+    const long = 'x'.repeat(7000);
+    extractText.mockResolvedValue(long);
+    resolveLlmConfig.mockReturnValue(cfg({ provider: 'cloudflare' }));
+    await svc().parse(file('flights.txt'), 1);
+    expect(extract.mock.calls[0][0].text).toHaveLength(7000); // under the 16k cap, untouched
+
+    vi.clearAllMocks();
+    extractText.mockResolvedValue(long);
+    extract.mockResolvedValue([]);
+    resolveLlmConfig.mockReturnValue(cfg({ provider: 'openai' }));
+    await svc().parse(file('flights.txt'), 1);
+    expect(extract.mock.calls[0][0].text).toHaveLength(4000);
+  });
+
   it('degrades to a warning when the local router throws', async () => {
     resolveLlmConfig.mockReturnValue(cfg({ provider: 'local' }));
     routeExtraction.mockRejectedValue(new Error('ollama down'));

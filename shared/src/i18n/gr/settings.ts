@@ -363,6 +363,16 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerLocal': 'Τοπικό (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Αναγνωριστικό λογαριασμού Cloudflare',
+  'settings.aiParsing.gatewayId': 'Αναγνωριστικό πύλης',
+  'settings.aiParsing.gatewayHint':
+    'Το TREK δημιουργεί το τελικό σημείο από αυτά τα δύο αναγνωριστικά — δεν χρειάζεται βασικό URL.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Το κλειδί API του DeepSeek. Αποθηκεύεται κρυπτογραφημένο. Αφήστε το κενό για να διατηρήσετε το τρέχον κλειδί.',
+  'settings.aiParsing.gatewayToken': 'Διακριτικό πύλης',
+  'settings.aiParsing.gatewayTokenHint':
+    'Χρειάζεται μόνο αν η πύλη σας έχει ενεργοποιημένο τον έλεγχο ταυτότητας. Αποθηκεύεται κρυπτογραφημένο.',
   'settings.aiParsing.model': 'Μοντέλο',
   'settings.aiParsing.baseUrl': 'Βασικό URL',
   'settings.aiParsing.baseUrlHint':

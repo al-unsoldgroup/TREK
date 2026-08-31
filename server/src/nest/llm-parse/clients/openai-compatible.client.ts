@@ -68,13 +68,18 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
           },
         };
 
-    let res = await this.send(url, body, input.apiKey);
+    let res = await this.send(url, body, input.apiKey, input.extraHeaders);
     // Servers that only support `json_object` (DeepSeek, Mistral, some
     // vLLM/llama.cpp) reject `json_schema` with a 400 — retry once in
     // `json_object` mode. The system prompt already dictates the exact output
     // shape (and mentions JSON, which json_object mode requires).
     if (!res.ok && res.status === 400 && !nuextract) {
-      res = await this.send(url, { ...baseBody, response_format: { type: 'json_object' as const } }, input.apiKey);
+      res = await this.send(
+        url,
+        { ...baseBody, response_format: { type: 'json_object' as const } },
+        input.apiKey,
+        input.extraHeaders,
+      );
     }
 
     if (!res.ok) {
@@ -89,7 +94,12 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
     return nuextract ? parseNuExtract(content) : parseReservations(content);
   }
 
-  private async send(url: string, body: unknown, apiKey?: string): Promise<Response> {
+  private async send(
+    url: string,
+    body: unknown,
+    apiKey?: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
@@ -101,6 +111,9 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
         headers: {
           'content-type': 'application/json',
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+          // Spread last so a gateway header is additive — it must never be able to
+          // drop the provider bearer token that authenticates the upstream call.
+          ...extraHeaders,
         },
         body: JSON.stringify(body),
       });

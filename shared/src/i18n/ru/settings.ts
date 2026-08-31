@@ -353,6 +353,15 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerLocal': 'Локально (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'ID аккаунта Cloudflare',
+  'settings.aiParsing.gatewayId': 'ID шлюза',
+  'settings.aiParsing.gatewayHint': 'TREK формирует адрес из этих двух идентификаторов — базовый URL не нужен.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Ваш API-ключ DeepSeek. Хранится в зашифрованном виде. Оставьте пустым, чтобы сохранить текущий ключ.',
+  'settings.aiParsing.gatewayToken': 'Токен шлюза',
+  'settings.aiParsing.gatewayTokenHint':
+    'Нужен, только если у шлюза включена аутентификация. Хранится в зашифрованном виде.',
   'settings.aiParsing.model': 'Модель',
   'settings.aiParsing.baseUrl': 'Базовый URL',
   'settings.aiParsing.baseUrlHint':

@@ -351,6 +351,15 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerLocal': 'Lokal (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'ID akun Cloudflare',
+  'settings.aiParsing.gatewayId': 'ID gateway',
+  'settings.aiParsing.gatewayHint': 'TREK menyusun endpoint dari kedua id ini — tidak perlu URL dasar.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Kunci API DeepSeek Anda. Disimpan terenkripsi. Biarkan kosong untuk mempertahankan kunci saat ini.',
+  'settings.aiParsing.gatewayToken': 'Token gateway',
+  'settings.aiParsing.gatewayTokenHint':
+    'Hanya diperlukan jika gateway Anda mengaktifkan autentikasi. Disimpan terenkripsi.',
   'settings.aiParsing.model': 'Model',
   'settings.aiParsing.baseUrl': 'URL Dasar',
   'settings.aiParsing.baseUrlHint':
