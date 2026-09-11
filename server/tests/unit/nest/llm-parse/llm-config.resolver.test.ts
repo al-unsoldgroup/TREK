@@ -33,7 +33,7 @@ import type { AddonsService } from '../../../../src/nest/addons/addons.service';
 // DatabaseService rides the same prepare/get mock the module-level db used.
 const getUserSettings = vi.fn(() => ({}) as Record<string, unknown>);
 const getAdminUserDefaults = vi.fn(() => ({}) as Record<string, unknown>);
-const getDecryptedUserSetting = vi.fn(() => null as string | null);
+const getDecryptedUserSetting = vi.fn<SettingsService['getDecryptedUserSetting']>(() => null);
 const settingsStub = { getUserSettings, getAdminUserDefaults, getDecryptedUserSetting } as unknown as SettingsService;
 
 const addonsStub = { isAddonEnabled } as unknown as AddonsService;
@@ -134,5 +134,84 @@ describe('resolveLlmConfig', () => {
     getUserSettings.mockReturnValue({ llm_provider: 'local', llm_model: 'nuextract', llm_base_url: 'http://192.168.1.5:11434' });
     expect(resolver.resolve(7)).toBeNull();
     expect(dbMock._role.get).not.toHaveBeenCalled();
+  });
+});
+
+// The Cloudflare AI Gateway provider never stores a base URL: the resolver derives the
+// provider-native DeepSeek endpoint from the account + gateway ids, and turns the stored
+// gateway token into the `cf-aig-authorization` header an authenticated gateway requires.
+describe('resolveLlmConfig — Cloudflare AI Gateway', () => {
+  const GATEWAY_URL = 'https://gateway.ai.cloudflare.com/v1/acct123/my-gateway/deepseek';
+
+  it('derives the endpoint and the gateway auth header from instance config', () => {
+    setInstanceConfig({
+      provider: 'cloudflare',
+      model: 'deepseek-v4-flash',
+      gatewayAccountId: 'acct123',
+      gatewayId: 'my-gateway',
+      apiKey: 'sk-deepseek',
+      gatewayToken: 'cf-token',
+    });
+    expect(resolver.resolve(1)).toEqual({
+      provider: 'cloudflare',
+      model: 'deepseek-v4-flash',
+      baseUrl: GATEWAY_URL,
+      apiKey: 'sk-deepseek',
+      multimodal: false,
+      extraHeaders: { 'cf-aig-authorization': 'Bearer cf-token' },
+    });
+  });
+
+  it('omits the gateway header when no token is stored (unauthenticated gateway)', () => {
+    setInstanceConfig({
+      provider: 'cloudflare',
+      model: 'deepseek-v4-flash',
+      gatewayAccountId: 'acct123',
+      gatewayId: 'my-gateway',
+      apiKey: 'sk-deepseek',
+    });
+    expect(resolver.resolve(1)?.extraHeaders).toBeUndefined();
+  });
+
+  it('ignores a stored baseUrl — the endpoint is always derived', () => {
+    setInstanceConfig({
+      provider: 'cloudflare',
+      model: 'deepseek-v4-flash',
+      gatewayAccountId: 'acct123',
+      gatewayId: 'my-gateway',
+      baseUrl: 'https://evil.example/v1',
+    });
+    expect(resolver.resolve(1)?.baseUrl).toBe(GATEWAY_URL);
+  });
+
+  it.each([
+    ['a missing account id', { gatewayId: 'my-gateway' }],
+    ['a missing gateway id', { gatewayAccountId: 'acct123' }],
+    ['a path-escaping account id', { gatewayAccountId: 'acct/../..', gatewayId: 'my-gateway' }],
+    ['a host-escaping gateway id', { gatewayAccountId: 'acct123', gatewayId: 'gw@evil.example' }],
+  ])('returns null for %s', (_label, ids) => {
+    setInstanceConfig({ provider: 'cloudflare', model: 'deepseek-v4-flash', ...ids });
+    expect(resolver.resolve(1)).toBeNull();
+  });
+
+  it('resolves the same way from per-user config', () => {
+    getUserSettings.mockReturnValue({
+      llm_provider: 'cloudflare',
+      llm_model: 'deepseek-v4-flash',
+      llm_gateway_account_id: 'acct123',
+      llm_gateway_id: 'my-gateway',
+    });
+    getDecryptedUserSetting.mockImplementation((_id: number, key: string) =>
+      key === 'llm_api_key' ? 'sk-deepseek' : key === 'llm_gateway_token' ? 'cf-token' : null,
+    );
+    expect(resolver.resolve(7)).toEqual({
+      provider: 'cloudflare',
+      model: 'deepseek-v4-flash',
+      baseUrl: GATEWAY_URL,
+      apiKey: 'sk-deepseek',
+      multimodal: false,
+      extraHeaders: { 'cf-aig-authorization': 'Bearer cf-token' },
+    });
+    expect(getDecryptedUserSetting).toHaveBeenCalledWith(7, 'llm_gateway_token');
   });
 });

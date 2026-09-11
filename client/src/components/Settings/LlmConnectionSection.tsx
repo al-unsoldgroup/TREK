@@ -21,7 +21,7 @@ type Provider = NonNullable<Settings['llm_provider']>
  * from the server, so only whoever runs the instance may name its target, and
  * an instance has exactly one such target. It is configured once on the addon
  * in the admin settings, including for the admin's own account. What is left
- * here are the two hosted providers, which go to a fixed address with the
+ * here are hosted providers, which go to a fixed address with the
  * user's own key. The server enforces this on both the read and the write path,
  * so this is only the matching surface.
  */
@@ -38,6 +38,10 @@ export default function LlmConnectionSection(): React.ReactElement {
   const [apiKey, setApiKey] = useState('')
   const [multimodal, setMultimodal] = useState(false)
   const [hasStoredKey, setHasStoredKey] = useState(false)
+  const [gatewayAccountId, setGatewayAccountId] = useState('')
+  const [gatewayId, setGatewayId] = useState('')
+  const [gatewayToken, setGatewayToken] = useState('')
+  const [hasStoredGatewayToken, setHasStoredGatewayToken] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // Hydrate from the loaded settings. llm_api_key arrives masked, so we only use
@@ -52,15 +56,30 @@ export default function LlmConnectionSection(): React.ReactElement {
     setModel(settings.llm_model || '')
     setMultimodal(settings.llm_multimodal === true)
     setHasStoredKey(!!settings.llm_api_key)
-  }, [isLoaded, settings.llm_provider, settings.llm_model, settings.llm_multimodal, settings.llm_api_key])
+    setGatewayAccountId(settings.llm_gateway_account_id || '')
+    setGatewayId(settings.llm_gateway_id || '')
+    setHasStoredGatewayToken(!!settings.llm_gateway_token)
+  }, [
+    isLoaded,
+    settings.llm_provider,
+    settings.llm_model,
+    settings.llm_base_url,
+    settings.llm_multimodal,
+    settings.llm_api_key,
+    settings.llm_gateway_account_id,
+    settings.llm_gateway_id,
+    settings.llm_gateway_token,
+  ])
 
-  const providerOptions = useMemo(
-    () => [
-      { value: 'openai', label: t('settings.aiParsing.providerOpenai') },
-      { value: 'anthropic', label: t('settings.aiParsing.providerAnthropic') },
-    ],
-    [t],
-  )
+  // Cloudflare has no base URL field — the server derives the endpoint from the
+  // account + gateway ids (see server llmConfig.buildCloudflareGatewayBaseUrl).
+  const isCloudflare = provider === 'cloudflare'
+
+  const providerOptions = useMemo(() => [
+    { value: 'openai', label: t('settings.aiParsing.providerOpenai') },
+    { value: 'anthropic', label: t('settings.aiParsing.providerAnthropic') },
+    { value: 'cloudflare', label: t('settings.aiParsing.providerCloudflare') },
+  ], [t])
 
   const handleSave = async () => {
     setSaving(true)
@@ -72,14 +91,22 @@ export default function LlmConnectionSection(): React.ReactElement {
         // also drops a value left over from before #1772.
         llm_base_url: '',
         llm_multimodal: multimodal,
+        ...(isCloudflare ? {
+          llm_gateway_account_id: gatewayAccountId.trim(),
+          llm_gateway_id: gatewayId.trim(),
+        } : {}),
       }
-      // Send the key only when the user typed a new one — a blank field means
-      // "keep the stored key".
+      // Send a secret only when the user typed a new one — a blank field means
+      // "keep the stored value".
       const key = apiKey.trim()
       if (key) payload.llm_api_key = key
+      const token = gatewayToken.trim()
+      if (token) payload.llm_gateway_token = token
       await updateSettings(payload)
       setApiKey('')
+      setGatewayToken('')
       if (key) setHasStoredKey(true)
+      if (token) setHasStoredGatewayToken(true)
       toast.success(t('settings.aiParsing.toast.saved'))
     } catch {
       // updateSettings patches the store before the request and keeps the patch
@@ -115,25 +142,65 @@ export default function LlmConnectionSection(): React.ReactElement {
             autoComplete="off"
             value={model}
             onChange={e => setModel(e.target.value)}
-            placeholder="qwen3:8b"
+            placeholder={isCloudflare ? 'deepseek-v4-flash' : 'qwen3:8b'}
             className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
           />
         </div>
 
-        {/* Both remaining providers are hosted and need a key, so this is no
-            longer conditional (#1772). */}
-        <div>
-          <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.apiKey')}</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            autoComplete="off"
-            placeholder={hasStoredKey && !apiKey ? '••••••••' : t('settings.aiParsing.apiKey')}
-            className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
-          />
-          <p className="mt-1 text-xs text-content-faint">{t('settings.aiParsing.apiKeyHint')}</p>
-        </div>
+        {isCloudflare && (
+          <>
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.gatewayAccountId')}</label>
+              <input
+                type="text"
+                autoComplete="off"
+                value={gatewayAccountId}
+                onChange={e => setGatewayAccountId(e.target.value)}
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.gatewayId')}</label>
+              <input
+                type="text"
+                autoComplete="off"
+                value={gatewayId}
+                onChange={e => setGatewayId(e.target.value)}
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+              />
+              <p className="mt-1 text-xs text-content-faint">{t('settings.aiParsing.gatewayHint')}</p>
+            </div>
+          </>
+        )}
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.apiKey')}</label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              autoComplete="off"
+              placeholder={hasStoredKey && !apiKey ? '••••••••' : t('settings.aiParsing.apiKey')}
+              className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+            />
+            <p className="mt-1 text-xs text-content-faint">
+              {isCloudflare ? t('settings.aiParsing.gatewayApiKeyHint') : t('settings.aiParsing.apiKeyHint')}
+            </p>
+          </div>
+        {isCloudflare && (
+          <div>
+            <label className="block text-sm font-medium mb-1.5 text-content-secondary">{t('settings.aiParsing.gatewayToken')}</label>
+            <input
+              type="password"
+              value={gatewayToken}
+              onChange={e => setGatewayToken(e.target.value)}
+              autoComplete="off"
+              placeholder={hasStoredGatewayToken && !gatewayToken ? '••••••••' : t('settings.aiParsing.gatewayToken')}
+              className="w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 border-edge bg-surface-secondary text-content"
+            />
+            <p className="mt-1 text-xs text-content-faint">{t('settings.aiParsing.gatewayTokenHint')}</p>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center gap-3">

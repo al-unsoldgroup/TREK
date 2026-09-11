@@ -323,6 +323,9 @@ function LlmParsingConfig({ addon }: { addon: Addon }) {
   const [model, setModel] = useState<string>((cfg.model as string) ?? '')
   const [baseUrl, setBaseUrl] = useState<string>((cfg.baseUrl as string) ?? '')
   const [apiKey, setApiKey] = useState<string>((cfg.apiKey as string) ?? '')
+  const [gatewayAccountId, setGatewayAccountId] = useState<string>((cfg.gatewayAccountId as string) ?? '')
+  const [gatewayId, setGatewayId] = useState<string>((cfg.gatewayId as string) ?? '')
+  const [gatewayToken, setGatewayToken] = useState<string>((cfg.gatewayToken as string) ?? '')
   const [saving, setSaving] = useState(false)
 
   // Local-provider model management.
@@ -384,7 +387,7 @@ function LlmParsingConfig({ addon }: { addon: Addon }) {
     setSaving(true)
     try {
       // Send the masked sentinel unchanged so the server keeps the stored key.
-      await adminApi.updateAddon(addon.id, { config: { provider, model: model.trim(), baseUrl: provider === 'anthropic' ? '' : baseUrl.trim(), apiKey, multimodal: cfg.multimodal === true } })
+      await adminApi.updateAddon(addon.id, { config: { provider, model: model.trim(), baseUrl: provider === 'anthropic' || provider === 'cloudflare' ? '' : baseUrl.trim(), apiKey, multimodal: cfg.multimodal === true, gatewayAccountId: gatewayAccountId.trim(), gatewayId: gatewayId.trim(), gatewayToken } })
       toast.success('Saved')
     } catch {
       toast.error('Failed to save')
@@ -400,6 +403,7 @@ function LlmParsingConfig({ addon }: { addon: Addon }) {
     { value: 'local', label: 'Local · OpenAI-compatible', icon: <Server size={14} />, badge: 'Ollama' },
     { value: 'openai', label: 'OpenAI', icon: <Cloud size={14} /> },
     { value: 'anthropic', label: 'Anthropic', icon: <Sparkles size={14} /> },
+    { value: 'cloudflare', label: 'Cloudflare AI Gateway', icon: <Cloud size={14} />, badge: 'DeepSeek' },
   ]
 
   /* Lives in the tile's shelf like the collab toggles, so everything is caption-
@@ -414,11 +418,28 @@ function LlmParsingConfig({ addon }: { addon: Addon }) {
         <span className={labelCls}>Provider</span>
         <CustomSelect value={provider} onChange={v => setProvider(String(v))} options={providerOptions} />
       </div>
-      {provider !== 'anthropic' && (
+      {provider !== 'anthropic' && provider !== 'cloudflare' && (
         <label className="block">
           <span className={labelCls}>Base URL</span>
           <input type="url" autoComplete="off" className={fieldCls} value={baseUrl} onChange={e => setBaseUrl(e.target.value)} onBlur={loadModels} placeholder={provider === 'local' ? 'http://localhost:11434/v1' : 'https://api.openai.com/v1'} />
         </label>
+      )}
+      {provider === 'cloudflare' && (
+        <>
+          <label className="block">
+            <span className={labelCls}>Cloudflare account ID</span>
+            <input autoComplete="off" className={fieldCls} value={gatewayAccountId} onChange={e => setGatewayAccountId(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className={labelCls}>Gateway ID</span>
+            <input autoComplete="off" className={fieldCls} value={gatewayId} onChange={e => setGatewayId(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className={labelCls}>Gateway token</span>
+            <input type="password" className={fieldCls} value={gatewayToken} onChange={e => setGatewayToken(e.target.value)} placeholder={gatewayToken === MASKED ? MASKED : '(only for authenticated gateways)'} />
+          </label>
+          <p className="text-caption text-content-faint">Use your DeepSeek API key below. The gateway token is needed only when gateway authentication is enabled.</p>
+        </>
       )}
       <label className="block">
         <span className={labelCls}>API key</span>
@@ -520,4 +541,3 @@ function getAddonLabel(t: (key: string) => string, addon: Addon): { name: string
     description: translatedDescription !== descKey ? translatedDescription : addon.description,
   }
 }
-

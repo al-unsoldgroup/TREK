@@ -369,6 +369,16 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'A helyi végpontot (Ollama) egyszer, az egész példányra vonatkozóan az adminisztrátori beállításokban kell megadni. A saját OpenAI- vagy Anthropic-kulcsodat itt továbbra is használhatod.',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare fiókazonosító',
+  'settings.aiParsing.gatewayId': 'Átjáró azonosítója',
+  'settings.aiParsing.gatewayHint':
+    'A TREK ebből a két azonosítóból állítja össze a végpontot — nincs szükség alap URL-re.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'A DeepSeek API-kulcsod. Titkosítva tárolva. Hagyd üresen a jelenlegi kulcs megtartásához.',
+  'settings.aiParsing.gatewayToken': 'Átjáró token',
+  'settings.aiParsing.gatewayTokenHint':
+    'Csak akkor szükséges, ha az átjárón be van kapcsolva a hitelesítés. Titkosítva tárolva.',
   'settings.aiParsing.model': 'Modell',
   'settings.aiParsing.baseUrl': 'Alap-URL',
   'settings.aiParsing.baseUrlHint': 'Ahol a modell fut — helyi Ollama-kiszolgáló vagy OpenAI-kompatibilis végpont.',

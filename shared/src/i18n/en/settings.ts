@@ -371,6 +371,14 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'A local (Ollama) endpoint is set up once for the whole instance in the admin settings. You can still use your own OpenAI or Anthropic key here.',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare account ID',
+  'settings.aiParsing.gatewayId': 'Gateway ID',
+  'settings.aiParsing.gatewayHint': 'TREK builds the endpoint from these two ids — no base URL needed.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Your DeepSeek API key. Stored encrypted. Leave blank to keep the current key.',
+  'settings.aiParsing.gatewayToken': 'Gateway token',
+  'settings.aiParsing.gatewayTokenHint': 'Only needed when your gateway has authentication enabled. Stored encrypted.',
   'settings.aiParsing.model': 'Model',
   'settings.aiParsing.baseUrl': 'Base URL',
   'settings.aiParsing.baseUrlHint': 'Where the model runs — a local Ollama server or an OpenAI-compatible endpoint.',

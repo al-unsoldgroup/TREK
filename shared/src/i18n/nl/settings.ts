@@ -368,6 +368,15 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'Een lokaal endpoint (Ollama) wordt eenmalig voor de hele instantie ingesteld in de beheerinstellingen. Je kunt hier nog steeds je eigen OpenAI- of Anthropic-sleutel gebruiken.',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare-account-ID',
+  'settings.aiParsing.gatewayId': 'Gateway-ID',
+  'settings.aiParsing.gatewayHint': 'TREK stelt het eindpunt samen uit deze twee ids — geen basis-URL nodig.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Je DeepSeek-API-sleutel. Versleuteld opgeslagen. Laat leeg om de huidige sleutel te behouden.',
+  'settings.aiParsing.gatewayToken': 'Gateway-token',
+  'settings.aiParsing.gatewayTokenHint':
+    'Alleen nodig als voor je gateway verificatie is ingeschakeld. Versleuteld opgeslagen.',
   'settings.aiParsing.model': 'Model',
   'settings.aiParsing.baseUrl': 'Basis-URL',
   'settings.aiParsing.baseUrlHint':

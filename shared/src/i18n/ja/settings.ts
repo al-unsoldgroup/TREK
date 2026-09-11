@@ -343,6 +343,14 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'ローカル (Ollama) のエンドポイントは、管理者設定でインスタンス全体に対して一度だけ設定します。自分の OpenAI または Anthropic のキーはここで引き続き使えます。',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare アカウント ID',
+  'settings.aiParsing.gatewayId': 'ゲートウェイ ID',
+  'settings.aiParsing.gatewayHint': 'TREKはこの2つのIDからエンドポイントを組み立てます — ベースURLは不要です。',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'DeepSeekのAPIキー。暗号化して保存されます。現在のキーを保持する場合は空欄のままにしてください。',
+  'settings.aiParsing.gatewayToken': 'ゲートウェイトークン',
+  'settings.aiParsing.gatewayTokenHint': 'ゲートウェイで認証が有効な場合のみ必要です。暗号化して保存されます。',
   'settings.aiParsing.model': 'モデル',
   'settings.aiParsing.baseUrl': 'ベースURL',
   'settings.aiParsing.baseUrlHint': 'モデルの実行場所 — ローカルのOllamaサーバー、またはOpenAI互換のエンドポイント。',

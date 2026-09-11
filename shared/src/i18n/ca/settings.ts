@@ -349,6 +349,15 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     "Un punt final local (Ollama) es configura una sola vegada per a tota la instància a la configuració d'administració. Aquí encara pots fer servir la teva pròpia clau d'OpenAI o d'Anthropic.",
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'ID del compte de Cloudflare',
+  'settings.aiParsing.gatewayId': 'ID de la passarel·la',
+  'settings.aiParsing.gatewayHint':
+    'El TREK construeix el punt d’accés a partir d’aquests dos identificadors — no cal cap URL base.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'La teva clau d’API de DeepSeek. Es desa xifrada. Deixa-ho en blanc per mantenir la clau actual.',
+  'settings.aiParsing.gatewayToken': 'Testimoni de la passarel·la',
+  'settings.aiParsing.gatewayTokenHint': 'Només cal si la passarel·la té l’autenticació activada. Es desa xifrat.',
   'settings.aiParsing.model': 'Model',
   'settings.aiParsing.baseUrl': 'URL base',
   'settings.aiParsing.baseUrlHint':

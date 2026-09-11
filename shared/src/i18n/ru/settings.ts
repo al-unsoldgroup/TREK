@@ -368,6 +368,15 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'Локальная конечная точка (Ollama) настраивается один раз для всего экземпляра в настройках администратора. Свой ключ OpenAI или Anthropic вы по-прежнему можете использовать здесь.',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'ID аккаунта Cloudflare',
+  'settings.aiParsing.gatewayId': 'ID шлюза',
+  'settings.aiParsing.gatewayHint': 'TREK формирует адрес из этих двух идентификаторов — базовый URL не нужен.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Ваш API-ключ DeepSeek. Хранится в зашифрованном виде. Оставьте пустым, чтобы сохранить текущий ключ.',
+  'settings.aiParsing.gatewayToken': 'Токен шлюза',
+  'settings.aiParsing.gatewayTokenHint':
+    'Нужен, только если у шлюза включена аутентификация. Хранится в зашифрованном виде.',
   'settings.aiParsing.model': 'Модель',
   'settings.aiParsing.baseUrl': 'Базовый URL',
   'settings.aiParsing.baseUrlHint':

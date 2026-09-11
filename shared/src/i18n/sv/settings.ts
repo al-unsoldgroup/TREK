@@ -367,6 +367,14 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'En lokal slutpunkt (Ollama) ställs in en gång för hela instansen i administratörsinställningarna. Du kan fortfarande använda din egen OpenAI- eller Anthropic-nyckel här.',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare-konto-ID',
+  'settings.aiParsing.gatewayId': 'Gateway-ID',
+  'settings.aiParsing.gatewayHint': 'TREK bygger slutpunkten från dessa två id:n — ingen bas-URL behövs.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Din DeepSeek-API-nyckel. Lagras krypterad. Lämna tomt för att behålla den nuvarande nyckeln.',
+  'settings.aiParsing.gatewayToken': 'Gateway-token',
+  'settings.aiParsing.gatewayTokenHint': 'Behövs bara om din gateway har autentisering aktiverad. Lagras krypterad.',
   'settings.aiParsing.model': 'Modell',
   'settings.aiParsing.baseUrl': 'Bas-URL',
   'settings.aiParsing.baseUrlHint': 'Var modellen körs — en lokal Ollama-server eller en OpenAI-kompatibel slutpunkt.',

@@ -370,6 +370,14 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     'Endpoint cục bộ (Ollama) được thiết lập một lần cho toàn bộ phiên bản trong phần cài đặt quản trị. Bạn vẫn có thể dùng khóa OpenAI hoặc Anthropic của riêng mình ở đây.',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'ID tài khoản Cloudflare',
+  'settings.aiParsing.gatewayId': 'ID cổng',
+  'settings.aiParsing.gatewayHint': 'TREK dựng điểm cuối từ hai ID này — không cần URL cơ sở.',
+  'settings.aiParsing.gatewayApiKeyHint':
+    'Khóa API DeepSeek của bạn. Được lưu ở dạng mã hóa. Để trống để giữ khóa hiện tại.',
+  'settings.aiParsing.gatewayToken': 'Mã thông báo cổng',
+  'settings.aiParsing.gatewayTokenHint': 'Chỉ cần khi cổng của bạn đã bật xác thực. Được lưu ở dạng mã hóa.',
   'settings.aiParsing.model': 'Mô hình',
   'settings.aiParsing.baseUrl': 'URL cơ sở',
   'settings.aiParsing.baseUrlHint': 'Nơi mô hình chạy — máy chủ Ollama cục bộ hoặc endpoint tương thích với OpenAI.',

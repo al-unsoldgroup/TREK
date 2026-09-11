@@ -1,6 +1,6 @@
 import { ADDON_IDS } from '../../addons';
 import { AddonsService } from '../addons/addons.service';
-import { decryptLlmApiKey, LLM_PROVIDERS, type LlmProvider, type ResolvedLlmConfig } from './llm-config';
+import { buildCloudflareGatewayBaseUrl, decryptLlmApiKey, LLM_PROVIDERS, type LlmProvider, type ResolvedLlmConfig } from './llm-config';
 import { DatabaseService } from '../database/database.service';
 import { SettingsService } from '../settings/settings.service';
 import { Injectable } from '@nestjs/common';
@@ -48,6 +48,17 @@ export class LlmConfigResolver {
     const provider = asProvider(cfg.provider);
     const model = typeof cfg.model === 'string' ? cfg.model.trim() : '';
     if (!provider || !model) return null;
+    if (provider === 'cloudflare') {
+      const baseUrl = buildCloudflareGatewayBaseUrl(cfg.gatewayAccountId, cfg.gatewayId);
+      if (!baseUrl) return null;
+      const gatewayToken = decryptLlmApiKey(cfg.gatewayToken);
+      return {
+        provider, model, baseUrl,
+        apiKey: decryptLlmApiKey(cfg.apiKey),
+        multimodal: cfg.multimodal === true,
+        extraHeaders: gatewayToken ? { 'cf-aig-authorization': `Bearer ${gatewayToken}` } : undefined,
+      };
+    }
     return {
       provider,
       model,
@@ -62,6 +73,18 @@ export class LlmConfigResolver {
     const provider = asProvider(settings.llm_provider);
     const model = typeof settings.llm_model === 'string' ? settings.llm_model.trim() : '';
     if (!provider || !model) return null;
+
+    if (provider === 'cloudflare') {
+      const baseUrl = buildCloudflareGatewayBaseUrl(settings.llm_gateway_account_id, settings.llm_gateway_id);
+      if (!baseUrl) return null;
+      const gatewayToken = this.settings.getDecryptedUserSetting(userId, 'llm_gateway_token');
+      return {
+        provider, model, baseUrl,
+        apiKey: this.settings.getDecryptedUserSetting(userId, 'llm_api_key') ?? undefined,
+        multimodal: settings.llm_multimodal === true,
+        extraHeaders: gatewayToken ? { 'cf-aig-authorization': `Bearer ${gatewayToken}` } : undefined,
+      };
+    }
 
     // #1772: the address this server calls is instance configuration, never a
     // personal preference. The request leaves OUR network and safeFetchLlm

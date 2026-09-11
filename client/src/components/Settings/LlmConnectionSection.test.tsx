@@ -57,6 +57,25 @@ beforeEach(() => {
 });
 
 describe('LlmConnectionSection', () => {
+  it('preserves a stored gateway connection without sending masked credentials', async () => {
+    const user = userEvent.setup();
+    const updateSettings = seedLlm({
+      llm_provider: 'cloudflare', llm_model: 'deepseek-v4-flash',
+      llm_gateway_account_id: 'acct123', llm_gateway_id: 'my-gateway',
+      llm_api_key: '••••••••', llm_gateway_token: '••••••••',
+    });
+    renderSection();
+    expect(screen.getByDisplayValue('acct123')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('my-gateway')).toBeInTheDocument();
+    for (const input of screen.getAllByPlaceholderText('••••••••')) expect(input).toHaveValue('');
+    expect(screen.queryByPlaceholderText('http://localhost:11434')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Save$/ }));
+    expect(updateSettings).toHaveBeenCalledWith({
+      llm_provider: 'cloudflare', llm_model: 'deepseek-v4-flash', llm_base_url: '', llm_multimodal: false,
+      llm_gateway_account_id: 'acct123', llm_gateway_id: 'my-gateway',
+    });
+  });
+
   it('FE-COMP-LLM-001: defaults to OpenAI with a key field and no endpoint of its own', () => {
     renderSection();
 

@@ -111,7 +111,7 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
     const shape: RequestShape = { tokenParam: 'max_tokens', jsonObject: false, omitTemperature: false };
     const tried = { tokenParam: false, temperature: false, jsonObject: false };
 
-    let res = await this.send(url, buildBody(shape), input.apiKey);
+    let res = await this.send(url, buildBody(shape), input.apiKey, input.extraHeaders);
     let detail = res.ok ? '' : await res.text().catch(() => '');
 
     // A 400 is the server naming the parameter it dislikes. Apply every remedy it
@@ -138,7 +138,7 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
         shape.jsonObject = true;
         tried.jsonObject = true;
       }
-      res = await this.send(url, buildBody(shape), input.apiKey);
+      res = await this.send(url, buildBody(shape), input.apiKey, input.extraHeaders);
       detail = res.ok ? '' : await res.text().catch(() => '');
     }
 
@@ -153,7 +153,12 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
     return nuextract ? parseNuExtract(content) : parseReservations(content);
   }
 
-  private async send(url: string, body: unknown, apiKey?: string): Promise<Response> {
+  private async send(
+    url: string,
+    body: unknown,
+    apiKey?: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), readEnv().integrations.llmTimeoutMs);
     try {
@@ -165,6 +170,9 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
         headers: {
           'content-type': 'application/json',
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+          // Spread last so a gateway header is additive — it must never be able to
+          // drop the provider bearer token that authenticates the upstream call.
+          ...extraHeaders,
         },
         body: JSON.stringify(body),
       });

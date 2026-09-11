@@ -66,6 +66,23 @@ afterAll(() => {
 // ── getUserSettings ───────────────────────────────────────────────────────────
 
 describe('getUserSettings', () => {
+  it('masks a personal gateway token while retaining it for the resolver', () => {
+    const { user } = createUser(testDb);
+    svc.upsertSetting(user.id, 'llm_gateway_token', 'gateway-secret');
+    expect(svc.getUserSettings(user.id).llm_gateway_token).toBe('••••••••');
+    expect(svc.getDecryptedUserSetting(user.id, 'llm_gateway_token')).toBe('gateway-secret');
+    svc.bulkUpsertSettings(user.id, { llm_gateway_token: '••••••••' });
+    expect(svc.getDecryptedUserSetting(user.id, 'llm_gateway_token')).toBe('gateway-secret');
+  });
+
+  it('masks an inherited gateway token', () => {
+    const { user } = createUser(testDb);
+    setAdminDefault('llm_gateway_token', 'admin-gateway-secret');
+    expect(svc.getUserSettings(user.id).llm_gateway_token).toBe('••••••••');
+    expect(svc.getAdminUserDefaults().llm_gateway_token).toBe('admin-gateway-secret');
+    expect(svc.getDecryptedUserSetting(user.id, 'llm_gateway_token')).toBeNull();
+  });
+
   it('SET-SVC-001 — returns empty object when user has no settings', () => {
     const { user } = createUser(testDb);
     expect(svc.getUserSettings(user.id)).toEqual({});

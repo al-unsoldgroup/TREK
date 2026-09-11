@@ -345,6 +345,13 @@ const settings: TranslationStrings = {
   'settings.aiParsing.providerAnthropic': 'Anthropic',
   'settings.aiParsing.localAdminOnly':
     '本機 (Ollama) 端點在管理員設定中為整個執行個體設定一次。你仍然可以在這裡使用自己的 OpenAI 或 Anthropic 金鑰。',
+  'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
+  'settings.aiParsing.gatewayAccountId': 'Cloudflare 帳戶 ID',
+  'settings.aiParsing.gatewayId': '閘道 ID',
+  'settings.aiParsing.gatewayHint': 'TREK 會依這兩個 ID 產生端點位址 — 不需填寫基礎 URL。',
+  'settings.aiParsing.gatewayApiKeyHint': '你的 DeepSeek API 金鑰。加密儲存。留空則保留目前的金鑰。',
+  'settings.aiParsing.gatewayToken': '閘道權杖',
+  'settings.aiParsing.gatewayTokenHint': '僅在閘道啟用驗證時才需要。加密儲存。',
   'settings.aiParsing.model': '模型',
   'settings.aiParsing.baseUrl': '基礎網址',
   'settings.aiParsing.baseUrlHint': '模型執行的位置 — 本機 Ollama 伺服器，或相容於 OpenAI 的端點。',

@@ -15,10 +15,11 @@ export const ENCRYPTED_SETTING_KEYS = new Set([
   'mapbox_access_token',
   'carto_api_key',
   'llm_api_key',
+  'llm_gateway_token',
 ]);
 // Encrypted keys that are masked (••••••••) when returned to the client.
 // Keys not in this set but in ENCRYPTED_SETTING_KEYS are decrypted and returned.
-export const MASKED_SETTING_KEYS = new Set(['webhook_url', 'ntfy_token', 'llm_api_key']);
+export const MASKED_SETTING_KEYS = new Set(['webhook_url', 'ntfy_token', 'llm_api_key', 'llm_gateway_token']);
 
 export const DEFAULTABLE_USER_SETTING_KEYS = [
   'temperature_unit',
@@ -49,6 +50,9 @@ export const DEFAULTABLE_USER_SETTING_KEYS = [
   'llm_base_url',
   'llm_multimodal',
   'llm_api_key',
+  'llm_gateway_account_id',
+  'llm_gateway_id',
+  'llm_gateway_token',
 ] as const;
 
 type DefaultableKey = typeof DEFAULTABLE_USER_SETTING_KEYS[number];
@@ -61,7 +65,7 @@ const VALID_VALUES: Partial<Record<DefaultableKey, unknown[]>> = {
   time_format: ['12h', '24h'],
   dark_mode: [true, false, 'light', 'dark', 'auto'],
   map_provider: ['leaflet', 'mapbox-gl', 'maplibre-gl'],
-  llm_provider: ['local', 'openai', 'anthropic'],
+  llm_provider: ['local', 'openai', 'anthropic', 'cloudflare'],
 };
 
 const BOOLEAN_KEYS = new Set<DefaultableKey>(['blur_booking_codes', 'mapbox_3d_enabled', 'mapbox_quality_mode', 'llm_multimodal']);
