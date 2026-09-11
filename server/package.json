@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
     "gen:plugin-facts": "node --import tsx scripts/gen-plugin-facts.ts",
+    "gen:plugin-share": "node scripts/gen-plugin-share.mjs",
+    "check:plugin-share": "node scripts/gen-plugin-share.mjs --check",
+    "verify:advice": "node scripts/verify-advice.mjs",
     "check:plugin-facts": "node --import tsx scripts/gen-plugin-facts.ts --check",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -20,6 +23,7 @@
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
+    "test:integration:advice-runtime": "vitest run tests/integration/plugins/trip-advice-runtime.test.ts",
     "test:ws": "vitest run tests/websocket",
     "test:e2e": "vitest run tests/e2e",
     "test:coverage": "vitest run --coverage"

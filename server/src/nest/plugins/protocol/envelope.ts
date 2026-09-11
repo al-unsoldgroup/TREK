@@ -15,6 +15,12 @@
  */
 export const PLUGIN_API_VERSION = 1;
 
+/** Host-only authority, resolved by the supervisor's invocation map, never from child params. */
+export interface PublicSharePrincipal {
+  kind: 'publicShare'; pluginId: 'trip-advice'; shareId: string; epoch: number;
+  sessionId: string; guestId: string;
+}
+
 export type PluginErrCode =
   | 'PERMISSION_DENIED' // a real method the plugin was not granted
   | 'UNKNOWN_METHOD' // not a method the host exposes at all
@@ -55,6 +61,12 @@ export type Envelope = RpcRequest | RpcResponse | RpcError | RpcEvent;
  * PERMISSION_DENIED, anything not here at all resolves to UNKNOWN_METHOD.
  */
 export const KNOWN_METHODS = [
+  'publicShare.snapshot',
+  'publicShare.resolveSelection',
+  'publicShare.owner.getConfig',
+  'publicShare.owner.preview',
+  'publicShare.owner.configure',
+  'publicShare.owner.importSuggestion',
   'db.exec',
   'db.query',
   'db.migrate',
@@ -190,6 +202,12 @@ export const UNCONDITIONAL_METHODS_ARE_DISJOINT: AssertDisjoint<UnconditionalMet
 
 /** Which permission unlocks which method(s). The single source for the router. */
 export const METHOD_PERMISSION = {
+  'publicShare.snapshot': 'share:guest',
+  'publicShare.resolveSelection': 'share:guest',
+  'publicShare.owner.getConfig': 'share:publish',
+  'publicShare.owner.preview': 'share:publish',
+  'publicShare.owner.configure': 'share:publish',
+  'publicShare.owner.importSuggestion': 'db:write:places',
   'db.exec': 'db:own',
   'db.query': 'db:own',
   'db.migrate': 'db:own',
@@ -315,6 +333,8 @@ export type MethodPermission<M extends KnownMethod> = (typeof METHOD_PERMISSION)
 
 /** All permission strings the host understands (unknown ones are rejected at activation). */
 export const KNOWN_PERMISSIONS = [
+  'share:guest',
+  'share:publish',
   'db:own',
   'db:read:trips',
   'db:read:users',

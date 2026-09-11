@@ -7,6 +7,7 @@ import { server } from '../../../tests/helpers/msw/server';
 import { useAuthStore } from '../../store/authStore';
 import { useTripStore } from '../../store/tripStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
+import { usePluginStore } from '../../store/pluginStore';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { buildUser, buildTrip } from '../../../tests/helpers/factories';
 import TripMembersModal from './TripMembersModal';
@@ -57,6 +58,7 @@ function mockClipboard(): Mock<(text: string) => Promise<void>> {
 
 beforeEach(() => {
   resetAllStores();
+  usePluginStore.setState({ plugins: [], loaded: false });
   server.use(
     http.get('/api/trips/1/members', () =>
       HttpResponse.json({
@@ -238,6 +240,19 @@ describe('TripMembersModal', () => {
 
     render(<TripMembersModal {...defaultProps} />);
     expect(await screen.findByText('Public Link')).toBeInTheDocument();
+  });
+
+  it('FE-USG215-OWNER-001: exposes advice configuration through the installed owner view', async () => {
+    asShareOwner();
+    seedStore(usePluginStore, {
+      loaded: true,
+      plugins: [{ id: 'trip-advice', name: 'Trip Advice', type: 'trip-page', icon: 'MessageCircle' }],
+    });
+
+    render(<TripMembersModal {...defaultProps} />);
+
+    expect(await screen.findByText('Trip Advice · Public Link')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
   });
 
   it('FE-COMP-MEMBERS-018: create share link shows URL after clicking create', async () => {

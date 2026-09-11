@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { PluginSharesModule } from '../plugin-shares/plugin-shares.module';
+import { PluginSharePublicController, PluginShareOwnerController } from '../plugin-shares/plugin-shares.controller';
 import { PluginsController } from './plugins.controller';
 import { PluginsFeedController } from './plugins-feed.controller';
 import { PluginsProxyController } from './plugins-proxy.controller';
@@ -28,8 +30,10 @@ import { AppConfigModule } from '../app-config/app-config.module';
  * that serves page and widget assets.
  */
 @Module({
-  imports: [AppConfigModule, PluginsRuntimeModule, PluginOAuthModule, PluginContributionsModule],
+  imports: [AppConfigModule, PluginsRuntimeModule, PluginOAuthModule, PluginContributionsModule, PluginSharesModule],
   controllers: [
+    PluginSharePublicController,
+    PluginShareOwnerController,
     PluginsController,
     PluginsFeedController,
     PluginsProxyController,

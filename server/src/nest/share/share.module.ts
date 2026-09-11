@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PluginSharesModule } from '../plugin-shares/plugin-shares.module';
 import { TripShareController, SharedController } from './share.controller';
 import { ShareService } from './share.service';
 import { ShareMcp } from './share.mcp';
@@ -11,7 +12,7 @@ import { AuthModule } from '../auth/auth.module';
 import { McpSharedModule } from '../mcp-shared/mcp-shared.module';
 
 @Module({
-  imports: [McpSharedModule, SettingsModule, PermissionsModule, QueryHelpersModule, AuthModule, PlacePhotosModule, StorageModule],
+  imports: [PluginSharesModule, McpSharedModule, SettingsModule, PermissionsModule, QueryHelpersModule, AuthModule, PlacePhotosModule, StorageModule],
   controllers: [TripShareController, SharedController],
   providers: [ShareService, ShareMcp],
 })

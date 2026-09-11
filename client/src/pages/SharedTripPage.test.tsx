@@ -60,6 +60,24 @@ beforeEach(() => {
 });
 
 describe('SharedTripPage', () => {
+  it('FE-USG215-SHARED-001: branches on an advice bootstrap before rendering the legacy snapshot', async () => {
+    server.use(
+      http.get('/api/shared/advice-token', () => HttpResponse.json({
+        kind: 'plugin-share',
+        version: 1,
+        plugin: { id: 'trip-advice', entry: 'guest.html', protocolVersion: 1 },
+        title: 'Japan together',
+        expiresAt: '2026-09-10T00:00:00.000Z',
+      })),
+    );
+
+    renderSharedTrip('advice-token');
+
+    const frame = await screen.findByTitle('Japan together');
+    expect(frame).toHaveAttribute('src', expect.stringContaining('/plugin-frame/trip-advice/guest.html'));
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+  });
+
   describe('FE-PAGE-SHARED-001: Renders without authentication', () => {
     it('renders loading spinner without any auth state', async () => {
       // Use a token that will delay or we just check initial state before response

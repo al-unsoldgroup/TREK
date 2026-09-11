@@ -29,6 +29,7 @@ export interface User { id: number; username?: string; display_name?: string | n
  *   HOST_ERROR: rate limit exceeded — slow down ctx.* calls
  * A legitimate plugin never hits the generous burst. See README § Runtime limits. */
 export interface PluginContext {
+  publicShare: AdvicePublicShareContext;
   readonly id: string;
   /** Your `scope:'instance'` settings as the admin saved them, secrets decrypted, frozen
    * at activation (a save re-spawns you). A field nobody set resolves to its manifest
@@ -797,6 +798,11 @@ export interface McpToolProvider {
 }
 
 export interface PluginDefinition {
+  publicShare?: {
+    handle(input: AdviceShareInvocation, ctx: PluginContext): Promise<unknown>;
+    purge?(input: { shareId: string }, ctx: PluginContext): Promise<void>;
+    eraseGuest?(input: { shareId: string; guestId: string }, ctx: PluginContext): Promise<void>;
+  };
   onLoad?(ctx: PluginContext): Promise<void> | void;
   onUnload?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
@@ -902,3 +908,5 @@ export interface PluginSessionStorage {
 // (or drop a `<!-- trek:ui -->` marker and let `dev`/`pack` expand it) to get the
 // native TREK look — glass, hover, buttons, inputs — plus a `window.trek` bridge.
 export { TREK_UI_CSS, TREK_THEME_JS, TREK_UI_MARKER, injectTrekUi } from './ui/kit.js';
+export * from './generated/public-share.js';
+import type { AdvicePublicShareContext, AdviceShareInvocation, AdviceProjection } from './generated/public-share.js';

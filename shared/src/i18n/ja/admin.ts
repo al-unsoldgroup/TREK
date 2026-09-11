@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "有効なアドバイスリンクから選択された旅行データを読み取る",
+  'admin.plugins.perm.share:publish': "旅行の所有者向けにアドバイスリンクを設定する",
   'admin.notifications.title': '通知',
   'admin.notifications.hint': '通知チャネルを1つ選択してください。同時に有効にできるのは1つだけです。',
   'admin.notifications.none': '無効',

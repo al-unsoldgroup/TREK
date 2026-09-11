@@ -4,6 +4,8 @@
 
 /** Widened on purpose so client callers can .includes() with a plain string. */
 export const PLUGIN_PERMISSIONS: readonly string[] = [
+  'share:guest',
+  'share:publish',
   'db:own',
   'db:read:trips',
   'db:read:users',

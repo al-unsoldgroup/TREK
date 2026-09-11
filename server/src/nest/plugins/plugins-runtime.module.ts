@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PluginSharesModule } from '../plugin-shares/plugin-shares.module';
 import { DiscoveryModule } from '@nestjs/core';
 import { PluginsService } from './plugins.service';
 import { PluginUserSettingsService } from './plugin-user-settings.service';
@@ -56,6 +57,7 @@ import { JournalRpcModule } from '../journey/journal-rpc.module';
  */
 @Module({
   imports: [
+    PluginSharesModule,
     // What lets PluginRpcRegistryService find the @PluginController providers at boot.
     DiscoveryModule,
     // A leaf that hands the resource gates to the domain modules. It must not be this

@@ -197,6 +197,13 @@ export function deriveMcp(raw: RawEnv) {
 
 export function derivePlugins(raw: RawEnv) {
   return {
+    publicAdvice: parseBool(raw.TREK_PUBLIC_ADVICE_ENABLED) === true,
+    googlePlaces: {
+      enabled: parseBool(raw.TREK_PUBLIC_ADVICE_GOOGLE_ENABLED) === true,
+      termsUrl: raw.TREK_PUBLIC_ADVICE_GOOGLE_TERMS_URL,
+      privacyUrl: raw.TREK_PUBLIC_ADVICE_GOOGLE_PRIVACY_URL,
+      budgetCents: numberOr(raw.TREK_PUBLIC_ADVICE_GOOGLE_BUDGET_CENTS, 0),
+    },
     /** Kill-switch is default-on: only an explicit falsy value disables (plugins/kill-switch.ts). */
     enabled: parseBool(raw.TREK_PLUGINS_ENABLED) !== false,
     devLink: parseBool(raw.TREK_PLUGINS_DEV_LINK) === true,

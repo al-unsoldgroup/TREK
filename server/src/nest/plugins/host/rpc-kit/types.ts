@@ -1,5 +1,6 @@
 import type { HookKey, HookPermission, KnownMethod, UnconditionalMethod } from '../../protocol/envelope';
-import type { PluginDataDb } from '../plugin-data.service';
+import type { PluginDataDbAccess } from '../plugin-data.service';
+import type { PublicSharePrincipal } from '../../protocol/envelope';
 
 /**
  * Everything a plugin RPC handler may see. Built PER DISPATCH, never cached.
@@ -18,7 +19,8 @@ import type { PluginDataDb } from '../plugin-data.service';
 export interface PluginRpcContext {
   readonly pluginId: string;
   readonly actingUserId: number | undefined;
-  readonly data: PluginDataDb;
+  readonly publicShare?: PublicSharePrincipal;
+  readonly data: PluginDataDbAccess;
   /**
    * The inter-plugin capabilities. PER HOST, like everything else on this context:
    * the router that backs them is created per plugin and binds THIS plugin as the

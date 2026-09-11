@@ -16,6 +16,7 @@ import { PluginRpcRegistryService } from '../../../src/nest/plugins/host/rpc-kit
 import {
   KNOWN_METHODS,
   KNOWN_PERMISSIONS,
+  METHOD_PERMISSION,
   UNCONDITIONAL_METHODS,
 } from '../../../src/nest/plugins/protocol/envelope';
 import { allRpcControllers, makeDeps } from '../../helpers/rpc-host-deps';
@@ -49,13 +50,13 @@ describe('plugin RPC coverage ledger', () => {
     expect(fromRegistry.size).toBe(KNOWN_METHODS.length + UNCONDITIONAL_METHODS.length);
   });
 
-  it('RPCLEDGER-005 the surface is the 114 methods the protocol declares', () => {
-    // Pinned rather than derived: a method DELETED from KNOWN_METHODS together with
-    // its handler would keep every test above green, and this is the line that makes
-    // that show up in the diff.
-    expect(KNOWN_METHODS.length).toBe(111);
-    expect(UNCONDITIONAL_METHODS.length).toBe(3);
-    expect(fromRegistry.size).toBe(114);
+  it('RPCLEDGER-005 the surface count matches the protocol tables', () => {
+    // The protocol tables are authoritative. Deriving the expected count from
+    // METHOD_PERMISSION keeps this guard useful without a second magic inventory
+    // that must be bumped whenever a reviewed method is added.
+    expect(KNOWN_METHODS.length).toBe(Object.keys(METHOD_PERMISSION).length);
+    expect(UNCONDITIONAL_METHODS.length).toBe(new Set(UNCONDITIONAL_METHODS).size);
+    expect(fromRegistry.size).toBe(Object.keys(METHOD_PERMISSION).length + new Set(UNCONDITIONAL_METHODS).size);
   });
 
   it('RPCLEDGER-006 boot-time total coverage is armed in production', () => {

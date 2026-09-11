@@ -22,6 +22,8 @@ export const HOOK_PERMISSION: Readonly<Record<string, string>> = {
 };
 
 export const KNOWN_PERMISSIONS: string[] = [
+  'share:guest',
+  'share:publish',
   'db:own',
   'db:read:trips',
   'db:read:users',
@@ -89,6 +91,12 @@ export const KNOWN_PERMISSIONS: string[] = [
 ];
 
 export const METHOD_PERMISSION: Readonly<Record<string, string>> = {
+  'publicShare.snapshot': 'share:guest',
+  'publicShare.resolveSelection': 'share:guest',
+  'publicShare.owner.getConfig': 'share:publish',
+  'publicShare.owner.preview': 'share:publish',
+  'publicShare.owner.configure': 'share:publish',
+  'publicShare.owner.importSuggestion': 'db:write:places',
   'db.exec': 'db:own',
   'db.query': 'db:own',
   'db.migrate': 'db:own',
@@ -203,6 +211,12 @@ export const METHOD_PERMISSION: Readonly<Record<string, string>> = {
 };
 
 export const KNOWN_METHODS: string[] = [
+  'publicShare.snapshot',
+  'publicShare.resolveSelection',
+  'publicShare.owner.getConfig',
+  'publicShare.owner.preview',
+  'publicShare.owner.configure',
+  'publicShare.owner.importSuggestion',
   'db.exec',
   'db.query',
   'db.migrate',

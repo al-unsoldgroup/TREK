@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "Läs valda resedata via en aktiverad rådgivningslänk",
+  'admin.plugins.perm.share:publish': "Konfigurera rådgivningslänkar för resans ägare",
   'admin.notifications.title': 'Meddelanden',
   'admin.notifications.hint': 'Välj en meddelandekanal. Endast en kan vara aktiv åt gången.',
   'admin.notifications.none': 'Avaktiverad',

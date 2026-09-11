@@ -136,7 +136,19 @@ async function handleInvoke(req: { id: string; method: string; params: Record<st
     // A per-invocation ctx tagged with this invoke's id, so the host binds trip
     // reads to the invocation's authenticated user (routes) / refuses them (jobs).
     const invCtx = createPluginContext(pluginId, pluginConfig, transport, req.id);
-    if (req.method === 'invoke.route') {
+    if (req.method === 'invoke.publicShare') {
+      if (pluginId !== 'trip-advice' || !def.publicShare) throw new Error('Public share handler unavailable');
+      const input = req.params as unknown as Parameters<NonNullable<typeof def.publicShare>['handle']>[0];
+      respond(true, await def.publicShare.handle(input, invCtx));
+    } else if (req.method === 'invoke.publicShare.purge') {
+      if (pluginId !== 'trip-advice' || !def.publicShare?.purge) throw new Error('Public share purge unavailable');
+      await def.publicShare.purge(req.params as { shareId: string }, invCtx);
+      respond(true, { ok: true });
+    } else if (req.method === 'invoke.publicShare.eraseGuest') {
+      if (pluginId !== 'trip-advice' || !def.publicShare?.eraseGuest) throw new Error('Public share erasure unavailable');
+      await def.publicShare.eraseGuest(req.params as { shareId: string; guestId: string }, invCtx);
+      respond(true, { ok: true });
+    } else if (req.method === 'invoke.route') {
       const routeId = req.params.routeId as number;
       const route = def.routes?.[routeId];
       if (!route) throw new Error(`no route ${routeId}`);

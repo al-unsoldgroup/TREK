@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "Etkin bir öneri bağlantısı üzerinden seçilen gezi verilerini oku",
+  'admin.plugins.perm.share:publish': "Seyahat sahibi için öneri bağlantılarını yapılandırın",
   'admin.notifications.title': 'Bildirimler',
   'admin.notifications.hint': 'Bir bildirim kanalı seçin. Aynı anda yalnızca biri etkin olabilir.',
   'admin.notifications.none': 'Kapalı',

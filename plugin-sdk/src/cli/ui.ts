@@ -111,6 +111,8 @@ export const PERMISSION_FAMILIES: PermissionFamily[] = [
     hint: 'Where the plugin keeps data of its own',
     permissions: [
       { value: 'db:own', hint: 'A private database only this plugin can read/write' },
+      { value: 'share:guest', hint: 'Read explicitly selected data through an enabled advice link' },
+      { value: 'share:publish', hint: 'Configure advice links for the trip owner' },
       { value: 'db:meta', hint: 'Attach its own private data to trips, places and days the user can access' },
     ],
   },

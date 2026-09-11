@@ -1,10 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { PluginSharesService } from '../../plugin-shares/plugin-shares.service';
 import { DatabaseService } from '../../database/database.service';
 import { PluginRpcHost } from './rpc-host';
 import type { PluginRpcRegistry } from './rpc-kit/registry';
 import { PluginRpcRegistryService } from './rpc-kit/registry.service';
 import { appendAudit } from './plugin-audit';
 import { getPluginDataDb } from './plugin-host-state';
+import { PublicSharePluginDataDb } from './plugin-data.service';
 
 /** Routes inter-plugin calls/events; supplied by PluginRuntimeService (owns the supervisor). */
 export interface PluginCallRouter {
@@ -29,6 +31,7 @@ export class PluginRpcHostFactory {
     // Injected by its concrete token, held as the base class: a no-Nest test can then
     // hand in a createTestPluginRegistry() built from the instances it cares about.
     @Inject(PluginRpcRegistryService) private readonly registry: PluginRpcRegistry,
+    private readonly shares: PluginSharesService,
   ) {}
 
   create(id: string, granted: ReadonlySet<string>, router: PluginCallRouter): PluginRpcHost {
@@ -36,6 +39,8 @@ export class PluginRpcHostFactory {
       id,
       granted,
       {
+        validatePublicShare: scope => { this.shares.validatePrincipal(scope); },
+        publicShareData: scope => new PublicSharePluginDataDb(getPluginDataDb(id), scope.shareId, scope.guestId),
         // Resolve the data handle lazily on every access rather than capturing it once.
         // disable()/uninstall() drop the entry from `running` BEFORE awaiting the kill
         // grace and calling dispose(), so a re-enable in that window builds a NEW host.

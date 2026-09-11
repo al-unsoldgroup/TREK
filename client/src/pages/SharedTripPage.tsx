@@ -20,6 +20,7 @@ import { renderIconMarkup } from '../utils/iconMarkup';
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { getCategoryIcon } from '../components/shared/categoryIcons';
 import PublicLanguagePicker from '../components/shared/PublicLanguagePicker';
+import PublicPluginFrame from '../components/Plugins/PublicPluginFrame';
 import { OFM_POSITRON, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_MAX_ZOOM, attributionForTile } from '../constants/mapDefaults';
 import VectorBasemap from '../components/Map/VectorBasemap';
 import { useTranslation } from '../i18n';
@@ -90,6 +91,8 @@ export default function SharedTripPage() {
   // Page = wiring container: share fetch + view state live in the hook.
   const {
     data,
+    bootstrap,
+    token,
     error,
     base,
     convert,
@@ -100,6 +103,14 @@ export default function SharedTripPage() {
     showLangPicker,
     setShowLangPicker,
   } = useSharedTrip();
+
+  if (bootstrap && token) {
+    return (
+      <div className="h-screen w-full overflow-hidden bg-surface">
+        <PublicPluginFrame token={token} bootstrap={bootstrap} />
+      </div>
+    );
+  }
 
   if (error)
     return (

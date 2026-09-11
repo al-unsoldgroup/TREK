@@ -103,7 +103,8 @@ describe('plugin boot vs registry scan ordering', () => {
     // Empty at construction — exactly what PluginRpcRegistryService is before its
     // own onModuleInit scan has run.
     const registry = new PluginRpcRegistry();
-    const hostFactory = new PluginRpcHostFactory(dbs, registry as unknown as PluginRpcRegistryService);
+    const hostFactory = new PluginRpcHostFactory(dbs, registry as unknown as PluginRpcRegistryService,
+      { validatePrincipal() { throw new Error('Public shares unavailable in boot fixture'); } } as never);
 
     mod = await Test.createTestingModule({
       providers: [

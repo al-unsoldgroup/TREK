@@ -26,10 +26,13 @@ describe('PluginDataDb', () => {
     expect(db.migrate('001', 'CREATE TABLE notes (x)').applied).toBe(false); // same id -> skipped
 
     db.exec('INSERT INTO notes (body) VALUES (?)', ['hello']);
+    // The RPC path decodes a plugin call that used one array of bindings as a
+    // nested array. The host must normalize that to the same bind list.
+    db.exec('INSERT INTO notes (body) VALUES (?)', [['array-form']]);
     // exec without bound args runs the multi-statement path
     db.exec("INSERT INTO notes (body) VALUES ('second')");
     const rows = db.query('SELECT body FROM notes ORDER BY id') as Array<{ body: string }>;
-    expect(rows).toEqual([{ body: 'hello' }, { body: 'second' }]);
+    expect(rows).toEqual([{ body: 'hello' }, { body: 'array-form' }, { body: 'second' }]);
     db.close();
 
     // The data lives in its own file, not trek.db

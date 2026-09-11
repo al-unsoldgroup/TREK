@@ -37,6 +37,9 @@ import { parseDependencies, disabledRequiredAddons, resolveDependencyState, enab
 
 import { HTTP_OUTBOUND_PREFIX as HTTP_OUTBOUND, PLUGIN_API_VERSION } from './protocol/envelope';
 import type { PluginActionDescriptor, PluginActionResult, PluginActionScope } from '@trek/shared';
+import { PluginShareLifecycleService } from '../plugin-shares/plugin-share-lifecycle.service';
+import type { PublicSharePrincipal } from './protocol/envelope';
+import type { AdviceAction } from '@trek/shared';
 
 // Mirrors HOST_RE in install/manifest.ts: an exact hostname or a `*.`-prefixed wildcard
 // with a real multi-label suffix. Rejects a bare `*`, a whole-TLD wildcard, a scheme and
@@ -179,6 +182,7 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
     private readonly userSettings: PluginUserSettingsService,
     private readonly registry?: PluginRegistryService,
     private readonly hostFactory?: PluginRpcHostFactory,
+    private readonly shareLifecycle?: PluginShareLifecycleService,
   ) {}
 
   private get db() {
@@ -194,6 +198,9 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   // tests/integration/plugins/boot-registry-order.test.ts). onApplicationBootstrap
   // is guaranteed to run after EVERY module's onModuleInit, registry scan included.
   onApplicationBootstrap(): void {
+    this.shareLifecycle?.bind((method, input) => method === 'invoke.publicShare.purge'
+      ? this.invokePublicSharePurge(input.shareId)
+      : this.invokePublicShareEraseGuest(input.shareId, input.guestId));
     if (!pluginsEnabled()) return;
     // If a restore staged plugin trees, swap them into place NOW — before we open any
     // plugin DB below. This is where a restored backup's plugin data/code actually
@@ -981,6 +988,17 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   }
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
     return this.supervisor.invoke(id, method, params, { actingUserId });
+  }
+  invokePublicShare(principal: PublicSharePrincipal, action: AdviceAction): Promise<unknown> {
+    return this.supervisor.invoke(principal.pluginId, 'invoke.publicShare', {
+      version: 1, action, scope: { shareId: principal.shareId, guestId: principal.guestId, epoch: principal.epoch },
+    }, { publicShare: principal, timeoutMs: 5000 });
+  }
+  invokePublicSharePurge(shareId: string): Promise<unknown> {
+    return this.supervisor.invoke('trip-advice', 'invoke.publicShare.purge', { shareId }, { publicShareLifecycle: true, timeoutMs: 5000 });
+  }
+  invokePublicShareEraseGuest(shareId: string, guestId: string): Promise<unknown> {
+    return this.supervisor.invoke('trip-advice', 'invoke.publicShare.eraseGuest', { shareId, guestId }, { publicShareLifecycle: true, timeoutMs: 5000 });
   }
   /** Ids of active plugins implementing a provider hook (e.g. 'placeDetailProvider'). */
   providersOf(hook: string): string[] {

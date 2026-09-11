@@ -1,4 +1,5 @@
 import { PLUGIN_SESSION_MAX_KEYS, PLUGIN_SESSION_MAX_KEY_LENGTH, PLUGIN_SESSION_MAX_VALUE_BYTES } from './index.js';
+import type { AdviceProjection, AdviceShareInvocation } from './generated/public-share.js';
 import type { PluginContext, PluginDefinition, PluginRequest, PluginResponse, Trip, Place, Day, Reservation, PackingItem, TripFile, BudgetItem, User, NotificationMessage, PluginActionResult, PluginSessionStorage } from './index.js';
 import { CHANNEL_EVENTS } from './manifest.js';
 import { PermissionDenied, HOOK_PERMISSION, USER_DATA_PERMISSION, EVENTS_PERMISSION, JOBS_PERMISSION } from './permissions.js';
@@ -19,6 +20,7 @@ import { PermissionDenied, HOOK_PERMISSION, USER_DATA_PERMISSION, EVENTS_PERMISS
  */
 
 export interface MockHostOptions {
+  publicShare?: { projection: AdviceProjection; validate?: () => void };
   grants?: string[];
   config?: Record<string, unknown>;
   /**
@@ -128,6 +130,7 @@ export interface MockHostOptions {
  * fire a lifecycle handler and assert what it DID. Each method injects the same mock
  * `ctx`, so grants/fixtures configured on the host apply uniformly. */
 export interface PluginDriver {
+  publicShare(input: AdviceShareInvocation): Promise<unknown>;
   /** Run onLoad / onUnload. */
   load(): Promise<void>;
   unload(): Promise<void>;
@@ -408,7 +411,7 @@ export function createMockHost(opts: MockHostOptions = {}): MockHost {
   let aiUsed = 0;
   let notifyUsed = 0;
 
-  const buildCtx = (actingUserId: number | undefined): PluginContext => {
+  const buildCtx = (actingUserId: number | undefined, publicInvocation = false): PluginContext => {
     const requireActingUser = (): number => {
       if (actingUserId === undefined) throw new Error('RESOURCE_FORBIDDEN: this call requires an authenticated user context');
       return actingUserId;
@@ -422,6 +425,23 @@ export function createMockHost(opts: MockHostOptions = {}): MockHost {
 
     return {
       id: 'mock-plugin',
+      publicShare: {
+        async snapshot() {
+          needEntry('share:guest', 'publicShare.snapshot');
+          if (!publicInvocation || !opts.publicShare) throw new Error('RESOURCE_FORBIDDEN: public share invocation/fixture required');
+          opts.publicShare.validate?.();
+          return structuredClone(opts.publicShare.projection);
+        },
+        async resolveSelection() {
+          throw new Error('HOST_CONTRACT_UNAVAILABLE: Google place selection is unavailable');
+        },
+        owner: {
+          async getConfig() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
+          async preview() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
+          async configure() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
+          async importSuggestion() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
+        },
+      },
       config: Object.freeze({ ...(opts.config ?? {}) }),
       settings: {
         // No permission gate (like the real host); undefined in a userless context so
@@ -1522,6 +1542,38 @@ export function createMockHost(opts: MockHostOptions = {}): MockHost {
   };
 
   const run = (def: PluginDefinition): PluginDriver => ({
+    publicShare: async (input) => {
+      needEntry('share:guest', 'publicShare');
+      if (!def.publicShare || !opts.publicShare) throw new Error('Public share handler/fixture required');
+      opts.publicShare.validate?.();
+      const target = buildCtx(undefined, true);
+      const publicDb = {
+        query: async <T = unknown>(sql: string, ...args: unknown[]) => {
+          if (!/\b(?:FROM|JOIN|UPDATE|INTO)\s+advice_(?:votes|comments|suggestions|requests|revisions)\b/i.test(sql) || !/\bshare_id\b/i.test(sql)) throw new Error('RESOURCE_FORBIDDEN: public share SQL is not scoped');
+          if (!args.includes(input.scope.shareId)) throw new Error('RESOURCE_FORBIDDEN: public share SQL must bind its share');
+          return target.db.query<T>(sql, ...args);
+        },
+        exec: async (sql: string, ...args: unknown[]) => {
+          if (!/\b(?:FROM|JOIN|UPDATE|INTO)\s+advice_(?:votes|comments|suggestions|requests|revisions)\b/i.test(sql)) throw new Error('RESOURCE_FORBIDDEN: public share table is not allowed');
+          if (!args.includes(input.scope.shareId)) throw new Error('RESOURCE_FORBIDDEN: public share SQL must bind its share');
+          return target.db.exec(sql, ...args);
+        },
+        migrate: async () => { throw new Error('RESOURCE_FORBIDDEN: public share migrations are not allowed'); },
+        tx: async (ops: Array<{ sql: string; args?: unknown[] }>) => {
+          for (const op of ops) if (!op.args?.includes(input.scope.shareId)) throw new Error('RESOURCE_FORBIDDEN: public share SQL must bind its share');
+          return target.db.tx(ops);
+        },
+      };
+      const restricted = new Proxy(target, { get(targetCtx, property) {
+        if (property === 'id') return 'trip-advice';
+        if (property === 'publicShare') return target.publicShare;
+        if (property === 'db') return publicDb;
+        throw new Error('RESOURCE_FORBIDDEN: method unavailable in public share context');
+      } });
+      const result = await def.publicShare.handle(input, restricted);
+      opts.publicShare.validate?.();
+      return result;
+    },
     load: async () => { await def.onLoad?.(ctx); },
     unload: async () => { await def.onUnload?.(ctx); },
     route: async (match, req) => {

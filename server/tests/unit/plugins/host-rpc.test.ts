@@ -54,6 +54,9 @@ const { llmExtract } = vi.hoisted(() => ({
 }));
 vi.mock('../../../src/nest/llm-parse/llm-client.factory', () => ({ createLlmClient: vi.fn(() => ({ extract: llmExtract })) }));
 import { PluginRpcHostFactory, type PluginCallRouter } from '../../../src/nest/plugins/host/plugin-rpc-host.factory';
+import { PluginSharesService } from '../../../src/nest/plugin-shares/plugin-shares.service';
+import { PluginShareProjectionService } from '../../../src/nest/plugin-shares/plugin-share-projection.service';
+import { RateLimitService } from '../../../src/nest/common/rate-limit.service';
 import { PluginRpcRegistryService } from '../../../src/nest/plugins/host/rpc-kit/registry.service';
 import { createTestPluginRegistry } from '../../../src/nest/plugins/host/rpc-kit/testing';
 import { PluginGuards } from '../../../src/nest/plugins/host/plugin-guards.service';
@@ -101,7 +104,8 @@ const registry = createTestPluginRegistry([
   new MetaRpc(dbs, guards),
   new HostSurfaceRpc(dbs, new RealtimeService(), notifications, llmConfig, oauth, guards),
 ]);
-const factory = new PluginRpcHostFactory(dbs, registry as unknown as PluginRpcRegistryService);
+const shares = new PluginSharesService(dbs, permissions, new PluginShareProjectionService(dbs), new RateLimitService());
+const factory = new PluginRpcHostFactory(dbs, registry as unknown as PluginRpcRegistryService, shares);
 const stubRouter: PluginCallRouter = { callPlugin: async () => undefined, emitPluginEvent: () => {} };
 const makeHost = (id: string, ...perms: string[]) => factory.create(id, new Set(perms), stubRouter);
 /**

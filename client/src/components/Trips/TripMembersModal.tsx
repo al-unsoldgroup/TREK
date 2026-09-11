@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router'
 import Modal from '../shared/Modal'
 import { tripsApi, authApi, shareApi, tripInviteApi } from '../../api/client'
 import { useToast } from '../shared/Toast'
 import { useAuthStore } from '../../store/authStore'
 import { useCanDo } from '../../store/permissionsStore'
 import { useTripStore } from '../../store/tripStore'
+import { usePluginStore } from '../../store/pluginStore'
 import { Crown, UserMinus, UserPlus, Users, LogOut, Link2, Trash2, Copy, Check, UserRound, Pencil, Plus } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { getApiErrorMessage } from '../../types'
@@ -159,6 +161,39 @@ function ShareLinkSection({ tripId, t }: { tripId: number; t: (key: string, para
           <Link2 size={12} /> {t('share.createLink')}
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * Advice publication is configured by the installed trip-advice owner page.
+ * Keep the native share controls as the discoverable entry point, but do not
+ * duplicate that addon's selection editor here.
+ */
+function AdviceShareEntry({ tripId, onClose, t }: { tripId: number; onClose: () => void; t: (key: string, params?: Record<string, string | number>) => string }) {
+  const navigate = useNavigate()
+  const plugin = usePluginStore((s) => s.getById('trip-advice'))
+  if (!plugin || plugin.type !== 'trip-page') return null
+
+  return (
+    <div className="border-t border-edge-faint" style={{ marginTop: 20, paddingTop: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <Link2 size={14} className="text-content-muted" />
+        <span className="text-content" style={{ fontSize: 'calc(13px * var(--fs-scale-body, 1))', fontWeight: 600 }}>
+          {plugin.name} · {t('share.linkTitle')}
+        </span>
+      </div>
+      <p className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', marginBottom: 12, lineHeight: 1.5 }}>
+        {t('admin.plugins.perm.share:guest')}
+      </p>
+      <button
+        type="button"
+        className="border border-edge text-content-muted"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '8px 0', borderRadius: 8, background: 'none', fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+        onClick={() => { onClose(); navigate(`/trips/${tripId}?tab=plugin:trip-advice`) }}
+      >
+        <Link2 size={12} /> {t('common.open')}
+      </button>
     </div>
   )
 }
@@ -652,6 +687,7 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle, o
         {/* Right column: Share Link */}
         {canManageShare && <div className="border-l border-edge-faint" style={{ paddingLeft: 24 }}>
         <ShareLinkSection tripId={tripId} t={t} />
+        <AdviceShareEntry tripId={tripId} onClose={onClose} t={t} />
         <TripInviteLinkSection tripId={tripId} t={t} />
         </div>}
 

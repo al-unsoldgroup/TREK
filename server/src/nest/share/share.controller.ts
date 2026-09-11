@@ -4,6 +4,7 @@ import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { User } from '../../types';
 import { ShareService } from './share.service';
+import { PluginSharesService } from '../plugin-shares/plugin-shares.service';
 import { StorageService } from '../storage/storage.service';
 import { isClientAbortError } from '../storage/storage.types';
 import { ShareLinkDto } from './share.dto';
@@ -84,6 +85,7 @@ export class SharedController {
   constructor(
     private readonly share: ShareService,
     private readonly storage: StorageService,
+    private readonly advice: PluginSharesService,
   ) {}
 
   /**
@@ -143,7 +145,11 @@ export class SharedController {
   }
 
   @Get(':token')
-  read(@Param('token') token: string) {
+  read(@Param('token') token: string, @Res({ passthrough: true }) res?: Response) {
+    if (this.advice.ownsToken(token)) {
+      res?.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+      return this.advice.bootstrap(token);
+    }
     const data = this.share.getSharedTripData(token);
     if (!data) {
       throw new HttpException({ error: 'Invalid or expired link' }, 404);

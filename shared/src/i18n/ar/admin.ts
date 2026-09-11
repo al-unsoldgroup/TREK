@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "قراءة بيانات الرحلة المحددة عبر رابط نصائح مفعّل",
+  'admin.plugins.perm.share:publish': "تهيئة روابط نصائح الرحلات لمالك الرحلة",
   'admin.notifications.title': 'الإشعارات',
   'admin.notifications.hint': 'اختر قناة إشعارات واحدة. يمكن تفعيل واحدة فقط في كل مرة.',
   'admin.notifications.none': 'معطّل',

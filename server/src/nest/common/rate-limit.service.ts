@@ -28,10 +28,11 @@ export class RateLimitService {
   }
 
   /** Returns true when the request is allowed, false when it should be rejected (429). */
-  check(bucket: string, key: string, max: number, windowMs: number, now: number): boolean {
+  check(bucket: string, key: string, max: number, windowMs: number, now: number, maxKeys = Infinity): boolean {
     const store = this.store(bucket);
     this.sweep(bucket, store, windowMs, now);
     const record = store.get(key);
+    if (!record && store.size >= maxKeys) return false;
     if (record && record.count >= max && now - record.first < windowMs) {
       return false;
     }

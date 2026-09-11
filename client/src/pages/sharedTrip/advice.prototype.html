@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>Japan, together · Guest advice prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f0e7; --surface: #fffaf2; --soft: #ede5d9;
+      --ink: #342c26; --muted: #6d6055; --line: #d6c8b8;
+      --accent: #9c432d; --wash: #f3e0d4; --on-accent: #fffaf2;
+      --veil: #211b18aa; --shadow: #342c2620;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --paper: #211e1b; --surface: #2b2621; --soft: #383029;
+        --ink: #f2e7d8; --muted: #c5b5a3; --line: #655344;
+        --accent: #efa085; --wash: #493127; --on-accent: #281b15;
+        --veil: #080605bb; --shadow: #00000040;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button, select, input { min-height: 44px; }
+    button { cursor: pointer; border: 1px solid var(--line); border-radius: 8px; padding: 8px 13px; background: var(--surface); }
+    button:hover { background: var(--soft); }
+    button[aria-pressed="true"], button[aria-selected="true"], button[aria-current="date"] { border-color: var(--accent); background: var(--wash); color: var(--accent); }
+    button:disabled { cursor: default; opacity: .55; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, h3 { font-family: Georgia, serif; font-weight: 500; line-height: 1.2; }
+    h1 { font-size: clamp(32px, 6vw, 46px); margin: 5px 0 10px; }
+    h2 { font-size: 25px; }
+    h3 { font-size: 21px; }
+    small, .small { font-size: 13px; }
+    .muted { color: var(--muted); }
+    .eyebrow { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .13em; color: var(--accent); }
+    .shell { max-width: 1000px; margin: auto; padding: 0 24px 32px; }
+    .prototype-bar { position: sticky; top: 0; z-index: 5; padding: 8px 18px; background: var(--accent); color: var(--on-accent); text-align: center; font-size: 12px; }
+    .intro { padding: 30px 0 22px; }
+    .intro > p { max-width: 680px; }
+    .route { margin-top: 22px; display: grid; grid-template-columns: 1fr 1.1fr; gap: 24px; align-items: center; }
+    .route figure { margin: 0; color: var(--accent); }
+    .route svg { width: 100%; height: auto; display: block; }
+    .route svg text { font: 14px system-ui, sans-serif; fill: var(--ink); }
+    .route figcaption { font-size: 11px; text-align: center; color: var(--muted); }
+    .route-list { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 0; list-style: none; margin: 0; }
+    .route-list button { text-align: left; width: 100%; padding: 8px 10px; }
+    .route-list strong, .route-list span { display: block; }
+    .route-list strong { font-size: 13px; }
+    .route-list span { color: var(--muted); font-size: 11px; }
+    .date-sticky { position: sticky; top: var(--banner-height, 36px); z-index: 4; background: var(--paper); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 7px 0; }
+    .date-ribbon { display: flex; overflow-x: auto; gap: 5px; scrollbar-width: thin; padding: 3px; }
+    .date-ribbon button { min-width: 48px; flex: 1 0 48px; padding: 5px 3px; line-height: 1.25; }
+    .date-ribbon span { display: block; font-size: 10px; color: var(--muted); }
+    .date-ribbon b { font-size: 16px; }
+    [role="tablist"] { display: flex; gap: 5px; }
+    [role="tab"] { min-width: 73px; font-weight: 650; }
+    label { display: block; font-size: 13px; font-weight: 650; margin-bottom: 5px; }
+    input, select, textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 9px 11px; max-width: 100%; }
+    textarea { resize: vertical; min-height: 88px; width: 100%; }
+    .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 10px 0 18px; }
+    .section-head p { margin-top: 5px; }
+    .primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+    .primary:hover { background: var(--accent); filter: brightness(.95); }
+    .stay { margin: 0 0 22px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); scroll-margin-top: calc(var(--banner-height, 36px) + 96px); }
+    .stay-header { padding: 15px 18px; background: var(--soft); display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .card-advice { padding: 16px 18px; border-top: 1px solid var(--line); scroll-margin-top: calc(var(--banner-height, 36px) + 96px); }
+    .card-advice > p { margin-bottom: 12px; }
+    .card-advice h4 { font-size: 16px; margin: 0; }
+    .card-advice .theme { font-size: 11px; margin: 14px 0 3px; }
+    .return-pointer { padding: 16px 18px; border-top: 1px solid var(--line); }
+    .return-pointer p { margin-bottom: 10px; }
+    .day { padding: 14px 18px; border-top: 1px solid var(--line); scroll-margin-top: calc(var(--banner-height, 36px) + 96px); }
+    .day.selected { box-shadow: inset 3px 0 var(--accent); }
+    .day-title { font-size: 12px; font-weight: 750; letter-spacing: .04em; color: var(--accent); margin-bottom: 7px; }
+    .schedule-row { display: grid; grid-template-columns: 55px minmax(0, 1fr) auto; gap: 10px; padding: 6px 0; align-items: baseline; scroll-margin-top: calc(var(--banner-height, 36px) + 96px); }
+    .schedule-row .time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .badge { display: inline-block; font-size: 11px; font-weight: 650; padding: 3px 7px; border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; }
+    .suggested-badge { color: var(--accent); background: var(--wash); border-color: var(--accent); }
+    .theme { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; color: var(--muted); margin: 14px 0 3px; }
+    .place { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; border-bottom: 1px solid var(--line); padding: 12px 0; scroll-margin-top: calc(var(--banner-height, 36px) + 105px); }
+    .place.suggested { padding: 12px; background: var(--wash); border-radius: 7px; margin-top: 6px; }
+    .place-copy { min-width: 0; overflow-wrap: anywhere; }
+    .place-name { display: flex; align-items: center; min-height: 44px; font-weight: 650; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+    .place-name:hover { color: var(--ink); }
+    .photo-preview { width: 112px; max-width: 100%; min-height: 44px; margin-top: 6px; padding: 5px 7px; border: 1px dashed var(--line); border-radius: 5px; background: var(--soft); color: var(--muted); text-align: center; font-size: 11px; line-height: 1.4; }
+    .photo-preview span { display: block; }
+    .photo-preview span:first-child { font-weight: 650; }
+    .place p { font-size: 13px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .votes { display: flex; flex-wrap: nowrap; gap: 5px; grid-column: 2; grid-row: 1; justify-self: end; align-self: start; }
+    .votes button { padding: 8px 10px; min-width: 56px; min-height: 44px; font-size: 13px; white-space: nowrap; }
+    .votes svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+    .empty { padding: 22px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); }
+    .feedback { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 23px; }
+    .feedback h2 { margin-bottom: 6px; }
+    .feedback form { margin-top: 15px; }
+    .feedback input { width: 260px; margin-bottom: 12px; }
+    .form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 9px; }
+    .comment { border-bottom: 1px solid var(--line); padding: 14px 0; overflow-wrap: anywhere; }
+    .comment p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 3px; }
+    .status { min-height: 24px; font-size: 13px; color: var(--accent); padding-top: 5px; }
+    .demo { border: 1px dashed var(--line); border-radius: 9px; padding: 12px 16px; margin-top: 30px; }
+    summary { cursor: pointer; font-weight: 650; min-height: 44px; padding: 10px 0; }
+    .demo p { margin: 8px 0; }
+    .demo-actions { display: flex; gap: 7px; flex-wrap: wrap; margin: 12px 0; }
+    .demo-summary { padding: 10px 14px; background: var(--soft); border-radius: 6px; font-size: 13px; }
+    .demo-summary ul { padding-left: 18px; margin: 6px 0; }
+    .demo-summary li { overflow-wrap: anywhere; }
+    footer { text-align: center; font-size: 12px; color: var(--muted); padding: 24px 0 0; }
+    dialog { width: min(550px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 13px; padding: 23px; box-shadow: 0 20px 60px var(--shadow); }
+    dialog::backdrop { background: var(--veil); }
+    .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .dialog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 15px 0; }
+    dialog input, dialog select { width: 100%; }
+    dialog textarea { min-height: 70px; }
+    .search-box { margin: 12px 0; }
+    .results { list-style: none; padding: 0; margin: 6px 0; max-height: 215px; overflow-y: auto; border: 1px solid var(--line); border-radius: 7px; }
+    .results li { padding: 11px 12px; min-height: 48px; cursor: pointer; border-bottom: 1px solid var(--line); }
+    .results li:last-child { border-bottom: 0; }
+    .results li[aria-selected="true"] { background: var(--wash); box-shadow: inset 3px 0 var(--accent); }
+    .results li span { display: block; font-size: 12px; color: var(--muted); }
+    .selection { background: var(--soft); border-radius: 7px; padding: 12px; margin-bottom: 12px; }
+    .selection p { margin-top: 4px; font-size: 13px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    @media (max-width: 600px) {
+      .shell { padding: 0 15px 24px; }
+      .intro { padding-top: 22px; }
+      .route { grid-template-columns: 1fr; gap: 12px; }
+      .route figure { max-width: 360px; width: 100%; justify-self: center; }
+      .route-list { gap: 6px; }
+      .section-head { align-items: start; flex-wrap: wrap; }
+      .stay-header { align-items: start; flex-direction: column; gap: 4px; }
+      .day { padding: 12px; }
+      .card-advice, .return-pointer { padding: 14px 12px; }
+      .schedule-row { grid-template-columns: 43px minmax(0, 1fr); gap: 7px; }
+      .schedule-row > .badge { grid-column: 2; justify-self: start; }
+      .place { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+      .votes button { flex: 0 0 52px; width: 52px; min-width: 52px; padding: 8px 6px; }
+      .suggested-badge { white-space: normal; overflow-wrap: anywhere; }
+      .dialog-grid { grid-template-columns: 1fr; gap: 8px; }
+      dialog { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-bar" id="prototype-banner"><strong>PROTOTYPE</strong> · Sample trip. Google search &amp; shared feedback simulated. Resets on reload.</div>
+  <main class="shell">
+    <header class="intro">
+      <p class="eyebrow">TREK / one guest advice addon</p>
+      <h1>Japan, together.</h1>
+      <p class="muted">9–24 October 2026 · 16 days, five cities and a Nara day trip</p>
+      <p style="margin-top:12px">Our route is settled. Know a place we'd love? Browse the plan, vote on our shortlist, or leave a suggestion.</p>
+      <div class="route">
+        <figure>
+          <svg viewBox="0 0 400 195" role="img" aria-labelledby="route-title route-description">
+            <title id="route-title">Japan trip route, schematic</title>
+            <desc id="route-description">Tokyo, Hakone, Kyoto, Osaka with a Nara day trip, Kanazawa, then Tokyo again. City buttons and dates follow.</desc>
+            <path d="M335 45 L275 115 L165 125 L65 145 L135 45 L335 45 M65 145 L75 185" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M295 45 l-8 -4 m8 4 l-8 4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <g fill="currentColor"><circle cx="335" cy="45" r="6"/><circle cx="275" cy="115" r="6"/><circle cx="165" cy="125" r="6"/><circle cx="65" cy="145" r="6"/><circle cx="135" cy="45" r="6"/><circle cx="75" cy="185" r="5"/></g>
+            <text x="310" y="27">Tokyo</text><text x="280" y="139">Hakone</text><text x="156" y="150">Kyoto</text><text x="17" y="132">Osaka</text><text x="103" y="28">Kanazawa</text><text x="90" y="190">Nara</text><text x="202" y="34">return →</text>
+          </svg>
+          <figcaption>Schematic route, not to scale. Explore each stay below.</figcaption>
+        </figure>
+        <ol class="route-list" id="route-list" aria-label="Chronological route and city summaries"></ol>
+      </div>
+    </header>
+
+    <nav class="date-sticky" aria-label="Trip dates, October 2026"><div class="date-ribbon" id="dates"></div></nav>
+    <div class="section-head"><div>
+      <h2>Our stays &amp; your ideas</h2>
+      <p class="small muted">Follow the settled schedule, then vote on See and Eat places within each city card. Shortlists are not scheduled.</p>
+      <p class="small muted">Read-only sample schedule · Booking labels are explicit sample bookings · Vote counts are invented examples.</p>
+      <p class="small muted">Place names open Google Maps in a new tab when you choose a link.</p>
+      <p class="small muted" id="photo-policy">Photo previews are offline placeholders. The live version would supply Google Places photos with author attribution. No photos or photo credits are loaded in this demo.</p>
+    </div></div>
+    <p class="status" id="announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div id="stay-cards" aria-label="Chronological stays and local advice"></div>
+
+    <section class="feedback" aria-labelledby="feedback-heading">
+      <h2 id="feedback-heading">A little local wisdom?</h2>
+      <p class="muted small">General advice for the trip. No account needed in this demo.</p>
+      <form id="comment-form">
+        <label for="display-name">Your display name <span class="muted">(optional, also used for suggestions)</span></label>
+        <input id="display-name" maxlength="60" autocomplete="nickname" placeholder="Guest adviser">
+        <label for="comment-text">Your comment</label>
+        <textarea id="comment-text" maxlength="1000" placeholder="A tip, a favourite, something to keep in mind…" required></textarea>
+        <div class="form-footer"><span class="small muted">Visible on this page only.</span><button class="primary" type="submit">Add comment</button></div>
+        <p id="comment-status" class="status" role="status"></p>
+      </form>
+      <div id="comments" aria-label="Local comments"></div>
+    </section>
+
+    <aside class="demo" aria-label="Prototype review tools, outside guest content">
+      <details id="demo-controls">
+        <summary>Demo controls · guided behavior walkthroughs</summary>
+        <p><strong>Question:</strong> Can an outside adviser follow each stay's settled schedule and give See/Eat advice in that same city card?</p>
+        <p class="small muted">Approved direction: one scrolling set of stay cards, with local See/Eat tabs. The return to Tokyo points to the first Tokyo card's shared shortlist. Elsewhere has its own card.</p>
+        <p class="small muted">Prototype assumptions, not approved product rules: an optional display name labels feedback; one simulated viewer can vote per place; new suggestions remain visibly suggested and never enter the settled schedule. Initial vote counts are invented examples.</p>
+        <div class="demo-actions" id="guides">
+          <button type="button" data-guide="itinerary">Explore itinerary</button>
+          <button type="button" data-guide="votes">Vote / change / undo</button>
+          <button type="button" data-guide="suggestions">New / existing suggestion</button>
+          <button type="button" id="reset">Reset all demo state</button>
+        </div>
+        <p class="small muted">Starting a guide resets local feedback to the sample baseline.</p>
+        <div id="guide-content"></div>
+        <div class="demo-summary" id="state-summary" aria-label="Readable local state"></div>
+      </details>
+    </aside>
+    <footer>Sample native TREK places · In-memory demo only · Nothing is shared or saved</footer>
+  </main>
+
+  <dialog id="suggest-dialog" aria-labelledby="suggest-heading" aria-describedby="search-disclaimer">
+    <div class="dialog-head"><h2 id="suggest-heading">Suggest a place</h2><button type="button" id="close-dialog" aria-label="Close suggestion dialog">✕</button></div>
+    <p class="small muted" id="search-disclaimer">Simulated Google autocomplete. Demo results only, no live Google search. Select a result to see its Google Maps link and offline photo preview.</p>
+    <form id="suggest-form">
+      <div class="dialog-grid">
+        <div><label for="suggest-category">Section</label><select id="suggest-category"><option>See</option><option>Eat</option></select></div>
+        <div><label for="suggest-city">Search near</label><select id="suggest-city"></select></div>
+      </div>
+      <p class="small muted" id="bias-description"></p>
+      <div class="search-box">
+        <label for="place-search">Find a place in Japan</label>
+        <input id="place-search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="search-results" aria-expanded="false" aria-describedby="search-help result-status" autocomplete="off" placeholder="Try Nezu, Nanzen or teamLab">
+        <p class="small muted" id="search-help">Use ↑ / ↓ and Enter to select. Escape closes results, then the dialog.</p>
+        <ul class="results" role="listbox" id="search-results" aria-label="Demo place matches" hidden></ul>
+        <p class="status" id="result-status" role="status" aria-live="polite"></p>
+      </div>
+      <div class="selection" id="selected-place" hidden></div>
+      <div id="suggest-fields">
+        <label for="suggest-name">Your display name <span class="muted">(optional)</span></label>
+        <input id="suggest-name" maxlength="60" autocomplete="nickname" placeholder="Guest adviser">
+        <label for="suggest-reason" style="margin-top:12px">Why this place? <span class="muted">(optional)</span></label>
+        <textarea id="suggest-reason" maxlength="500" placeholder="What makes it worth a visit?"></textarea>
+      </div>
+      <div class="form-footer"><button type="button" id="cancel-dialog">Cancel</button><button type="submit" class="primary" id="submit-suggestion" disabled>Add suggestion</button></div>
+    </form>
+  </dialog>
+
+  <script>
+    // Pure fixture + state helper. No DOM, I/O, clock, randomness or mutation of input state.
+    const AdviceModel = (() => {
+      const cities = ['Tokyo', 'Hakone', 'Kyoto', 'Osaka', 'Kanazawa', 'Elsewhere'];
+      const stays = [
+        { city: 'Tokyo', start: 9, end: 13, summary: 'First tastes, shrines & neighbourhoods' },
+        { city: 'Hakone', start: 14, end: 14, summary: 'Art in the mountains' },
+        { city: 'Kyoto', start: 15, end: 18, summary: 'Temple mornings & market afternoons' },
+        { city: 'Osaka', start: 19, end: 20, summary: 'Street food & a Nara day trip' },
+        { city: 'Kanazawa', start: 21, end: 22, summary: 'Gardens, galleries & coffee' },
+        { city: 'Tokyo', start: 23, end: 24, summary: 'Return visit & one last lunch' }
+      ];
+      // Each city owns one shortlist, even when its schedule spans multiple stays.
+      const cards = [
+        ...stays.map((stay, index) => ({ ...stay, id: `stay-${stay.start}`, ownsShortlist: stays.findIndex(item => item.city === stay.city) === index })),
+        { id: 'stay-elsewhere', city: 'Elsewhere', start: null, end: null, summary: 'Ideas beyond our city stops', ownsShortlist: true }
+      ];
+      const shortlistCard = city => cards.find(card => card.city === city && card.ownsShortlist);
+      // Explicit booked flag is fixture data, never inferred from a time.
+      const schedule = [
+        ['s01', 9, '16:00', 'Shibuya Crossing', 'See', false],
+        ['s02', 9, '16:30', 'Hachiko Memorial Statue', 'See', false],
+        ['s03', 10, '07:00', 'Sushi Dai', 'Eat', false, 'Toyosu'],
+        ['s04', 11, '09:00', 'Meiji Jingu', 'See', false],
+        ['s05', 12, '09:30', 'Senso-ji', 'See', false],
+        ['s06', 13, '10:00', 'Mount Takao', 'See', false],
+        ['s07', 14, '11:00', 'Hakone Open-Air Museum', 'See', true],
+        ['s08', 15, '08:00', 'Fushimi Inari Taisha', 'See', false],
+        ['s09', 16, '09:00', 'Kiyomizu-dera', 'See', false],
+        ['s10', 17, '12:00', 'Nishiki Market', 'Eat', false],
+        ['s11', 18, '10:00', 'Kinkaku-ji', 'See', false],
+        ['s12', 19, '10:00', 'Osaka Castle', 'See', false],
+        ['s13', 19, '18:00', 'Dotonbori', 'See', false],
+        ['s14', 20, '09:30', 'Nara Park', 'See', false, 'Nara day trip'],
+        ['s15', 20, '11:00', 'Todai-ji', 'See', false, 'Nara day trip'],
+        ['s16', 21, '09:00', 'Kenroku-en', 'See', false],
+        ['s17', 22, '12:00', 'Omicho Market', 'Eat', false],
+        ['s18', 24, '12:30', 'Ginza Kyubey', 'Eat', true, 'Farewell lunch']
+      ].map(([id, day, time, name, category, booked, detail = '']) => ({
+        id, day, time, name, category, booked, detail,
+        city: stays.find(stay => day >= stay.start && day <= stay.end).city
+      }));
+      const shortlist = [
+        ['p01', 'Tokyo', 'See', 'teamLab Borderless', 'Art & views', 'Immersive art in Azabudai Hills', 8, 1],
+        ['p02', 'Tokyo', 'See', 'teamLab Planets', 'Art & views', 'Walk-through installations in Toyosu', 5, 2],
+        ['p03', 'Tokyo', 'See', 'Shibuya Sky', 'Art & views', 'A rooftop view over the city', 9, 1],
+        ['p04', 'Tokyo', 'See', 'Gotoku-ji', 'Quiet corners', 'A temple full of beckoning cats', 4, 0],
+        ['p05', 'Kyoto', 'See', 'Shizen', 'Art & design', 'A small Kyoto art and design stop', 3, 0],
+        ['p06', 'Osaka', 'See', 'Hozenji Yokocho', 'Street sights', 'Lanterns and a quiet stone-paved lane', 6, 0],
+        ['p07', 'Osaka', 'See', 'Shinsekai', 'Street sights', 'Old-school streets beneath Tsutenkaku', 4, 1],
+        ['p08', 'Kanazawa', 'See', '21st Century Museum of Contemporary Art', 'Art & design', 'Contemporary art close to the garden', 7, 1],
+        ['p09', 'Elsewhere', 'See', 'Lake Kawaguchiko', 'Day-trip ideas', 'Fuji views, Yamanashi', 5, 2],
+        ['p10', 'Elsewhere', 'See', 'Kamikochi', 'Day-trip ideas', 'Alpine valley paths, Nagano', 6, 1],
+        ['p11', 'Tokyo', 'Eat', 'Udatsu Sushi', 'Sushi', 'A counter in Nakameguro', 8, 1],
+        ['p12', 'Tokyo', 'Eat', 'Chatei Hatou', 'Coffee & tea', 'Slow coffee in Shibuya', 6, 0],
+        ['p13', 'Tokyo', 'Eat', 'Pelican Cafe', 'Coffee & tea', 'Toast and coffee in Kuramae', 4, 0],
+        ['p14', 'Tokyo', 'Eat', 'Kosoan', 'Coffee & tea', 'Tea in a traditional Jiyugaoka house', 5, 0],
+        ['p15', 'Kyoto', 'Eat', 'Gion Duck Noodles', 'Noodles', 'A small noodle shop in Gion', 7, 1],
+        ['p16', 'Osaka', 'Eat', 'Kiji', 'Casual favourites', 'Okonomiyaki in Umeda', 8, 0],
+        ['p17', 'Osaka', 'Eat', 'Fukutaro', 'Casual favourites', 'Negiyaki and okonomiyaki in Namba', 6, 1],
+        ['p18', 'Osaka', 'Eat', "Rikuro's Namba Main Store", 'Something sweet', 'Freshly baked cheesecake', 5, 1],
+        ['p19', 'Osaka', 'Eat', 'Kukuru Dotonbori', 'Casual favourites', 'Takoyaki by the canal', 4, 0],
+        ['p20', 'Osaka', 'Eat', 'Daruma Shinsekai', 'Casual favourites', 'Kushikatsu in Shinsekai', 5, 1],
+        ['p21', 'Kanazawa', 'Eat', 'Higashide Coffee', 'Coffee & tea', 'A coffee pause near Omicho Market', 3, 0]
+      ].map(([id, city, category, name, theme, detail, up, down]) => ({ id, city, category, name, theme, detail, up, down }));
+      const discoveries = [
+        ['n01', 'Tokyo', 'See', 'Nezu Shrine', 'Torii paths and a quiet garden'],
+        ['n02', 'Tokyo', 'See', 'Yanaka Ginza', 'A neighbourhood shopping street'],
+        ['n03', 'Kyoto', 'See', 'Nanzen-ji', 'Temple grounds and a brick aqueduct'],
+        ['n04', 'Kyoto', 'See', "Philosopher's Path", 'A canal-side stroll in eastern Kyoto'],
+        ['n05', 'Osaka', 'See', 'Sumiyoshi Taisha', 'A shrine with an arched bridge'],
+        ['n06', 'Osaka', 'See', 'Tsutenkaku', 'A tower above Shinsekai'],
+        ['n07', 'Tokyo', 'Eat', 'Onigiri Bongo', 'Rice balls in Otsuka'],
+        ['n08', 'Tokyo', 'Eat', 'Café de l’Ambre', 'Coffee in Ginza'],
+        ['n09', 'Kyoto', 'Eat', 'WEEKENDERS COFFEE Tominokoji', 'A courtyard coffee stop'],
+        ['n10', 'Kyoto', 'Eat', 'Honke Owariya', 'A historic soba restaurant'],
+        ['n11', 'Osaka', 'Eat', 'Takoyaki Wanaka Sennichimae', 'A takoyaki counter in Namba'],
+        ['n12', 'Osaka', 'Eat', 'LiLo Coffee Roasters', 'Coffee in Shinsaibashi'],
+        ['n13', 'Hakone', 'See', 'Hakone Shrine', 'A lakeside shrine in Moto-Hakone'],
+        ['n14', 'Hakone', 'Eat', 'Bakery & Table Hakone', 'Bread and coffee beside Lake Ashi, Hakone'],
+        ['n15', 'Kanazawa', 'See', 'D. T. Suzuki Museum', 'Quiet galleries and a water garden in Kanazawa'],
+        ['n16', 'Kanazawa', 'Eat', 'Fumuroya Higashiyama', 'Wheat gluten specialities in Kanazawa’s Higashi Chaya district'],
+        ['n17', 'Elsewhere', 'See', 'Matsumoto Castle', 'A castle in Matsumoto, Nagano, beyond our city stops'],
+        ['n18', 'Elsewhere', 'Eat', 'Houtou Fudou Kita Honten', 'Houtou noodles in Fujikawaguchiko, Yamanashi']
+      ].map(([id, city, category, name, detail]) => ({ id, city, category, name, detail, theme: 'Guest suggestions', up: 0, down: 0 }));
+      const catalogue = [...discoveries, ...shortlist, ...schedule];
+      const cityForDay = day => stays.find(stay => day >= stay.start && day <= stay.end)?.city;
+      const dayForCity = (state, city) => cityForDay(state.day) === city ? state.day : stays.find(stay => stay.city === city)?.start ?? null;
+      const initial = () => ({ city: 'Tokyo', day: 9, categories: Object.fromEntries(cities.map(city => [city, 'See'])), votes: {}, suggestions: [], comments: [], name: '', dialog: null });
+      const places = state => [...shortlist, ...state.suggestions];
+      const existing = (state, id) => [...schedule, ...places(state)].find(place => place.id === id);
+      // Native fixture IDs are not Google Place IDs. None of these fixtures has a verified Google ID.
+      const mapsUrl = place => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.city} Japan`)}`
+        + (place.googlePlaceId ? `&query_place_id=${encodeURIComponent(place.googlePlaceId)}` : '');
+      const tallies = (state, place) => ({ up: place.up + (state.votes[place.id] === 'up' ? 1 : 0), down: place.down + (state.votes[place.id] === 'down' ? 1 : 0) });
+      const matches = state => {
+        const dialog = state.dialog;
+        if (!dialog) return [];
+        const query = dialog.query.trim().toLocaleLowerCase();
+        return catalogue.filter(place => place.category === dialog.category && `${place.name} ${place.city} ${place.detail}`.toLocaleLowerCase().includes(query))
+          .sort((a, b) => Number(b.city === dialog.city) - Number(a.city === dialog.city));
+      };
+      function update(state, action) {
+        switch (action.type) {
+          case 'reset': return initial();
+          case 'shortlist-section': return cities.includes(action.city) && ['See', 'Eat'].includes(action.category)
+            ? { ...state, city: action.city, categories: { ...state.categories, [action.city]: action.category } } : state;
+          case 'city': {
+            if (!cities.includes(action.city)) return state;
+            const day = dayForCity(state, action.city);
+            return { ...state, city: action.city, day };
+          }
+          case 'day': return cityForDay(action.day) ? { ...state, city: cityForDay(action.day), day: action.day } : state;
+          case 'name': return { ...state, name: action.name.slice(0, 60) };
+          case 'vote': {
+            if (!places(state).some(place => place.id === action.id) || !['up', 'down'].includes(action.direction)) return state;
+            const votes = { ...state.votes };
+            if (votes[action.id] === action.direction) delete votes[action.id];
+            else votes[action.id] = action.direction;
+            return { ...state, votes };
+          }
+          case 'comment': {
+            const body = action.body.trim().slice(0, 1000);
+            return body ? { ...state, comments: [...state.comments, { name: state.name.trim() || 'Guest adviser', body }] } : state;
+          }
+          case 'open': {
+            const city = cities.includes(action.city) ? action.city : state.city;
+            return { ...state, city, dialog: { category: state.categories[city], city, query: '', selected: null, reason: '', expanded: true, active: -1 } };
+          }
+          case 'close': return { ...state, dialog: null };
+          case 'search': return state.dialog ? { ...state, dialog: { ...state.dialog, query: action.query, selected: null, expanded: true, active: -1 } } : state;
+          case 'search-context': return state.dialog ? { ...state, dialog: { ...state.dialog, ...action.context, selected: null, expanded: true, active: -1 } } : state;
+          case 'expand': return state.dialog ? { ...state, dialog: { ...state.dialog, expanded: action.expanded, active: -1 } } : state;
+          case 'active': return state.dialog ? { ...state, dialog: { ...state.dialog, expanded: true, active: action.index } } : state;
+          case 'select': {
+            const place = catalogue.find(item => item.id === action.id && item.category === state.dialog?.category);
+            return place ? { ...state, dialog: { ...state.dialog, query: place.name, selected: place.id, expanded: false, active: -1 } } : state;
+          }
+          case 'reason': return state.dialog ? { ...state, dialog: { ...state.dialog, reason: action.reason.slice(0, 500) } } : state;
+          case 'suggest': {
+            const place = catalogue.find(item => item.id === state.dialog?.selected);
+            if (!place || existing(state, place.id)) return state;
+            const suggestion = { ...place, suggested: true, by: state.name.trim() || 'Guest adviser', reason: state.dialog.reason.trim() };
+            return { ...state, suggestions: [...state.suggestions, suggestion], categories: { ...state.categories, [place.city]: place.category }, city: place.city, dialog: null };
+          }
+          case 'jump': {
+            const place = existing(state, action.id);
+            if (!place) return state;
+            return { ...state, dialog: null, city: place.city, categories: place.day ? state.categories : { ...state.categories, [place.city]: place.category }, day: place.day ?? dayForCity(state, place.city) };
+          }
+          default: return state;
+        }
+      }
+      return { cities, stays, cards, shortlistCard, schedule, shortlist, catalogue, initial, places, existing, mapsUrl, tallies, matches, cityForDay, update };
+    })();
+  </script>
+  <script>
+    // DOM shell. All dynamic text, including guest input, is rendered with textContent.
+    (() => {
+      const M = AdviceModel;
+      let state = M.initial();
+      let dialogOpener = null;
+      let guide = null;
+      let guideStep = 0;
+      const $ = id => document.getElementById(id);
+      function node(tag, text, className) {
+        const result = document.createElement(tag);
+        if (text !== undefined) result.textContent = text;
+        if (className) result.className = className;
+        return result;
+      }
+      function button(text, onClick, className) {
+        const result = node('button', text, className);
+        result.type = 'button';
+        result.addEventListener('click', onClick);
+        return result;
+      }
+      function placeLink(place) {
+        const link = node('a', place.name, 'place-name');
+        link.href = M.mapsUrl(place); link.target = '_blank'; link.rel = 'noopener noreferrer';
+        link.setAttribute('aria-label', `${place.name}, Google Maps, opens in a new tab`);
+        return link;
+      }
+      function photoPreview() {
+        const preview = node('div', undefined, 'photo-preview');
+        preview.append(node('span', 'Photo preview'), node('span', 'Offline placeholder'));
+        preview.setAttribute('role', 'note');
+        preview.setAttribute('aria-describedby', 'photo-policy');
+        return preview;
+      }
+      const announce = text => { $('announcement').textContent = text; };
+      function dispatch(action) { state = M.update(state, action); render(); }
+      function focusItem(id) {
+        const target = $(id);
+        if (!target) return;
+        target.focus({ preventScroll: true });
+        target.scrollIntoView({ block: 'start' });
+      }
+      function revealSelectedDate() {
+        const ribbon = $('dates');
+        const chip = $(`date-${state.day}`);
+        if (!chip) return;
+        const ribbonBounds = ribbon.getBoundingClientRect();
+        const chipBounds = chip.getBoundingClientRect();
+        const left = ribbonBounds.left + ribbon.clientLeft;
+        const right = left + ribbon.clientWidth;
+        // Move only the ribbon. Scrolling the chip into view could also move the page.
+        if (chipBounds.left < left) ribbon.scrollLeft += chipBounds.left - left;
+        else if (chipBounds.right > right) ribbon.scrollLeft += chipBounds.right - right;
+      }
+      function chooseDay(day) {
+        dispatch({ type: 'day', day });
+        focusItem(`day-${day}`);
+        announce(`${M.cityForDay(day)} stay · October ${day}. All city cards remain below.`);
+      }
+      function chooseShortlist(city, category = state.categories[city]) {
+        dispatch({ type: 'shortlist-section', city, category });
+        focusItem(`advice-${city}`);
+        announce(`${city} · ${category} shortlist. The settled schedule remains in its stay card.`);
+      }
+      const dayLabel = day => new Date(Date.UTC(2026, 9, day)).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
+      function initializeNavigation() {
+        M.stays.forEach(stay => {
+          const li = node('li');
+          const target = button('', () => chooseDay(stay.start));
+          target.append(node('strong', `${stay.city}${stay.start === 23 ? ' · return' : ''}`), node('span', `Oct ${stay.start}${stay.end !== stay.start ? `–${stay.end}` : ''} · ${stay.summary}`));
+          li.append(target); $('route-list').append(li);
+        });
+        for (let day = 9; day <= 24; day++) {
+          const chip = button('', () => chooseDay(day));
+          chip.id = `date-${day}`;
+          chip.setAttribute('aria-label', `October ${day}, ${M.cityForDay(day)}${day === 23 ? ' return, no scheduled places' : ''}`);
+          chip.append(node('span', dayLabel(day)), node('b', day), node('span', 'OCT'));
+          $('dates').append(chip);
+        }
+        const elsewhere = node('li');
+        const explore = button('', () => { dispatch({ type: 'city', city: 'Elsewhere' }); focusItem('stay-elsewhere'); });
+        explore.append(node('strong', 'Elsewhere'), node('span', 'Beyond the route · Day-trip ideas'));
+        elsewhere.append(explore); $('route-list').append(elsewhere);
+        M.cities.forEach(city => $('suggest-city').append(node('option', city)));
+      }
+      function renderCards() {
+        const panel = $('stay-cards'); panel.replaceChildren();
+        M.cards.forEach(stay => {
+          const card = node('section', undefined, 'stay');
+          card.id = stay.id; card.tabIndex = -1; card.setAttribute('aria-labelledby', `${stay.id}-title`);
+          const header = node('div', undefined, 'stay-header');
+          const title = node('h3', `${stay.city}${stay.start === 23 ? ' · the return' : ''}`); title.id = `${stay.id}-title`;
+          header.append(title, node('span', `${stay.start ? `Oct ${stay.start}${stay.end !== stay.start ? `–${stay.end}` : ''} · ` : ''}${stay.summary}`, 'small muted'));
+          card.append(header);
+          if (!stay.start) card.append(node('p', 'No settled dates here. These are ideas beyond the route, not additions to the schedule.', 'day small muted'));
+          for (let day = stay.start; day !== null && day <= stay.end; day++) {
+            const block = node('section', undefined, `day${state.day === day ? ' selected' : ''}`);
+            block.id = `day-${day}`; block.tabIndex = -1;
+            block.setAttribute('aria-label', `${stay.city}, October ${day}`);
+            block.append(node('h4', `${dayLabel(day)} ${day} October${day === 20 ? ' · Nara day trip' : ''}`, 'day-title'));
+            const rows = M.schedule.filter(place => place.day === day);
+            if (!rows.length) block.append(node('p', day === 23 ? 'Back in Tokyo. No places scheduled today; room to wander.' : 'No places scheduled today.', 'small muted'));
+            rows.forEach(place => {
+              const row = node('div', undefined, 'schedule-row'); row.id = `place-${place.id}`; row.tabIndex = -1;
+              const name = node('div', undefined, 'place-copy');
+              name.append(placeLink(place), node('p', `${place.category === 'Eat' ? 'Food' : 'Sight'}${place.detail ? ` · ${place.detail}` : ''}`, 'small muted'), photoPreview());
+              row.append(node('span', place.time, 'time'), name);
+              if (place.booked) row.append(node('span', 'Booked · sample', 'badge'));
+              block.append(row);
+            });
+            card.append(block);
+          }
+          if (stay.ownsShortlist) card.append(renderAdvice(stay.city));
+          else {
+            const pointer = node('div', undefined, 'return-pointer');
+            pointer.append(node('p', 'Back in Tokyo? See and Eat ideas for both visits share the shortlist in our first Tokyo card. Your votes and suggestions stay together.', 'small muted'));
+            const actions = node('div', undefined, 'demo-actions');
+            ['See', 'Eat'].forEach(category => actions.append(button(`Tokyo ${category} shortlist ↑`, () => chooseShortlist('Tokyo', category))));
+            pointer.append(actions); card.append(pointer);
+          }
+          panel.append(card);
+        });
+      }
+      function renderAdvice(city) {
+        const advice = node('div', undefined, 'card-advice'); advice.id = `advice-${city}`; advice.tabIndex = -1;
+        advice.setAttribute('role', 'region');
+        advice.setAttribute('aria-label', `${city} shortlist advice`);
+        advice.append(node('p', 'Your ideas for this city · Shortlisted, not scheduled · Example vote counts', 'small muted'));
+        const tabs = node('div'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', `${city} shortlist categories`);
+        ['See', 'Eat'].forEach(category => {
+          const selected = state.categories[city] === category;
+          const tab = button(category, () => dispatch({ type: 'shortlist-section', city, category }));
+          tab.id = `tab-${city}-${category}`; tab.dataset.city = city; tab.dataset.category = category;
+          tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `panel-${city}-${category}`);
+          tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+          tabs.append(tab);
+        });
+        advice.append(tabs);
+        ['See', 'Eat'].forEach(category => {
+          const panel = node('section'); panel.id = `panel-${city}-${category}`; panel.tabIndex = 0;
+          panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', `tab-${city}-${category}`);
+          panel.hidden = state.categories[city] !== category;
+          renderShortlist(category, city, panel); advice.append(panel);
+        });
+        return advice;
+      }
+      function thumb(direction) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M7 10H3v11h4V10Zm0 0 5-8c3 0 2 5 1 7h6c2 0 2 2 1 5l-2 7H7');
+        if (direction === 'down') path.setAttribute('transform', 'rotate(180 12 12)');
+        svg.append(path); return svg;
+      }
+      function renderShortlist(category, city, panel) {
+        const heading = node('div', undefined, 'section-head');
+        const suggest = button('＋ Suggest a place', () => openDialog(city), 'primary'); suggest.id = `suggest-${city}-${category}`;
+        suggest.setAttribute('aria-label', `Suggest ${category === 'Eat' ? 'an' : 'a'} ${category} place near ${city}`);
+        heading.append(node('h4', category === 'See' ? 'Worth a detour?' : 'Good things to eat.'), suggest); panel.append(heading);
+        const local = M.places(state).filter(place => place.category === category && place.city === city);
+        if (!local.length) panel.append(node('p', `No ${category === 'See' ? 'sights' : 'food places'} shortlisted for ${city} yet. Suggest a favourite.`, 'empty'));
+        const group = node('div');
+        [...new Set(local.map(place => place.theme))].forEach(theme => {
+          group.append(node('h4', theme, 'theme'));
+          local.filter(place => place.theme === theme).forEach(place => {
+            const row = node('article', undefined, `place${place.suggested ? ' suggested' : ''}`); row.id = `place-${place.id}`; row.tabIndex = -1;
+            const copy = node('div', undefined, 'place-copy');
+            copy.append(placeLink(place));
+            if (place.suggested) copy.append(node('span', 'Suggested · not scheduled', 'badge suggested-badge'));
+            copy.append(node('p', place.detail), photoPreview());
+            if (place.suggested) copy.append(node('p', `Suggested by ${place.by}${place.reason ? `: ${place.reason}` : ' · No reason added.'}`));
+            const votes = node('div', undefined, 'votes');
+            const tally = M.tallies(state, place);
+            ['up', 'down'].forEach(direction => {
+              const vote = button('', () => {
+                dispatch({ type: 'vote', id: place.id, direction });
+                $(`vote-${place.id}-${direction}`).focus({ preventScroll: true });
+                const counts = M.tallies(state, place);
+                announce(`${place.name}: ${state.votes[place.id] ? `your vote is ${state.votes[place.id]}` : 'your vote was removed'}. ${counts.up} up, ${counts.down} down.`);
+              });
+              vote.id = `vote-${place.id}-${direction}`;
+              vote.setAttribute('aria-pressed', String(state.votes[place.id] === direction));
+              vote.setAttribute('aria-label', `Vote ${direction} for ${place.name}, ${tally[direction]} votes. Press again to undo.`);
+              vote.append(thumb(direction), node('span', tally[direction])); votes.append(vote);
+            });
+            row.append(copy, votes); group.append(row);
+          });
+        });
+        panel.append(group);
+      }
+      function renderSummary() {
+        const panel = $('state-summary'); panel.replaceChildren();
+        panel.append(node('strong', `Advice context: ${state.city} · ${state.day ? `selected date Oct ${state.day} (${M.cityForDay(state.day)})` : 'no date selected'}`));
+        panel.append(node('p', `All seven cards remain visible. Local shortlist tabs: ${M.cities.map(city => `${city}: ${state.categories[city]}`).join(' · ')}. Tokyo has one shared shortlist for both visits.`));
+        panel.append(node('p', `${Object.keys(state.votes).length} local votes · ${state.suggestions.length} suggestions · ${state.comments.length} comments`));
+        const list = node('ul');
+        Object.entries(state.votes).forEach(([id, direction]) => list.append(node('li', `${M.existing(state, id).name}: your vote ${direction}`)));
+        state.suggestions.forEach(place => list.append(node('li', `${place.name}: suggested by ${place.by}${place.reason ? `, ${place.reason}` : ''}; not scheduled`)));
+        state.comments.forEach(comment => list.append(node('li', `${comment.name}: ${comment.body}`)));
+        if (list.children.length) panel.append(list);
+        else panel.append(node('p', 'No local feedback yet. Sample tallies are unchanged.'));
+        if (state.dialog) {
+          const selected = M.catalogue.find(place => place.id === state.dialog.selected);
+          panel.append(node('p', `Suggestion draft: ${state.dialog.category}, near ${state.dialog.city}; ${selected ? `selected ${selected.name}` : 'no place selected'}${state.dialog.reason ? `; reason: ${state.dialog.reason}` : ''}.`));
+        }
+      }
+      function render() {
+        const focusedId = document.activeElement?.id;
+        for (let day = 9; day <= 24; day++) {
+          if (state.day === day) $(`date-${day}`).setAttribute('aria-current', 'date');
+          else $(`date-${day}`).removeAttribute('aria-current');
+        }
+        revealSelectedDate();
+        renderCards();
+        $('comments').replaceChildren();
+        state.comments.forEach(comment => {
+          const item = node('article', undefined, 'comment');
+          item.append(node('strong', comment.name), node('span', ' · just now, local demo', 'small muted'), node('p', comment.body));
+          $('comments').append(item);
+        });
+        renderSummary();
+        if (focusedId && $(focusedId) && !$(focusedId).closest('[hidden]')) $(focusedId).focus({ preventScroll: true });
+      }
+      function renderDialog() {
+        const draft = state.dialog; if (!draft) return;
+        $('suggest-category').value = draft.category; $('suggest-city').value = draft.city;
+        $('place-search').value = draft.query;
+        $('bias-description').textContent = `${draft.city === 'Elsewhere' ? 'Japan-wide ideas' : `${draft.city} matches first`}. Other Japan results stay available below; city context is a preference.`;
+        const results = M.matches(state);
+        const list = $('search-results'); list.replaceChildren(); list.hidden = !draft.expanded || !results.length;
+        $('place-search').setAttribute('aria-expanded', String(!list.hidden));
+        $('place-search').removeAttribute('aria-activedescendant');
+        results.forEach((place, index) => {
+          const item = node('li', place.name); item.id = `result-${index}`;
+          item.setAttribute('role', 'option'); item.setAttribute('aria-selected', String(index === draft.active));
+          const known = M.existing(state, place.id);
+          item.append(node('span', `${place.city} · Japan${place.city === draft.city ? ' · near selected city' : ' · elsewhere in Japan'}${known ? known.day ? ' · already scheduled' : ' · already on shortlist' : ''}`));
+          item.addEventListener('mousedown', event => event.preventDefault());
+          item.addEventListener('click', () => selectPlace(place.id)); list.append(item);
+        });
+        if (draft.expanded && results[draft.active]) {
+          $('place-search').setAttribute('aria-activedescendant', `result-${draft.active}`);
+          $(`result-${draft.active}`).scrollIntoView({ block: 'nearest' });
+        }
+        $('result-status').textContent = draft.selected ? 'Place selected. Review it below.' : !results.length ? 'No demo matches. Try Nezu, Nanzen, Kiji or teamLab, or clear your search.' : `${results.length} demo matches. ${draft.query.trim() ? '' : 'Type to narrow the list.'}`;
+        const selected = M.catalogue.find(place => place.id === draft.selected);
+        const known = selected && M.existing(state, selected.id);
+        const summary = $('selected-place'); summary.replaceChildren(); summary.hidden = !selected;
+        if (selected) {
+          summary.append(placeLink(selected), node('p', `${selected.city} · Japan · ${selected.category}`), node('p', selected.detail), photoPreview());
+          if (known) summary.append(node('p', known.day ? `Already in the settled plan on October ${known.day}. It cannot be suggested again or voted on.` : 'Already on this shortlist. Jump to the existing place to vote; no duplicate will be added.'));
+        }
+        $('suggest-fields').hidden = Boolean(known);
+        $('submit-suggestion').disabled = !selected;
+        $('submit-suggestion').textContent = known ? known.day ? 'Jump to scheduled place' : 'Jump to existing place' : 'Add suggestion';
+        renderSummary();
+      }
+      function selectPlace(id) {
+        state = M.update(state, { type: 'select', id }); renderDialog(); $('place-search').focus();
+      }
+      function openDialog(city = state.city) {
+        dialogOpener = document.activeElement;
+        state = M.update(state, { type: 'open', city });
+        $('suggest-name').value = state.name; $('suggest-reason').value = '';
+        renderDialog(); $('suggest-dialog').showModal(); $('place-search').focus();
+      }
+      function closeDialog() {
+        state = M.update(state, { type: 'close' });
+        $('suggest-dialog').close(); $('display-name').value = state.name; renderSummary();
+        if (dialogOpener?.isConnected && !dialogOpener.closest('[hidden]')) dialogOpener.focus({ preventScroll: true });
+        else $(`tab-${state.city}-${state.categories[state.city]}`).focus({ preventScroll: true });
+      }
+      $('stay-cards').addEventListener('keydown', event => {
+        const tab = event.target.closest('[role="tab"]'); if (!tab) return;
+        const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']; if (!keys.includes(event.key)) return;
+        event.preventDefault();
+        const city = tab.dataset.city;
+        const category = event.key === 'Home' ? 'See' : event.key === 'End' ? 'Eat' : tab.dataset.category === 'See' ? 'Eat' : 'See';
+        dispatch({ type: 'shortlist-section', city, category }); $(`tab-${city}-${category}`).focus({ preventScroll: true });
+      });
+      $('display-name').addEventListener('input', event => { state = M.update(state, { type: 'name', name: event.target.value }); });
+      $('comment-form').addEventListener('submit', event => {
+        event.preventDefault(); const body = $('comment-text').value;
+        if (!body.trim()) { $('comment-status').textContent = 'Write a comment before adding it.'; $('comment-text').focus(); return; }
+        dispatch({ type: 'comment', body }); $('comment-text').value = '';
+        $('comment-status').textContent = 'Comment added locally. It is not shared or saved.';
+      });
+      $('place-search').addEventListener('input', event => { state = M.update(state, { type: 'search', query: event.target.value }); renderDialog(); });
+      $('place-search').addEventListener('click', () => { state = M.update(state, { type: 'expand', expanded: true }); renderDialog(); });
+      $('place-search').addEventListener('keydown', event => {
+        if (!state.dialog) return;
+        const results = M.matches(state);
+        if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+          event.preventDefault();
+          const current = state.dialog.active;
+          const index = !results.length ? -1 : current < 0 ? event.key === 'ArrowDown' ? 0 : results.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : results.length - 1)) % results.length;
+          state = M.update(state, { type: 'active', index }); renderDialog();
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          if (state.dialog.expanded && results[state.dialog.active]) selectPlace(results[state.dialog.active].id);
+        } else if (event.key === 'Escape' && state.dialog.expanded) {
+          event.preventDefault(); event.stopPropagation();
+          state = M.update(state, { type: 'expand', expanded: false }); renderDialog();
+        } else if (event.key === 'Tab') {
+          state = M.update(state, { type: 'expand', expanded: false }); renderDialog();
+        }
+      });
+      ['category', 'city'].forEach(field => $(`suggest-${field}`).addEventListener('change', event => {
+        state = M.update(state, { type: 'search-context', context: { [field]: event.target.value } }); renderDialog();
+      }));
+      $('suggest-name').addEventListener('input', event => { state = M.update(state, { type: 'name', name: event.target.value }); });
+      $('suggest-reason').addEventListener('input', event => { state = M.update(state, { type: 'reason', reason: event.target.value }); renderSummary(); });
+      $('close-dialog').addEventListener('click', closeDialog); $('cancel-dialog').addEventListener('click', closeDialog);
+      $('suggest-dialog').addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
+      $('suggest-form').addEventListener('submit', event => {
+        event.preventDefault(); const id = state.dialog?.selected; if (!id) return;
+        const known = M.existing(state, id);
+        state = M.update(state, { type: known ? 'jump' : 'suggest', id });
+        closeDialog(); render(); focusItem(`place-${id}`);
+        announce(known ? `Showing ${known.name} in ${known.city}. No duplicate added.` : `Suggestion added to ${state.city}'s shortlist locally, separate from the settled plan.`);
+      });
+
+      const guides = {
+        itinerary: {
+          title: 'One scrolling itinerary, local advice in every city card, and a distinct Tokyo return',
+          steps: [
+            ['Open Eat inside the first Tokyo card', () => chooseShortlist('Tokyo', 'Eat')],
+            ['Choose Oct 20: reveal Nara in the Osaka card', () => chooseDay(20)],
+            ['Choose Oct 23: return to Tokyo, empty day', () => chooseDay(23)],
+            ['Follow the return pointer to Tokyo’s shared Eat shortlist', () => chooseShortlist('Tokyo', 'Eat')],
+            ['Explore the Elsewhere card', () => { dispatch({ type: 'city', city: 'Elsewhere' }); focusItem('stay-elsewhere'); }]
+          ]
+        },
+        votes: {
+          title: 'Vote within Tokyo’s card. One viewer, one vote per place across both Tokyo visits. Sample baseline: 8 up, 1 down.',
+          steps: [
+            ['Find teamLab Borderless', () => { dispatch({ type: 'jump', id: 'p01' }); focusItem('place-p01'); }],
+            ['Vote up: expect 9 up, 1 down', () => demoVote('up')],
+            ['Change to down: expect 8 up, 2 down', () => demoVote('down')],
+            ['Undo down: expect original 8 up, 1 down', () => demoVote('down')]
+          ]
+        },
+        suggestions: {
+          title: 'Suggest from Tokyo’s card. Add Nezu to its local shortlist, then try the same place from the return visit.',
+          steps: [
+            ['Search for Nezu Shrine, a new Tokyo place', () => guidedSearch('Nezu')],
+            ['Try Nezu from the Tokyo return: jump to the same suggestion', () => { chooseDay(23); guidedSearch('Nezu'); }],
+            ['Try teamLab, already shortlisted', () => guidedSearch('teamLab Borderless')],
+            ['Try Senso-ji, already scheduled', () => guidedSearch('Senso-ji')],
+            ['Try a search with no matches', () => guidedSearch('zzzz')]
+          ]
+        }
+      };
+      function demoVote(direction) {
+        state = M.update(state, { type: 'jump', id: 'p01' });
+        dispatch({ type: 'vote', id: 'p01', direction }); focusItem('place-p01');
+        const counts = M.tallies(state, M.shortlist[0]); announce(`teamLab Borderless: ${counts.up} up, ${counts.down} down.`);
+      }
+      function guidedSearch(query) {
+        dispatch({ type: 'shortlist-section', city: 'Tokyo', category: 'See' }); openDialog('Tokyo');
+        state = M.update(state, { type: 'search', query }); renderDialog();
+      }
+      function renderGuide() {
+        const content = $('guide-content'); content.replaceChildren();
+        if (!guide) return;
+        content.append(node('p', guides[guide].title));
+        if (guide === 'suggestions') content.append(node('p', 'In each dialog, use ↓ then Enter to select, optionally add a reason, then use the main button. Cancel to skip. Close the dialog before the next step.', 'small muted'));
+        const actions = node('div', undefined, 'demo-actions');
+        guides[guide].steps.forEach(([label, action], index) => {
+          const control = button(`${index + 1}. ${label}`, () => {
+            guideStep = index + 1; renderGuide();
+            const next = $(`guide-step-${guideStep}`) || $('guide-finished');
+            // Keep a connected focus target for modal restoration after rebuilding the guide.
+            next?.focus({ preventScroll: true });
+            action();
+          });
+          control.id = `guide-step-${index}`; control.disabled = index !== guideStep;
+          actions.append(control);
+        });
+        content.append(actions);
+        if (guideStep === guides[guide].steps.length) {
+          const done = node('p', 'Guide steps opened. Finish any open dialog, inspect the local state, then reset or explore freely.', 'small muted');
+          done.id = 'guide-finished'; done.tabIndex = -1; content.append(done);
+        }
+      }
+      function reset() {
+        if ($('suggest-dialog').open) closeDialog();
+        state = M.initial();
+        $('comment-form').reset(); $('comment-status').textContent = '';
+        guide = null; guideStep = 0; renderGuide(); render();
+        announce('Demo reset. Sample votes restored; local suggestions, comments and name cleared.');
+      }
+      $('reset').addEventListener('click', reset);
+      $('guides').addEventListener('click', event => {
+        const target = event.target.closest('[data-guide]'); if (!target) return;
+        reset(); guide = target.dataset.guide; renderGuide(); $('guide-step-0').focus({ preventScroll: true });
+      });
+      initializeNavigation(); render();
+      // The banner can wrap on phones or at increased text sizes.
+      new ResizeObserver(() => document.documentElement.style.setProperty('--banner-height', `${$('prototype-banner').getBoundingClientRect().height}px`)).observe($('prototype-banner'));
+    })();
+  </script>
+</body>
+</html>

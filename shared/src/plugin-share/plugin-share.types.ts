@@ -1,0 +1,9 @@
+/**
+ * Dependency-free public advice protocol entry point.
+ *
+ * Data contracts are inferred in plugin-share.schema.ts. This file only keeps
+ * protocol constants and re-exports those inferred types for the SDK generator.
+ */
+export const ADVICE_PLUGIN_ID = 'trip-advice' as const;
+export const ADVICE_SHARE_PERMISSION = 'share:guest' as const;
+export type * from './plugin-share.schema';

@@ -136,6 +136,10 @@ export const PUBLIC_ROUTE_ALLOW_LIST: string[] = [
   'OidcController.login',
   // Serves the sandbox document; the RPC inside it is authenticated.
   'PluginFrameController.serve',
+  'PluginSharePublicController.action',
+  // Advice token, session cookie, CSRF, scoped handle, same-origin and quota checks.
+  'PluginSharePublicController.photo',
+  'PluginSharePublicController.session',
   // Auth is per plugin route (route.auth in the manifest), asserted in the handler.
   'PluginsProxyController.proxy',
   // Share-token validated.

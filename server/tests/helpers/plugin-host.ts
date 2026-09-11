@@ -1,4 +1,7 @@
 import { DatabaseService } from '../../src/nest/database/database.service';
+import { PluginSharesService } from '../../src/nest/plugin-shares/plugin-shares.service';
+import { PluginShareProjectionService } from '../../src/nest/plugin-shares/plugin-share-projection.service';
+import { PluginSharesRpc } from '../../src/nest/plugin-shares/plugin-shares.rpc';
 import { PluginRuntimeService } from '../../src/nest/plugins/plugin-runtime.service';
 import { PluginUserSettingsService } from '../../src/nest/plugins/plugin-user-settings.service';
 import type { PluginRegistryService } from '../../src/nest/plugins/registry/registry.service';
@@ -86,6 +89,7 @@ import { makeStorageFixture } from './storage-fixture';
 export function createPluginRpcHostFactory(dbs: DatabaseService): PluginRpcHostFactory {
   const generalStorage = makeStorageFixture('').storage;
   const permissions = new PermissionsService(dbs);
+  const shares = new PluginSharesService(dbs, permissions, new PluginShareProjectionService(dbs), new RateLimitService());
   const exchangeRates = new ExchangeRatesService();
   const realtime = new RealtimeService();
   const budget = new BudgetService(dbs, permissions, exchangeRates, realtime);
@@ -116,6 +120,7 @@ export function createPluginRpcHostFactory(dbs: DatabaseService): PluginRpcHostF
   const guards = new PluginGuards(dbs, permissions, addons);
 
   const registry = createTestPluginRegistry([
+    new PluginSharesRpc(shares),
     new TagsRpc(new TagsService(dbs)),
     new CategoriesRpc(new CategoriesService(dbs)),
     new WeatherRpc(new WeatherService()),
@@ -143,7 +148,7 @@ export function createPluginRpcHostFactory(dbs: DatabaseService): PluginRpcHostF
     new HostSurfaceRpc(dbs, realtime, notifications, llmConfig, oauth, guards),
     new PluginHooks(undefined as never),
   ]);
-  return new PluginRpcHostFactory(dbs, registry as unknown as PluginRpcRegistryService);
+  return new PluginRpcHostFactory(dbs, registry as unknown as PluginRpcRegistryService, shares);
 }
 
 /** A PluginRuntimeService constructed the way Nest would: with a real host factory. */

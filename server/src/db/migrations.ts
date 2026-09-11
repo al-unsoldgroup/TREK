@@ -4257,6 +4257,66 @@ function runMigrations(db: Database.Database): void {
         db.exec('ALTER TABLE journey_entries ADD COLUMN stats_excluded INTEGER NOT NULL DEFAULT 0');
       }
     },
+    // USG-213: advice authority is separate from legacy public-share tokens.
+    () => {
+      // This migration is the sole owner of these tables. The existence checks
+      // make replay after a schema_version rewind safe; they are deliberately
+      // explicit rather than IF NOT EXISTS so this remains visible as migration
+      // ownership, not a blanket suppression of duplicate schema definitions.
+      const hasTable = (name: string) => db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined;
+      const hasIndex = (name: string) => db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name) !== undefined;
+      if (!hasTable('plugin_share_links')) db.exec(`CREATE TABLE plugin_share_links (
+        id TEXT PRIMARY KEY, trip_id INTEGER NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE, created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)), epoch INTEGER NOT NULL DEFAULT 1,
+        revision INTEGER NOT NULL DEFAULT 1, config_json TEXT NOT NULL, expires_at TEXT NOT NULL
+      );`);
+      if (!hasTable('plugin_share_sessions')) db.exec(`CREATE TABLE plugin_share_sessions (
+        id TEXT PRIMARY KEY, share_id TEXT NOT NULL REFERENCES plugin_share_links(id) ON DELETE CASCADE,
+        epoch INTEGER NOT NULL, guest_id TEXT NOT NULL, credential_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL
+      );`);
+      if (!hasIndex('plugin_share_sessions_scope')) db.exec('CREATE INDEX plugin_share_sessions_scope ON plugin_share_sessions(share_id, epoch)');
+      if (!hasIndex('plugin_share_sessions_expiry')) db.exec('CREATE INDEX plugin_share_sessions_expiry ON plugin_share_sessions(expires_at)');
+    },
+    // USG-216/218: immutable host identity for accepted advice imports.
+    () => {
+      const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get('plugin_place_imports') !== undefined;
+      if (!exists) db.exec(`CREATE TABLE plugin_place_imports (
+        plugin_id TEXT NOT NULL, trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        external_key TEXT NOT NULL, payload_hash TEXT NOT NULL, native_place_id INTEGER NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (plugin_id, trip_id, external_key),
+        UNIQUE (plugin_id, trip_id, native_place_id)
+      );`);
+    },
+    // USG-217: durable bounded Google Places attempt reservations. Provider
+    // values and photo names remain transient in the host process only.
+    () => {
+      const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get('plugin_share_usage') !== undefined;
+      const hasIndex = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get('plugin_share_usage_day') !== undefined;
+      if (!hasTable) db.exec(`CREATE TABLE plugin_share_usage (
+        scope_id TEXT NOT NULL, operation TEXT NOT NULL, usage_day TEXT NOT NULL,
+        attempts INTEGER NOT NULL CHECK(attempts >= 0),
+        PRIMARY KEY (scope_id, operation, usage_day)
+      );`);
+      if (!hasIndex) db.exec('CREATE INDEX plugin_share_usage_day ON plugin_share_usage(usage_day)');
+    },
+    // USG-213: share data lives in the addon, so cleanup must survive a process
+    // crash and a cascading trip delete. The outbox intentionally has no foreign
+    // key: a link's delete trigger is its producer, and cascading that row away
+    // would lose the only identifiers the addon needs to purge its own database.
+    () => {
+      const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get('plugin_share_lifecycle_outbox') !== undefined;
+      if (!hasTable) db.exec(`CREATE TABLE plugin_share_lifecycle_outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, method TEXT NOT NULL CHECK(method IN ('purge', 'erase_guest')),
+        share_id TEXT NOT NULL, guest_id TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(method, share_id, guest_id)
+      );`);
+      db.exec(`CREATE TRIGGER IF NOT EXISTS plugin_share_links_purge_outbox
+        BEFORE DELETE ON plugin_share_links BEGIN
+          INSERT OR IGNORE INTO plugin_share_lifecycle_outbox(method, share_id, guest_id) VALUES ('purge', OLD.id, '');
+        END;`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

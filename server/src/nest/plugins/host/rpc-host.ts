@@ -1,12 +1,13 @@
 import {
   KNOWN_METHODS,
+  type PublicSharePrincipal,
   METHOD_PERMISSION,
   type KnownMethod,
   type RpcError,
   type RpcRequest,
   type RpcResponse,
 } from '../protocol/envelope';
-import type { PluginDataDb } from './plugin-data.service';
+import type { PluginDataDb, PluginDataDbAccess } from './plugin-data.service';
 import { auditResource, isAuditable } from './plugin-audit';
 import { BadParams, ForbiddenResource } from './rpc-errors';
 import type { PluginRpcRegistry } from './rpc-kit/registry';
@@ -35,6 +36,8 @@ export { BadParams, ForbiddenResource };
 
 /** What the router needs that is neither a domain service nor a permission check. */
 export interface HostDeps {
+  validatePublicShare?(scope: PublicSharePrincipal): void;
+  publicShareData?(scope: PublicSharePrincipal): PluginDataDbAccess;
   /**
    * The plugin's own sqlite (db:own). A GETTER on the factory side, resolved per
    * access: disable()/re-enable builds a NEW host while the old one's dispose() may
@@ -51,7 +54,7 @@ export interface HostDeps {
   audit?(entry: { pluginId: string; actingUserId?: number; method: string; resource: string | null; code: string }): void;
 }
 
-type Handler = (params: Record<string, unknown>, actingUserId: number | undefined) => unknown;
+type Handler = (params: Record<string, unknown>, actingUserId: number | undefined, publicShare?: PublicSharePrincipal) => unknown;
 
 export class PluginRpcHost {
   private methods = new Map<string, Handler>();
@@ -65,11 +68,12 @@ export class PluginRpcHost {
     // `deps.data` is the lazy per-access getter the factory supplies, so passing it
     // through a getter here preserves the disable/re-enable semantics exactly and the
     // kit never needs to know about plugin-host-state.
-    registry.bindInto(this.methods, granted, (actingUserId) => ({
+    registry.bindInto(this.methods, granted, (actingUserId, publicShare) => ({
       pluginId,
       actingUserId,
+      publicShare,
       get data() {
-        return deps.data;
+        return publicShare && deps.publicShareData ? deps.publicShareData(publicShare) : deps.data;
       },
       // Per host, like everything else on the context: the router behind these binds
       // THIS plugin as the caller, which is what lets it authorise a call against the
@@ -81,7 +85,18 @@ export class PluginRpcHost {
     }));
   }
 
-  async dispatch(req: RpcRequest, actingUserId?: number): Promise<RpcResponse | RpcError> {
+  async dispatch(req: RpcRequest, actingUserId?: number, publicShare?: PublicSharePrincipal): Promise<RpcResponse | RpcError> {
+    if (publicShare) {
+      // Public invocations expose only the projection, fail-closed selection seam,
+      // and the addon's scoped own database. Native/member/open methods remain denied.
+      const allowed = req.method === 'publicShare.snapshot' || req.method === 'publicShare.resolveSelection' ||
+        ((req.method === 'db.query' || req.method === 'db.exec' || req.method === 'db.tx') && !!this.deps.publicShareData);
+      if (actingUserId !== undefined || publicShare.pluginId !== this.pluginId || !allowed || !this.deps.validatePublicShare) {
+        return this.err(req.id, 'RESOURCE_FORBIDDEN', 'Method unavailable in public share context');
+      }
+      try { this.deps.validatePublicShare(publicShare); }
+      catch { return this.err(req.id, 'RESOURCE_FORBIDDEN', 'Public share unavailable'); }
+    }
     // Anything but an object is treated as no params at all. The envelope comes
     // off an IPC channel a plugin can write to, and `'_inv' in raw` below throws a
     // TypeError on a primitive — outside handle()'s try/catch, so it escapes as a
@@ -94,7 +109,11 @@ export class PluginRpcHost {
     // from rejecting calls every shipped plugin makes.
     const { _inv, ...stripped } = raw;
     const params = '_inv' in raw ? stripped : raw;
-    const res = await this.handle(req, params, actingUserId);
+    const res = await this.handle(req, params, actingUserId, publicShare);
+    if (publicShare) {
+      try { this.deps.validatePublicShare!(publicShare); }
+      catch { return this.err(req.id, 'RESOURCE_FORBIDDEN', 'Public share unavailable'); }
+    }
     // Audit the core-data / broadcast surface (incl. denials) at the boundary.
     if (this.deps.audit && isAuditable(req.method)) {
       try {
@@ -116,6 +135,7 @@ export class PluginRpcHost {
     req: RpcRequest,
     params: Record<string, unknown>,
     actingUserId?: number,
+    publicShare?: PublicSharePrincipal,
   ): Promise<RpcResponse | RpcError> {
     const handler = this.methods.get(req.method);
     if (!handler) {
@@ -129,7 +149,7 @@ export class PluginRpcHost {
       );
     }
     try {
-      const result = await handler(params, actingUserId);
+      const result = await handler(params, actingUserId, publicShare);
       return { k: 'res', id: req.id, ok: true, result };
     } catch (e) {
       if (e instanceof BadParams) return this.err(req.id, 'BAD_PARAMS', e.message);
