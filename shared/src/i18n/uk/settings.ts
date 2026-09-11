@@ -17,6 +17,7 @@ const settings: TranslationStrings = {
     'Ваші особисті налаштування для плагінів, які ви використовуєте (ключі API, уподобання).',
   'settings.plugins.empty': 'Немає активних плагінів.',
   'settings.plugins.saved': 'Налаштування збережено',
+  'settings.plugins.requiredMissing': '«{field}» обов’язкове',
   'settings.tabs.account': 'Обліковий запис',
   'settings.tabs.offline': 'Офлайн',
   'settings.tabs.about': 'Про застосунок',
@@ -24,7 +25,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Шаблон карти',
   'settings.mapTemplatePlaceholder.select': 'Виберіть шаблон...',
   'settings.mapDefaultHint': 'Залиште порожнім для OpenStreetMap (за замовчуванням)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'URL-шаблон для тайлів карти',
   'settings.mapProvider': 'Провайдер карти',
   'settings.mapProviderHint': 'Застосовується до Trip Planner та Journey. Atlas завжди використовує Leaflet.',
@@ -35,6 +35,12 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Токен доступу Mapbox',
   'settings.mapMapboxTokenHint': 'Публічний токен (pk.*) з',
   'settings.mapMapboxTokenLink': 'mapbox.com → Токени доступу',
+  'settings.mapCartoKey': 'Ключ API CARTO',
+  'settings.mapCartoKeyHint':
+    'Без ключа базові карти CARTO показують водяний знак. Безкоштовно та без облікового запису, на',
+  'settings.mapCartoKeyLink': 'ключ API базових карт carto.com',
+  'settings.mapCartoKeyMissing':
+    'Цей шаблон є базовою картою CARTO. Без ключа CARTO наносить "API KEY REQUIRED" на кожен тайл. Доки ключ не вказано, TREK показує базову карту за замовчуванням.',
   'settings.mapStyle': 'Стиль карти',
   'settings.mapStylePlaceholder': 'Виберіть стиль Mapbox',
   'settings.mapStyleHint': 'Preset або власний URL mapbox://styles/USER/ID',
@@ -79,6 +85,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Нагадування про поїздку',
   'settings.notifyTodoDue': 'Завдання до терміну',
   'settings.notifyVacayInvite': "Запрошення об'єднання Vacay",
+  'settings.notifyVacayShare': 'Спільний доступ до календарів Vacay',
   'settings.notifyPhotosShared': 'Спільні фото (Immich)',
   'settings.notifyCollabMessage': 'Повідомлення чату (Collab)',
   'settings.notifyPackingTagged': 'Список речей: призначення',
@@ -152,7 +159,7 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.redirectUris': 'URI перенаправлення',
   'settings.oauth.modal.redirectUrisPlaceholder': 'https://your-app.com/callback\nhttps://your-app.com/auth',
   'settings.oauth.modal.redirectUrisHint':
-    'Один URI на рядок. Потрібен HTTPS (localhost виключено). Потрібне точне співпадіння.',
+    'Один URI на рядок. HTTPS, локальний HTTP або власна схема застосунку (myapp://). Потрібне точне співпадіння, окрім порту локального URI.',
   'settings.oauth.modal.scopes': 'Дозволені області доступу',
   'settings.oauth.modal.scopesHint':
     'list_trips і get_trip_summary завжди доступні — область не потрібна. Вони допомагають ШІ знаходити потрібні ID поїздок.',
@@ -176,6 +183,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Запропонувати функцію',
   'settings.about.featureRequestHint': 'Запропонуйте нову функцію',
   'settings.about.wikiHint': 'Документація та керівництва',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Щомісячні спонсори',
   'settings.about.supporters.title': 'Спутники TREK',
   'settings.about.supporters.subtitle':
@@ -255,6 +266,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Фото профілю оновлено',
   'settings.avatarRemoved': 'Фото профілю видалено',
   'settings.avatarError': 'Помилка завантаження',
+  'settings.avatarRemoveError': 'Помилка видалення',
   'settings.bookingLabels': 'Підписи маршрутів бронювань',
   'settings.bookingLabelsHint': 'Показує назви станцій / аеропортів на карті. Якщо вимкнено, показується лише значок.',
   'settings.notifyVersionAvailable': 'Доступна нова версія',
@@ -298,8 +310,9 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.machineClientUsage':
     'Отримати токен: POST /oauth/token з grant_type=client_credentials, client_id і client_secret. Без браузера, без токена оновлення.',
   'settings.oauth.badge.machine': 'машина',
-  'settings.currency': 'Currency',
-  'settings.currencyHint': 'All amounts in Costs are converted to and shown in this currency.',
+  'settings.currency': 'Валюта відображення',
+  'settings.currencyHint':
+    'Суми в розділі «Витрати» відображаються в цій валюті лише для перегляду — початкові суми не змінюються.',
   'settings.currencyTrip': 'Валюта подорожі',
   'settings.passkey.title': 'Passkeys',
   'settings.passkey.description':
@@ -348,11 +361,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Не вдалося підключитися',
   'settings.aiParsing.title': 'Розпізнавання ШІ',
   'settings.aiParsing.hint':
-    'Використовуйте власну модель ШІ для вилучення бронювань із завантажених файлів. Це діє лише тоді, коли адміністратор не налаштував модель для всього екземпляра.',
+    'Виберіть модель ШІ для вилучення бронювань із завантажених файлів. Це діє лише тоді, коли адміністратор не налаштував модель для всього екземпляра.',
   'settings.aiParsing.provider': 'Постачальник',
   'settings.aiParsing.providerLocal': 'Локальний (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'Локальна кінцева точка (Ollama) налаштовується один раз для всього екземпляра в налаштуваннях адміністратора. Власний ключ OpenAI або Anthropic ви можете використовувати тут і надалі.',
   'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
   'settings.aiParsing.gatewayAccountId': 'ID облікового запису Cloudflare',
   'settings.aiParsing.gatewayId': 'ID шлюзу',
@@ -437,8 +452,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Place names, descriptions',
   'settings.appearance.example.small': 'Addresses, labels',
   'settings.appearance.experimental': 'Experimental',
+  'settings.appearance.mobileNav': 'Нижня панель навігації',
+  'settings.appearance.mobileNav.hint':
+    'Виберіть, які елементи показувати на панелі, а які — під «Ще». «Головна» завжди залишається першою.',
+  'settings.appearance.mobileNav.inBar': 'На панелі',
+  'settings.appearance.mobileNav.underMore': 'Під «Ще»',
+  'settings.appearance.mobileNav.moreEmpty': 'Поки що порожньо — усе вміщається на панелі.',
+  'settings.appearance.mobileNav.pinned': 'Закріплено',
+  'settings.appearance.mobileNav.toMore': 'Перемістити під «Ще»',
+  'settings.appearance.mobileNav.toBar': 'Перемістити на панель',
+  'settings.appearance.dashOrder': 'Порядок панелі',
+  'settings.appearance.dashOrder.hint':
+    'Змініть порядок, у якому список подорожей і віджети розташовуються на панелі телефона. Виділена подорож завжди залишається вгорі.',
+  'settings.appearance.dashOrder.trips': 'Подорожі',
+  'settings.appearance.dashOrder.hidden': 'Приховано',
   'settings.general.languageRegion': 'Language & region',
   'settings.general.travelMap': 'Travel & map',
+  'settings.general.startup': 'Запуск',
+  'settings.startPage': 'Стартова сторінка',
+  'settings.startPageDashboard': 'Панель',
+  'settings.startPageActiveTrip': 'Активна поїздка',
+  'settings.startPageHint':
+    'TREK одразу відкриває поїздку, яка триває зараз, інакше найближчу майбутню. Це та сама поїздка, яку виділяє панель.',
+  'settings.startTripTab': 'Стартова вкладка',
+  'settings.startTripTabHint':
+    'Вкладка, з якою відкривається поїздка. Якщо вона належить до вимкненого доповнення, натомість відкриється план.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Офлайн-кеш',
@@ -466,6 +504,14 @@ const settings: TranslationStrings = {
   'settings.offline.storage.tripsTitle': 'Поїздки',
   'settings.offline.storage.tripOn': 'Збережено офлайн',
   'settings.offline.storage.tripOff': 'Не збережено',
+  'settings.offline.storage.tripFinished': 'Завершено. Зберігається, лише якщо ви це увімкнете.',
+  'settings.offline.notice.stored': 'На цьому пристрої збережено подорожей: {count}',
+  'settings.offline.notice.nothing': 'Нічого зберігати. Увімкніть подорожі, які хочете залишити.',
+  'settings.offline.notice.busy': 'Синхронізація вже триває. Спробуйте ще раз за мить.',
+  'settings.offline.notice.offline': 'Немає з’єднання. Під’єднайтеся, щоб зберегти подорожі офлайн.',
+  'settings.offline.notice.signedOut': 'Сеанс завершився. Увійдіть знову, щоб синхронізувати.',
+  'settings.offline.notice.failed': 'Не вдалося завершити завантаження. Перевірте з’єднання і спробуйте ще раз.',
+  'settings.offline.notice.loadFailed': 'Не вдалося прочитати офлайн-сховище цього пристрою. Зазвичай допомагає очищення кешу.',
   'settings.offline.clear': 'Очистити кеш',
   'settings.offline.clearConfirm':
     'Очистити всі офлайн-дані поїздок? Ви можете синхронізувати їх будь-коли в режимі онлайн.',
@@ -503,7 +549,32 @@ const settings: TranslationStrings = {
   'settings.pluginActivity.columns.when': 'Коли',
   'settings.pluginActivity.columns.status': 'Результат',
   'settings.alwaysShowRoutes': 'Завжди показувати маршрути бронювань',
-  'settings.alwaysShowRoutesHint': 'Автоматично показує на карті маршрут для кожного рейсу, поїзда та іншого бронювання — без потреби вмикати це окремо для кожного елемента.',
+  'settings.alwaysShowRoutesHint':
+    'Автоматично показує на карті маршрут для кожного рейсу, поїзда та іншого бронювання — без потреби вмикати це окремо для кожного елемента.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Ключі API',
+  'settings.apiKeys.description': 'Ключі для публічного API, щоб інші програми могли читати ваші подорожі. Лише читання: ключ нічого не змінить і не видалить.',
+  'settings.apiKeys.create': 'Створити ключ',
+  'settings.apiKeys.empty': 'Ключів ще немає. Створіть один, щоб підключити іншу програму.',
+  'settings.apiKeys.createdAt': 'створено',
+  'settings.apiKeys.usedAt': 'востаннє використано',
+  'settings.apiKeys.deleteTitle': 'Видалити ключ',
+  'settings.apiKeys.deleteMessage': 'Усе, що використовує цей ключ, одразу перестане працювати. Скасувати не можна.',
+  'settings.apiKeys.deleted': 'Ключ видалено',
+  'settings.apiKeys.deleteFailed': 'Не вдалося видалити ключ',
+  'settings.apiKeys.createFailed': 'Не вдалося створити ключ',
+  'settings.apiKeys.copy': 'Копіювати',
+  'settings.apiKeys.docsHint': 'Надсилайте ключ як "Authorization: Bearer ..." або "X-API-Key: ..." на /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Створити ключ API',
+  'settings.apiKeys.modal.name': 'Назва',
+  'settings.apiKeys.modal.namePlaceholder': 'напр. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Лише для вас, щоб пізніше впізнати ключ.',
+  'settings.apiKeys.modal.creating': 'Створення...',
+  'settings.apiKeys.modal.create': 'Створити',
+  'settings.apiKeys.modal.createdTitle': 'Ключ API створено',
+  'settings.apiKeys.modal.createdWarning': 'Скопіюйте ключ зараз. Він показується один раз, пізніше його не отримати.',
+  'settings.apiKeys.modal.done': 'Готово',
 };
 
 export default settings;

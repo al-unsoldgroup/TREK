@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Alleen-lezen toegang tot deze chat',
+  'collab.chat.messageOptions': 'Berichtopties',
+  'collab.polls.confirmDeleteTitle': 'Peiling verwijderen?',
+  'collab.polls.confirmDeleteBody': 'Deze peiling wordt permanent verwijderd.',
+  'collab.polls.countdownDaysHours': 'Nog {d}d {h}u',
+  'collab.polls.countdownHoursMinutes': 'Nog {h}u {m}m',
+  'collab.polls.countdownMinutes': 'Nog {m}m',
+  'collab.polls.clearDeadline': 'Deadline wissen',
   'collab.tabs.chat': 'Chat',
   'collab.tabs.notes': 'Notities',
   'collab.tabs.polls': 'Polls',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Begin met het vastleggen van ideeën en plannen',
   'collab.notes.all': 'Alle',
   'collab.notes.titlePlaceholder': 'Notitietitel',
+  'collab.notes.content': 'Inhoud',
+  'collab.notes.removeFile': '{name} verwijderen',
   'collab.notes.contentPlaceholder': 'Schrijf iets...',
   'collab.notes.categoryPlaceholder': 'Categorie',
   'collab.notes.newCategory': 'Nieuwe categorie...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Stel de groep een vraag en stem samen',
   'collab.polls.question': 'Vraag',
   'collab.polls.questionPlaceholder': 'Wat zullen we doen?',
+  'collab.polls.markdownHint': 'Markdown wordt ondersteund',
   'collab.polls.addOption': '+ Optie toevoegen',
   'collab.polls.optionPlaceholder': 'Optie {n}',
   'collab.polls.create': 'Poll aanmaken',

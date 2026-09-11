@@ -16,6 +16,7 @@ const settings: TranslationStrings = {
   'settings.plugins.subtitle': 'Pengaturan pribadimu untuk plugin yang kamu gunakan (kunci API, preferensi).',
   'settings.plugins.empty': 'Tidak ada plugin yang aktif.',
   'settings.plugins.saved': 'Pengaturan disimpan',
+  'settings.plugins.requiredMissing': '"{field}" wajib diisi',
   'settings.tabs.account': 'Akun',
   'settings.tabs.offline': 'Offline',
   'settings.tabs.about': 'Tentang',
@@ -23,7 +24,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Template Peta',
   'settings.mapTemplatePlaceholder.select': 'Pilih template...',
   'settings.mapDefaultHint': 'Kosongkan untuk OpenStreetMap (default)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'Template URL untuk tile peta',
   'settings.mapProvider': 'Penyedia peta',
   'settings.mapProviderHint': 'Berlaku untuk peta Trip Planner dan Journey. Atlas selalu menggunakan Leaflet.',
@@ -34,6 +34,11 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Token akses Mapbox',
   'settings.mapMapboxTokenHint': 'Token publik (pk.*) dari',
   'settings.mapMapboxTokenLink': 'mapbox.com → Token akses',
+  'settings.mapCartoKey': 'Kunci API CARTO',
+  'settings.mapCartoKeyHint': 'Peta dasar CARTO menampilkan tanda air tanpa kunci. Gratis, tanpa akun, dari',
+  'settings.mapCartoKeyLink': 'kunci API peta dasar carto.com',
+  'settings.mapCartoKeyMissing':
+    'Templat ini adalah peta dasar CARTO. Tanpa kunci, CARTO mencetak "API KEY REQUIRED" di setiap ubin. Sampai kunci dimasukkan, TREK menampilkan peta dasar bawaan.',
   'settings.mapStyle': 'Gaya peta',
   'settings.mapStylePlaceholder': 'Pilih gaya Mapbox',
   'settings.mapStyleHint': 'Preset atau URL mapbox://styles/USER/ID milikmu',
@@ -78,6 +83,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Pengingat perjalanan',
   'settings.notifyTodoDue': 'Tugas jatuh tempo',
   'settings.notifyVacayInvite': 'Undangan Vacay fusion',
+  'settings.notifyVacayShare': 'Berbagi kalender Vacay',
   'settings.notifyPhotosShared': 'Foto dibagikan (Immich)',
   'settings.notifyCollabMessage': 'Pesan chat (Collab)',
   'settings.notifyPackingTagged': 'Daftar bawaan: penugasan',
@@ -186,7 +192,7 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.redirectUris': 'Redirect URI',
   'settings.oauth.modal.redirectUrisPlaceholder': 'https://aplikasiku.com/callback\nhttps://aplikasiku.com/auth',
   'settings.oauth.modal.redirectUrisHint':
-    'Satu URI per baris. HTTPS wajib (localhost dikecualikan). Kecocokan tepat diberlakukan.',
+    'Satu URI per baris. HTTPS, HTTP loopback, atau skema aplikasi pribadi (myapp://). Kecocokan tepat, kecuali port pada URI loopback.',
   'settings.oauth.modal.scopes': 'Cakupan yang Diizinkan',
   'settings.oauth.modal.scopesHint':
     'list_trips dan get_trip_summary selalu tersedia — tidak perlu cakupan. Keduanya memungkinkan AI menemukan ID perjalanan yang diperlukan untuk menggunakan alat lainnya.',
@@ -216,6 +222,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Permintaan Fitur',
   'settings.about.featureRequestHint': 'Sarankan fitur baru',
   'settings.about.wikiHint': 'Dokumentasi & panduan',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Pendukung Bulanan',
   'settings.about.supporters.title': 'Rekan perjalanan untuk TREK',
   'settings.about.supporters.subtitle':
@@ -268,6 +278,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Foto profil diperbarui',
   'settings.avatarRemoved': 'Foto profil dihapus',
   'settings.avatarError': 'Gagal mengunggah',
+  'settings.avatarRemoveError': 'Gagal menghapus',
   'settings.mfa.title': 'Autentikasi dua faktor (2FA)',
   'settings.mfa.description':
     'Menambahkan langkah kedua saat masuk dengan email dan kata sandi. Gunakan aplikasi autentikator (Google Authenticator, Authy, dll.).',
@@ -297,8 +308,9 @@ const settings: TranslationStrings = {
   'settings.mfa.demoBlocked': 'Tidak tersedia dalam mode demo',
   'settings.bookingLabels': 'Label rute pemesanan',
   'settings.bookingLabelsHint': 'Menampilkan nama stasiun / bandara di peta. Jika mati, hanya ikon ditampilkan.',
-  'settings.currency': 'Currency',
-  'settings.currencyHint': 'All amounts in Costs are converted to and shown in this currency.',
+  'settings.currency': 'Mata uang tampilan',
+  'settings.currencyHint':
+    'Jumlah di Biaya ditampilkan dalam mata uang ini hanya untuk tampilan — jumlah aslinya tidak berubah.',
   'settings.currencyTrip': 'Mata uang perjalanan',
   'settings.passkey.title': 'Passkey',
   'settings.passkey.description':
@@ -346,11 +358,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Koneksi gagal',
   'settings.aiParsing.title': 'Penguraian AI',
   'settings.aiParsing.hint':
-    'Gunakan model AI milikmu sendiri untuk mengekstrak pemesanan dari file yang diunggah. Ini hanya berlaku jika administrator belum mengonfigurasi model untuk seluruh instance.',
+    'Pilih model AI yang dipakai untuk mengekstrak pemesanan dari file yang diunggah. Ini hanya berlaku jika administrator belum mengonfigurasi model untuk seluruh instance.',
   'settings.aiParsing.provider': 'Penyedia',
   'settings.aiParsing.providerLocal': 'Lokal (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'Endpoint lokal (Ollama) diatur sekali untuk seluruh instansi di pengaturan administrator. Kamu tetap bisa memakai kunci OpenAI atau Anthropic milikmu sendiri di sini.',
   'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
   'settings.aiParsing.gatewayAccountId': 'ID akun Cloudflare',
   'settings.aiParsing.gatewayId': 'ID gateway',
@@ -435,8 +449,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Place names, descriptions',
   'settings.appearance.example.small': 'Addresses, labels',
   'settings.appearance.experimental': 'Experimental',
+  'settings.appearance.mobileNav': 'Bilah navigasi bawah',
+  'settings.appearance.mobileNav.hint':
+    'Pilih item yang tampil di bilah dan yang masuk ke “Lainnya”. Dasbor selalu tetap di urutan pertama.',
+  'settings.appearance.mobileNav.inBar': 'Di bilah',
+  'settings.appearance.mobileNav.underMore': 'Di bawah “Lainnya”',
+  'settings.appearance.mobileNav.moreEmpty': 'Belum ada apa pun di sini — semuanya muat di bilah.',
+  'settings.appearance.mobileNav.pinned': 'Disematkan',
+  'settings.appearance.mobileNav.toMore': 'Pindahkan ke “Lainnya”',
+  'settings.appearance.mobileNav.toBar': 'Pindahkan ke bilah',
+  'settings.appearance.dashOrder': 'Urutan dasbor',
+  'settings.appearance.dashOrder.hint':
+    'Atur ulang susunan daftar perjalanan dan widget di dasbor ponsel Anda. Perjalanan unggulan selalu berada di atas.',
+  'settings.appearance.dashOrder.trips': 'Perjalanan',
+  'settings.appearance.dashOrder.hidden': 'Tersembunyi',
   'settings.general.languageRegion': 'Language & region',
   'settings.general.travelMap': 'Travel & map',
+  'settings.general.startup': 'Mulai',
+  'settings.startPage': 'Halaman awal',
+  'settings.startPageDashboard': 'Dasbor',
+  'settings.startPageActiveTrip': 'Perjalanan aktif',
+  'settings.startPageHint':
+    'TREK langsung membuka perjalanan yang sedang berlangsung, atau yang paling dekat akan dimulai. Perjalanan yang sama yang disorot dasbor.',
+  'settings.startTripTab': 'Tab awal',
+  'settings.startTripTabHint':
+    'Tab yang dibuka bersama perjalanan. Jika tab itu milik addon yang dimatikan, tampilan rencana yang dibuka.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Cache offline',
@@ -464,6 +501,14 @@ const settings: TranslationStrings = {
   'settings.offline.storage.tripsTitle': 'Perjalanan',
   'settings.offline.storage.tripOn': 'Disimpan offline',
   'settings.offline.storage.tripOff': 'Tidak disimpan',
+  'settings.offline.storage.tripFinished': 'Selesai. Hanya disimpan jika kamu mengaktifkannya.',
+  'settings.offline.notice.stored': '{count} perjalanan tersimpan di perangkat ini',
+  'settings.offline.notice.nothing': 'Tidak ada yang perlu disimpan. Aktifkan perjalanan yang ingin kamu simpan.',
+  'settings.offline.notice.busy': 'Sinkronisasi sedang berjalan. Coba lagi sebentar.',
+  'settings.offline.notice.offline': 'Tidak ada koneksi. Hubungkan untuk menyimpan perjalanan secara offline.',
+  'settings.offline.notice.signedOut': 'Sesimu telah berakhir. Masuk lagi untuk menyinkronkan.',
+  'settings.offline.notice.failed': 'Unduhan tidak dapat diselesaikan. Periksa koneksimu dan coba lagi.',
+  'settings.offline.notice.loadFailed': 'Tidak dapat membaca penyimpanan offline perangkat ini. Membersihkan cache biasanya memperbaikinya.',
   'settings.offline.clear': 'Hapus cache',
   'settings.offline.clearConfirm':
     'Hapus semua data perjalanan offline? Kamu bisa menyinkronkan ulang kapan saja saat online.',
@@ -501,7 +546,32 @@ const settings: TranslationStrings = {
   'settings.pluginActivity.columns.when': 'Waktu',
   'settings.pluginActivity.columns.status': 'Hasil',
   'settings.alwaysShowRoutes': 'Selalu tampilkan rute pemesanan',
-  'settings.alwaysShowRoutesHint': 'Menampilkan rute setiap penerbangan, kereta, dan pemesanan lainnya di peta secara otomatis, tanpa perlu mengaktifkannya satu per satu.',
+  'settings.alwaysShowRoutesHint':
+    'Menampilkan rute setiap penerbangan, kereta, dan pemesanan lainnya di peta secara otomatis, tanpa perlu mengaktifkannya satu per satu.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Kunci API',
+  'settings.apiKeys.description': 'Kunci untuk API publik, agar perangkat lunak lain dapat membaca perjalananmu. Hanya baca: kunci tidak dapat mengubah atau menghapus apa pun.',
+  'settings.apiKeys.create': 'Buat kunci',
+  'settings.apiKeys.empty': 'Belum ada kunci. Buat satu untuk menghubungkan perangkat lunak lain.',
+  'settings.apiKeys.createdAt': 'dibuat',
+  'settings.apiKeys.usedAt': 'terakhir dipakai',
+  'settings.apiKeys.deleteTitle': 'Hapus kunci',
+  'settings.apiKeys.deleteMessage': 'Semua yang memakai kunci ini langsung berhenti bekerja. Tindakan ini tidak bisa dibatalkan.',
+  'settings.apiKeys.deleted': 'Kunci dihapus',
+  'settings.apiKeys.deleteFailed': 'Kunci tidak dapat dihapus',
+  'settings.apiKeys.createFailed': 'Kunci tidak dapat dibuat',
+  'settings.apiKeys.copy': 'Salin',
+  'settings.apiKeys.docsHint': 'Kirim kunci sebagai "Authorization: Bearer ..." atau "X-API-Key: ..." ke /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Buat kunci API',
+  'settings.apiKeys.modal.name': 'Nama',
+  'settings.apiKeys.modal.namePlaceholder': 'mis. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Hanya untukmu, agar kamu mengenali kunci ini nanti.',
+  'settings.apiKeys.modal.creating': 'Membuat...',
+  'settings.apiKeys.modal.create': 'Buat',
+  'settings.apiKeys.modal.createdTitle': 'Kunci API dibuat',
+  'settings.apiKeys.modal.createdWarning': 'Salin kunci sekarang. Kunci hanya ditampilkan sekali dan tidak bisa diambil lagi.',
+  'settings.apiKeys.modal.done': 'Selesai',
 };
 
 export default settings;

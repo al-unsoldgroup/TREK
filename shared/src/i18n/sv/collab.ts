@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Skrivskyddad åtkomst till den här chatten',
+  'collab.chat.messageOptions': 'Meddelandealternativ',
+  'collab.polls.confirmDeleteTitle': 'Ta bort omröstning?',
+  'collab.polls.confirmDeleteBody': 'Den här omröstningen tas bort permanent.',
+  'collab.polls.countdownDaysHours': '{d}d {h}h kvar',
+  'collab.polls.countdownHoursMinutes': '{h}h {m}min kvar',
+  'collab.polls.countdownMinutes': '{m}min kvar',
+  'collab.polls.clearDeadline': 'Ta bort deadline',
   'collab.tabs.chat': 'Chatt',
   'collab.tabs.notes': 'Noteringar',
   'collab.tabs.polls': 'Omröstningar',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Börja samla in idéer och planer',
   'collab.notes.all': 'Alla',
   'collab.notes.titlePlaceholder': 'Noterings titel',
+  'collab.notes.content': 'Innehåll',
+  'collab.notes.removeFile': 'Ta bort {name}',
   'collab.notes.contentPlaceholder': 'Skriv något...',
   'collab.notes.categoryPlaceholder': 'Kategori',
   'collab.notes.newCategory': 'Ny kategori...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Fråga gruppen och rösta tillsammans',
   'collab.polls.question': 'Fråga',
   'collab.polls.questionPlaceholder': 'Vad ska vi göra?',
+  'collab.polls.markdownHint': 'Markdown stöds',
   'collab.polls.addOption': '+ Lägg till alternativ',
   'collab.polls.optionPlaceholder': 'Alternativ {n}',
   'collab.polls.create': 'Skapa omröstning',

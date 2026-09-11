@@ -15,5 +15,12 @@ const map: TranslationStrings = {
   'poi.cat.activities': 'Aktiviteter',
   'map.showAllConnections': 'Visa alla bokningsvägar',
   'map.hideAllConnections': 'Dölj alla bokningsvägar',
+  'map.baseLayer.default': 'Karta',
+  'map.baseLayer.satellite': 'Satellit',
+  'map.baseLayer.switchToSatellite': 'Byt till satellitvy',
+  'map.baseLayer.switchToDefault': 'Byt till kartvy',
+  'map.location.denied': 'Platsåtkomst är blockerad. Kontrollera enhetens inställningar; en installerad app har ett eget platstillstånd, skilt från webbläsaren.',
+  'map.location.unavailable': 'Din plats kunde inte fastställas.',
+  'map.location.timeout': 'Platsbestämningen tog för lång tid. Försök igen med friare sikt mot himlen.',
 };
 export default map;

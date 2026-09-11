@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 // Mock the crypto layer so these tests assert the helpers' *semantics* (which fields
 // are encrypted, preserved or masked) rather than re-testing AES — apiKeyCrypto has
 // its own suite, and mocking keeps this file free of the ENCRYPTION_KEY config.
-vi.mock('../../../src/services/apiKeyCrypto', () => ({
+vi.mock('../../../src/nest/common/crypto/apiKeyCrypto', () => ({
   maybe_encrypt_api_key: (v: unknown) => (String(v || '').trim() ? `enc(${v})` : null),
   decrypt_api_key: (v: unknown) =>
     typeof v === 'string' && v.startsWith('enc(') ? v.slice(4, -1) : (v ?? null),
@@ -15,7 +15,7 @@ import {
   prepareLlmAddonConfigForWrite,
   MASKED_VALUE,
   LLM_PROVIDERS,
-} from '../../../src/services/llmConfig';
+} from '../../../src/nest/llm-parse/llm-config';
 
 describe('LLM_PROVIDERS', () => {
   it('includes cloudflare so the resolver accepts a stored gateway config', () => {

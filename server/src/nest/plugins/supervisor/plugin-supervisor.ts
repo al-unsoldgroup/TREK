@@ -1,8 +1,10 @@
 import fs from 'node:fs';
+import type { PublicSharePrincipal } from '../protocol/envelope';
 import { randomUUID } from 'node:crypto';
 import { fork, type ChildProcess } from 'node:child_process';
+import { readEnv } from '../../../app-config';
 import { resolveChildEntry, pluginCodeDir, pluginRealCodeDir, pluginPermissionArgs, ensurePluginModuleType } from '../paths';
-import type { Envelope, RpcError, RpcRequest } from '../protocol/envelope';
+import { HOOK_PERMISSION, USER_DATA_PERMISSION, EVENTS_PERMISSION, type Envelope, type RpcError, type RpcRequest } from '../protocol/envelope';
 import type { PluginRpcHost } from '../host/rpc-host';
 import { scheduleJobs, stopJobs, type ScheduledJob } from '../host/plugin-jobs';
 import { SNAPSHOT_GRANT, type PluginEventMeta } from '../../../plugin-event-sink';
@@ -52,13 +54,14 @@ interface Supervised {
   lastRss: number; // last reported resident set size (bytes)
   routes: PluginRouteInfo[];
   jobs: ScheduledJob[]; // declared background jobs (id + cron schedule)
-  jobTasks?: ReturnType<typeof scheduleJobs>; // live node-cron tasks (only when jobs:run granted)
+  jobTasks?: ReturnType<typeof scheduleJobs>; // live cron jobs (only when jobs:run granted)
   hooks: string[]; // provider hooks the plugin implements (e.g. 'placeDetailProvider')
   events: string[]; // core events the plugin subscribes to (names or '*')
   exports: string[]; // functions the plugin exposes to dependents (ctx.plugins.call)
+  mcpTools: string[]; // MCP tool names the plugin reported implementing at load
   subscriptions: Array<{ plugin: string; event: string }>; // other-plugin events it listens to
   pending: Map<string, Pending>; // host→child invokes awaiting a response
-  invocations: Map<string, number | undefined>; // reqId -> acting user of that invoke (undefined = no user, e.g. a job)
+  invocations: Map<string, { actingUserId?: number; publicShare?: PublicSharePrincipal; publicShareLifecycle?: boolean }>;
   rpcLimiter: RpcRateLimiter; // caps this plugin's ctx.* call rate + concurrency (host-loop DoS guard)
   logLimiter: TokenBucket; // caps this plugin's log/stderr volume (host-loop DoS guard, separate from rpcLimiter)
   droppedLogs: number; // count of log lines dropped by logLimiter since the last one got through
@@ -89,26 +92,9 @@ const DEFAULTS: Required<SupervisorTuning> = {
   // Hard RSS ceiling — the real memory cap. --max-old-space-size only bounds the
   // V8 heap; Buffers/ArrayBuffers/native allocations sail past it, so a plugin
   // could OOM the box while staying "under" the heap limit. Overridable via env.
-  maxRssBytes: (Number(process.env.TREK_PLUGIN_MAX_RSS_MB) || 300) * 1024 * 1024,
+  maxRssBytes: readEnv().plugins.maxRssMb * 1024 * 1024,
 };
 
-// A plugin may only act as a provider for a hook it BOTH implements (reported by
-// the child at load) AND was granted the matching hook:* permission for. The child
-// reports Object.keys(def.hooks) with no knowledge of grants, so the grant check
-// must happen host-side here — otherwise the hook:* consent is never enforced.
-const HOOK_PERMISSION: Readonly<Record<string, string>> = {
-  photoProvider: 'hook:photo-provider',
-  calendarSource: 'hook:calendar-source',
-  placeDetailProvider: 'hook:place-detail-provider',
-  warningProvider: 'hook:trip-warning-provider',
-  tableContributor: 'hook:table-contributor',
-  mapMarkerProvider: 'hook:map-marker-provider',
-  pdfSectionProvider: 'hook:pdf-section-provider',
-  atlasLayerProvider: 'hook:atlas-layer-provider',
-  journalEntryProvider: 'hook:journal-entry-provider',
-  tripCardProvider: 'hook:trip-card-provider',
-  notificationChannel: 'hook:notification-channel',
-};
 
 export class PluginSupervisor {
   private running = new Map<string, Supervised>();
@@ -160,6 +146,7 @@ export class PluginSupervisor {
       hooks: [],
       events: [],
       exports: [],
+      mcpTools: [],
       subscriptions: [],
       pending: new Map(),
       invocations: new Map(),
@@ -256,7 +243,9 @@ export class PluginSupervisor {
    * An unknown hook, or one with no permission mapping, resolves to nobody.
    */
   providersOf(hook: string): string[] {
-    const perm = HOOK_PERMISSION[hook];
+    // Cast: `hook` is a plain string off the child's report, and HOOK_PERMISSION is
+    // now a literal object, so indexing it needs the same widening envelope.ts uses.
+    const perm = (HOOK_PERMISSION as Readonly<Record<string, string | undefined>>)[hook];
     if (!perm) return [];
     const out: string[] = [];
     for (const [id, sup] of this.running) {
@@ -271,6 +260,18 @@ export class PluginSupervisor {
     return sup && sup.status === 'active' ? sup.exports : [];
   }
 
+  /** MCP tool names an ACTIVE plugin reported at load. Intersect with the manifest. */
+  mcpToolsOf(id: string): string[] {
+    const sup = this.running.get(id);
+    return sup && sup.status === 'active' ? sup.mcpTools : [];
+  }
+
+  /** The grants an ACTIVE plugin holds. Read to clamp what its tools may claim. */
+  grantsOf(id: string): ReadonlySet<string> {
+    const sup = this.running.get(id);
+    return sup && sup.status === 'active' ? sup.granted : new Set<string>();
+  }
+
   /** Ids of ACTIVE plugins that subscribed to `event` emitted by `sourceId`. */
   subscribersOf(sourceId: string, event: string): string[] {
     const out: string[] = [];
@@ -282,7 +283,7 @@ export class PluginSupervisor {
 
   /**
    * Announce a core event to every plugin that subscribed to it (or to '*') AND holds
-   * the 'events:subscribe' grant. Fire-and-forget: the invoke is NOT awaited (a core
+   * the EVENTS_PERMISSION grant. Fire-and-forget: the invoke is NOT awaited (a core
    * broadcast must never block on a plugin) and carries no user (trip reads refused).
    * The event name + tripId + a { entity, entityId } hint are sent, plus — ONLY for
    * a plugin whose granted set includes the family's db:read:* permission — the
@@ -293,7 +294,7 @@ export class PluginSupervisor {
    */
   deliverEvent(tripId: number, event: string, meta?: PluginEventMeta): void {
     for (const [id, sup] of this.running) {
-      if (!sup.granted.has('events:subscribe')) continue;
+      if (!sup.granted.has(EVENTS_PERMISSION)) continue;
       if (!sup.events.includes(event) && !sup.events.includes('*')) continue;
       if (sup.status === 'active') {
         this.sendEvent(sup, tripId, event, meta);
@@ -331,7 +332,7 @@ export class PluginSupervisor {
     const q = this.pendingEvents.get(sup.id);
     if (!q) return;
     this.pendingEvents.delete(sup.id);
-    if (!sup.granted.has('events:subscribe')) return;
+    if (!sup.granted.has(EVENTS_PERMISSION)) return;
     const now = Date.now();
     for (const item of q) {
       if (item.expiresAt <= now) continue;
@@ -383,7 +384,7 @@ export class PluginSupervisor {
    */
   async collectUserExport(id: string, userId: number): Promise<{ ok: true; data: unknown } | { ok: false } | undefined> {
     const sup = this.running.get(id);
-    if (!sup || sup.status !== 'active' || !sup.granted.has('hook:user-data')) return undefined; // not applicable
+    if (!sup || sup.status !== 'active' || !sup.granted.has(USER_DATA_PERMISSION)) return undefined; // not applicable
     try {
       const res = (await this.invoke(id, 'invoke.exportUserData', { userId }, { actingUserId: undefined, timeoutMs: 30_000 })) as { data?: unknown } | undefined;
       return { ok: true, data: res?.data };
@@ -403,9 +404,18 @@ export class PluginSupervisor {
     id: string,
     method: string,
     params: Record<string, unknown>,
-    opts: { timeoutMs?: number; actingUserId?: number } = {},
+    opts: { timeoutMs?: number; actingUserId?: number; publicShare?: PublicSharePrincipal; publicShareLifecycle?: boolean } = {},
   ): Promise<unknown> {
     const { timeoutMs = 30_000, actingUserId } = opts;
+    if ((method === 'invoke.publicShare' || method === 'invoke.publicShare.purge' || method === 'invoke.publicShare.eraseGuest') &&
+      !opts.publicShare && !opts.publicShareLifecycle) return Promise.reject(new Error('Public share principal required'));
+    if (opts.publicShareLifecycle && (actingUserId !== undefined || id !== 'trip-advice' ||
+      !['invoke.publicShare.purge', 'invoke.publicShare.eraseGuest'].includes(method))) {
+      return Promise.reject(new Error('Invalid public share lifecycle invocation'));
+    }
+    if (opts.publicShare && (actingUserId !== undefined || id !== opts.publicShare.pluginId || method !== 'invoke.publicShare')) {
+      return Promise.reject(new Error('Invalid public share invocation'));
+    }
     const sup = this.running.get(id);
     if (!sup || sup.status !== 'active' || !sup.child) {
       return Promise.reject(new Error(`plugin ${id} is not active`));
@@ -419,10 +429,16 @@ export class PluginSupervisor {
       }, timeoutMs);
       timer.unref?.();
       sup.pending.set(reqId, { resolve, reject, timer });
-      // The child echoes this reqId as `_inv` on its trip reads; the host resolves
-      // the acting user from here, so the plugin cannot name an arbitrary user.
-      sup.invocations.set(reqId, actingUserId);
-      sup.child!.send({ k: 'req', id: reqId, method, params: { ...params, _inv: reqId } } satisfies Envelope);
+      // The child receives this reqId as its invocation-context id and adds `_inv`
+      // only to plugin→host RPC calls. Keep host→child params untouched: plugin
+      // handlers own their documented payload schemas and must not see host
+      // bookkeeping fields.
+      sup.invocations.set(reqId, {
+        actingUserId,
+        publicShare: opts.publicShare ? Object.freeze({ ...opts.publicShare }) : undefined,
+        publicShareLifecycle: opts.publicShareLifecycle,
+      });
+      sup.child!.send({ k: 'req', id: reqId, method, params } satisfies Envelope);
     });
   }
 
@@ -479,15 +495,16 @@ export class PluginSupervisor {
         // code and a plugin can never reach a self-hoster's LAN service (a Gotify, an
         // ntfy, an Ollama) no matter what the admin sets. Forwarded only when set, so
         // the default stays the secure block-private policy.
-        ...(process.env.TREK_PLUGIN_ALLOW_PRIVATE_EGRESS
-          ? { TREK_PLUGIN_ALLOW_PRIVATE_EGRESS: process.env.TREK_PLUGIN_ALLOW_PRIVATE_EGRESS }
-          : {}),
+        // Normalized to the literal 'on': the child and plugin-sdk keep their
+        // `=== 'on'` check (they are exempt from app-config), so the host-side
+        // boolean-family coercion must collapse to the one literal they accept.
+        ...(readEnv().plugins.allowPrivateEgress ? { TREK_PLUGIN_ALLOW_PRIVATE_EGRESS: 'on' } : {}),
       },
     });
     sup.child = child;
     sup.lastBeat = Date.now();
 
-    child.on('message', (raw: unknown) => this.onMessage(sup, raw as Envelope));
+    child.on('message', (raw: unknown) => this.handleChildMessage(sup, raw));
     child.on('exit', (code, signal) => this.onExit(sup, code, signal));
     child.on('error', (e) => this.hooks.onLog?.(sup.id, 'error', `child error: ${e.message}`));
     child.stdout?.on('data', (b) => this.recordLog(sup, 'info', String(b).trimEnd()));
@@ -515,6 +532,19 @@ export class PluginSupervisor {
     this.hooks.onLog?.(sup.id, level, msg, meta);
   }
 
+  /**
+   * An EventEmitter listener throws away what its callback returns, and onMessage is
+   * async — so a rejection in there surfaces as an unhandledRejection, which Node 22
+   * turns into process exit. The host installs no net for it (the plugin child does,
+   * for itself), so one malformed envelope would take down the very supervisor whose
+   * job is to contain a misbehaving plugin. Log it against the plugin and carry on.
+   */
+  private handleChildMessage(sup: Supervised, raw: unknown): void {
+    this.onMessage(sup, raw as Envelope).catch((e: unknown) => {
+      this.hooks.onLog?.(sup.id, 'error', `message handling failed: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  }
+
   private async onMessage(sup: Supervised, msg: Envelope): Promise<void> {
     if (!msg || typeof msg !== 'object') return;
 
@@ -534,9 +564,28 @@ export class PluginSupervisor {
         return;
       }
       const inv = req.params as { _inv?: unknown } | undefined;
-      const actingUserId = typeof inv?._inv === 'string' ? sup.invocations.get(inv._inv) : undefined;
+      const authority = typeof inv?._inv === 'string' ? sup.invocations.get(inv._inv) : undefined;
       try {
-        const res = await sup.rpcHost.dispatch(req, actingUserId);
+        if (inv?._inv !== undefined && !authority) {
+          sup.child?.send({ k: 'res', id: req.id, ok: false, error: { code: 'RESOURCE_FORBIDDEN', message: 'Expired or unknown invocation' } } satisfies RpcError);
+          return;
+        }
+        // The context passed to onLoad has no invocation id. It may perform its
+        // one-time setup while the child is starting, but must become inert once
+        // the plugin is active: otherwise a public handler can retain that ctx
+        // and turn its untagged DB RPC into an unrestricted own-DB request.
+        // A retained startup context is dangerous only while a public-share
+        // invocation is live: it would otherwise escape that invocation's
+        // guest/share confinement. Ordinary non-public plugin work retains the
+        // established userless own-DB behavior.
+        const publicInvocationIsLive = [...sup.invocations.values()].some(invocation => invocation.publicShare !== undefined);
+        if (inv?._inv === undefined && sup.status !== 'starting' && publicInvocationIsLive) {
+          sup.child?.send({ k: 'res', id: req.id, ok: false, error: { code: 'RESOURCE_FORBIDDEN', message: 'Invocation authority is required' } } satisfies RpcError);
+          return;
+        }
+        const res = authority?.publicShare
+          ? await sup.rpcHost.dispatch(req, undefined, authority.publicShare)
+          : await sup.rpcHost.dispatch(req, authority?.actingUserId);
         sup.child?.send(res);
       } finally {
         sup.rpcLimiter.release();
@@ -578,6 +627,7 @@ export class PluginSupervisor {
           const d = msg.data as {
             routes?: PluginRouteInfo[]; jobs?: ScheduledJob[]; hooks?: string[]; events?: string[];
             exports?: string[]; subscriptions?: Array<{ plugin: string; event: string }>;
+            mcpTools?: string[];
           };
           sup.routes = d.routes ?? [];
           sup.jobs = Array.isArray(d.jobs)
@@ -586,6 +636,7 @@ export class PluginSupervisor {
           sup.hooks = d.hooks ?? [];
           sup.events = d.events ?? [];
           sup.exports = Array.isArray(d.exports) ? d.exports.filter((e): e is string => typeof e === 'string') : [];
+          sup.mcpTools = Array.isArray(d.mcpTools) ? d.mcpTools.filter((t): t is string => typeof t === 'string') : [];
           sup.subscriptions = Array.isArray(d.subscriptions)
             ? d.subscriptions.filter((s): s is { plugin: string; event: string } => !!s && typeof s.plugin === 'string' && typeof s.event === 'string')
             : [];
@@ -651,7 +702,7 @@ export class PluginSupervisor {
     sup.child = null;
     // In-flight host→child invokes can never complete now.
     this.rejectPending(sup, 'plugin exited');
-    // The dead child's node-cron tasks keep ticking (node-cron holds them, not the
+    // The dead child's cron jobs keep ticking (the host holds them, not the
     // child). Stop them here — otherwise every crash-restart cycle leaks a task-set
     // AND re-schedules a fresh one, so the job fires N+1 times per tick after N
     // crashes (duplicate egress/db side effects). kill() already does this for the

@@ -179,6 +179,76 @@ describe('checkSsrf', () => {
     });
   });
 
+  // SEC-013 — the unspecified address and IPv4-mapped spellings
+  describe('unspecified address and IPv4-mapped spellings (always blocked)', () => {
+    // Connecting to the unspecified address lands on loopback, so `::` reaches a
+    // local service without ever naming one. It has several spellings and none of
+    // them start with '0.', which is all the IPv4 check ever looked for.
+    it.each([
+      ['bare', '::'],
+      ['single zero', '::0'],
+      ['fully written out', '0:0:0:0:0:0:0:0'],
+      ['zero-padded', '0000:0000:0000:0000:0000:0000:0000:0000'],
+    ])('SEC-013: blocks the unspecified address, %s (%s)', async (_label, ip) => {
+      mockIp(ip);
+      const result = await checkSsrf('http://attacker.example', true);
+      expect(result.allowed).toBe(false);
+    });
+
+    // An IPv4-mapped address is the IPv4 it carries. Matching '::ffff:127.' and
+    // '::ffff:169.254.' as text missed both the hex spelling of those same
+    // addresses and every other blocked range.
+    it.each([
+      ['mapped loopback, dotted', '::ffff:127.0.0.1'],
+      ['mapped loopback, hex', '::ffff:7f00:1'],
+      ['mapped metadata, dotted', '::ffff:169.254.169.254'],
+      ['mapped metadata, hex', '::ffff:a9fe:a9fe'],
+      ['mapped unspecified', '::ffff:0:0'],
+      ['mapped 0.0.0.0, dotted', '::ffff:0.0.0.0'],
+    ])('SEC-013: blocks %s (%s)', async (_label, ip) => {
+      mockIp(ip);
+      const result = await checkSsrf('http://attacker.example', true);
+      expect(result.allowed).toBe(false);
+    });
+
+    it.each([
+      ['mapped RFC-1918, hex', '::ffff:c0a8:1'],
+      ['mapped CGNAT', '::ffff:100.64.0.1'],
+    ])('SEC-013: treats %s (%s) as private', async (_label, ip) => {
+      mockIp(ip);
+      const result = await checkSsrf('http://attacker.example');
+      expect(result.allowed).toBe(false);
+      expect(result.isPrivate).toBe(true);
+    });
+
+    it('SEC-013: still allows a mapped public address', async () => {
+      mockIp('::ffff:8.8.8.8');
+      const result = await checkSsrf('http://cdn.example');
+      expect(result.allowed).toBe(true);
+      expect(result.isPrivate).toBe(false);
+    });
+  });
+
+  // SEC-014 — fe80::/10 is ten bits, not the four characters 'fe80'
+  describe('the whole IPv6 link-local range', () => {
+    it.each([['fe80::1'], ['fe90::1'], ['fea0::1'], ['febf::1']])(
+      'SEC-014: blocks %s',
+      async (ip) => {
+        mockIp(ip);
+        const result = await checkSsrf('http://attacker.example', true);
+        expect(result.allowed).toBe(false);
+      },
+    );
+
+    // The bounds, so widening fe80: to the full /10 cannot creep further: fe7f
+    // sits just below the range and fec0 just above it, and neither is link-local.
+    it.each([['fe7f::1'], ['fec0::1']])('SEC-014: %s is outside fe80::/10', async (ip) => {
+      mockIp(ip);
+      const result = await checkSsrf('http://cdn.example', true);
+      expect(result.allowed).toBe(true);
+    });
+  });
+
   describe('internal hostname suffixes', () => {
     it('blocks .local domains', async () => {
       const result = await checkSsrf('http://myserver.local');
@@ -294,6 +364,102 @@ describe('safeFetchFollow (manual per-hop redirect SSRF)', () => {
     await expect(safeFetchFollow('https://goo.gl/evil')).rejects.toThrow(SsrfBlockedError);
     // Only the first hop should have been fetched; the internal hop is blocked BEFORE fetch.
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Following redirects by hand opts out of the platform's own rules, so they
+  // have to be restated. undici drops Authorization across origins itself
+  // (Fetch, "HTTP-redirect fetch" step 13) — without this, converting a caller
+  // that sends a bearer token to safeFetchFollow would have been a regression.
+  describe('credentials and body across a hop', () => {
+    const authInit = { method: 'POST', headers: { Authorization: 'Bearer secret', 'X-Api-Key': 'k', 'User-Agent': 'TREK' }, body: 'payload' };
+    const headerOf = (call: unknown[], name: string) =>
+      new Headers((call[1] as { headers?: ConstructorParameters<typeof Headers>[0] }).headers).get(name);
+
+    function twoHops(location: string, status = 307) {
+      mockLookup.mockResolvedValue({ address: '142.250.0.0', family: 4 });
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(fakeResponse({ status, location, url: 'https://start.example/a' }))
+        .mockResolvedValueOnce(fakeResponse({ status: 200, url: location }));
+      vi.stubGlobal('fetch', mockFetch);
+      return mockFetch;
+    }
+
+    it('drops credential headers when the hop changes origin', async () => {
+      const mockFetch = twoHops('https://elsewhere.example/b');
+      await safeFetchFollow('https://start.example/a', authInit);
+
+      expect(headerOf(mockFetch.mock.calls[0], 'authorization')).toBe('Bearer secret');
+      expect(headerOf(mockFetch.mock.calls[1], 'authorization')).toBeNull();
+      expect(headerOf(mockFetch.mock.calls[1], 'x-api-key')).toBeNull();
+      // User-Agent is not a credential and must survive: the goo.gl chain needs
+      // it on the last hop or Google serves a different page.
+      expect(headerOf(mockFetch.mock.calls[1], 'user-agent')).toBe('TREK');
+    });
+
+    it('keeps them on a same-origin hop', async () => {
+      const mockFetch = twoHops('https://start.example/b');
+      await safeFetchFollow('https://start.example/a', authInit);
+      expect(headerOf(mockFetch.mock.calls[1], 'authorization')).toBe('Bearer secret');
+    });
+
+    it('treats the same host moving http to https as an upgrade, not a host change', async () => {
+      const mockFetch = twoHops('https://start.example/b');
+      await safeFetchFollow('http://start.example/a', authInit);
+      expect(headerOf(mockFetch.mock.calls[1], 'authorization')).toBe('Bearer secret');
+    });
+
+    it('keeps method and body on a 307, which is what preserves them', async () => {
+      const mockFetch = twoHops('https://start.example/b', 307);
+      await safeFetchFollow('https://start.example/a', authInit);
+      expect(mockFetch.mock.calls[1][1]).toMatchObject({ method: 'POST', body: 'payload' });
+    });
+
+    it('downgrades a 303 to GET without a body', async () => {
+      const mockFetch = twoHops('https://start.example/b', 303);
+      await safeFetchFollow('https://start.example/a', authInit);
+      expect(mockFetch.mock.calls[1][1]).toMatchObject({ method: 'GET', body: undefined });
+      expect(headerOf(mockFetch.mock.calls[1], 'content-type')).toBeNull();
+    });
+
+    it('downgrades a 302 on a POST too, so a client_secret is not re-posted elsewhere', async () => {
+      const mockFetch = twoHops('https://elsewhere.example/b', 302);
+      await safeFetchFollow('https://start.example/a', authInit);
+      expect(mockFetch.mock.calls[1][1]).toMatchObject({ method: 'GET', body: undefined });
+      expect(headerOf(mockFetch.mock.calls[1], 'authorization')).toBeNull();
+    });
+
+    it('leaves a GET alone on a 301', async () => {
+      const mockFetch = twoHops('https://start.example/b', 301);
+      await safeFetchFollow('https://start.example/a', { headers: { 'User-Agent': 'TREK' } });
+      // No downgrade to apply: the request was already a GET, so the init keeps
+      // its shape and the caller's own header rides along.
+      expect((mockFetch.mock.calls[1][1] as RequestInit).method).toBeUndefined();
+      expect((mockFetch.mock.calls[1][1] as RequestInit).body).toBeUndefined();
+      expect(headerOf(mockFetch.mock.calls[1], 'user-agent')).toBe('TREK');
+    });
+
+    it('keeps credentials when the caller opts in', async () => {
+      const mockFetch = twoHops('https://elsewhere.example/b');
+      await safeFetchFollow('https://start.example/a', authInit, { keepCredentialsOnRedirect: true });
+      expect(headerOf(mockFetch.mock.calls[1], 'authorization')).toBe('Bearer secret');
+    });
+
+    it('an init without headers survives the strip untouched', async () => {
+      const mockFetch = twoHops('https://elsewhere.example/b');
+      await safeFetchFollow('https://start.example/a', { signal: AbortSignal.timeout(5000) });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('a relative redirect stays on the origin and keeps them', async () => {
+      mockLookup.mockResolvedValue({ address: '142.250.0.0', family: 4 });
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(fakeResponse({ status: 307, location: '/moved', url: 'https://start.example/a' }))
+        .mockResolvedValueOnce(fakeResponse({ status: 200, url: 'https://start.example/moved' }));
+      vi.stubGlobal('fetch', mockFetch);
+      await safeFetchFollow('https://start.example/a', authInit);
+      expect(mockFetch.mock.calls[1][0]).toBe('https://start.example/moved');
+      expect(headerOf(mockFetch.mock.calls[1], 'authorization')).toBe('Bearer secret');
+    });
   });
 
   it('blocks a redirect to a loopback address even with ALLOW_INTERNAL_NETWORK=true', async () => {

@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Доступ только для чтения к этому чату',
+  'collab.chat.messageOptions': 'Параметры сообщения',
+  'collab.polls.confirmDeleteTitle': 'Удалить опрос?',
+  'collab.polls.confirmDeleteBody': 'Этот опрос будет удалён безвозвратно.',
+  'collab.polls.countdownDaysHours': 'Осталось {d} д {h} ч',
+  'collab.polls.countdownHoursMinutes': 'Осталось {h} ч {m} мин',
+  'collab.polls.countdownMinutes': 'Осталось {m} мин',
+  'collab.polls.clearDeadline': 'Убрать срок',
   'collab.tabs.chat': 'Чат',
   'collab.tabs.notes': 'Заметки',
   'collab.tabs.polls': 'Опросы',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Начните записывать идеи и планы',
   'collab.notes.all': 'Все',
   'collab.notes.titlePlaceholder': 'Название заметки',
+  'collab.notes.content': 'Содержание',
+  'collab.notes.removeFile': 'Удалить {name}',
   'collab.notes.contentPlaceholder': 'Напишите что-нибудь...',
   'collab.notes.categoryPlaceholder': 'Категория',
   'collab.notes.newCategory': 'Новая категория...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Задайте вопрос группе и голосуйте вместе',
   'collab.polls.question': 'Вопрос',
   'collab.polls.questionPlaceholder': 'Что нам делать?',
+  'collab.polls.markdownHint': 'Поддерживается Markdown',
   'collab.polls.addOption': '+ Добавить вариант',
   'collab.polls.optionPlaceholder': 'Вариант {n}',
   'collab.polls.create': 'Создать опрос',

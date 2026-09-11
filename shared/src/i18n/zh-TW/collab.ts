@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': '僅可檢視此聊天',
+  'collab.chat.messageOptions': '訊息選項',
+  'collab.polls.confirmDeleteTitle': '刪除投票？',
+  'collab.polls.confirmDeleteBody': '此投票將被永久刪除。',
+  'collab.polls.countdownDaysHours': '還剩 {d} 天 {h} 小時',
+  'collab.polls.countdownHoursMinutes': '還剩 {h} 小時 {m} 分鐘',
+  'collab.polls.countdownMinutes': '還剩 {m} 分鐘',
+  'collab.polls.clearDeadline': '清除截止時間',
   'collab.tabs.chat': '聊天',
   'collab.tabs.notes': '筆記',
   'collab.tabs.polls': '投票',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': '開始記錄想法和計劃',
   'collab.notes.all': '全部',
   'collab.notes.titlePlaceholder': '筆記標題',
+  'collab.notes.content': '內容',
+  'collab.notes.removeFile': '移除 {name}',
   'collab.notes.contentPlaceholder': '寫點什麼...',
   'collab.notes.categoryPlaceholder': '分類',
   'collab.notes.newCategory': '新建分類...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': '向團隊提問並一起投票',
   'collab.polls.question': '問題',
   'collab.polls.questionPlaceholder': '我們應該做什麼？',
+  'collab.polls.markdownHint': '支援 Markdown',
   'collab.polls.addOption': '+ 新增選項',
   'collab.polls.optionPlaceholder': '選項 {n}',
   'collab.polls.create': '建立投票',

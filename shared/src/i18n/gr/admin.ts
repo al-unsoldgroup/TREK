@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "Ανάγνωση επιλεγμένων δεδομένων ταξιδιού μέσω ενεργού συνδέσμου συμβουλών",
+  'admin.plugins.perm.share:publish': "Διαμόρφωση συνδέσμων συμβουλών για τον ιδιοκτήτη του ταξιδιού",
   'admin.notifications.title': 'Ειδοποιήσεις',
   'admin.notifications.hint': 'Επιλέξτε ένα κανάλι ειδοποιήσεων. Μόνο ένα μπορεί να είναι ενεργό κάθε φορά.',
   'admin.notifications.none': 'Απενεργοποιημένο',
@@ -170,6 +172,9 @@ const admin: TranslationStrings = {
   'admin.placesDetails.title': 'Λεπτομέρειες Τόπου',
   'admin.placesDetails.subtitle':
     'Λήψη λεπτομερών πληροφοριών τόπου (ώρες, βαθμολογία, ιστοσελίδα) από το Google Places API. Απενεργοποιήστε για εξοικονόμηση ποσοστώσης API.',
+  'admin.placesEnrich.title': 'Εμπλουτισμός τοποθεσιών',
+  'admin.placesEnrich.subtitle':
+    'Εμφανίζει εικόνες και περιγραφή κατά την προσθήκη τοποθεσίας. Η Wikipedia και το OpenStreetMap χρησιμοποιούνται πάντα· η Google προστίθεται όταν είναι ενεργές οι Φωτογραφίες ή οι Λεπτομέρειες τοποθεσίας.',
   'admin.bagTracking.title': 'Παρακολούθηση Αποσκευών',
   'admin.bagTracking.subtitle': 'Ενεργοποίηση βάρους και ανάθεσης τσάντας για αντικείμενα πακεταρίσματος',
   'admin.collab.chat.title': 'Συνομιλία',
@@ -205,9 +210,12 @@ const admin: TranslationStrings = {
   'admin.packingTemplates.loadError': 'Αποτυχία φόρτωσης προτύπων',
   'admin.packingTemplates.createError': 'Αποτυχία δημιουργίας προτύπου',
   'admin.packingTemplates.deleteError': 'Αποτυχία διαγραφής προτύπου',
+  'admin.packingTemplates.deleteCategoryError': 'Αποτυχία διαγραφής κατηγορίας',
+  'admin.packingTemplates.deleteItemError': 'Αποτυχία διαγραφής στοιχείου',
   'admin.packingTemplates.saveError': 'Αποτυχία αποθήκευσης',
   'admin.tabs.addons': 'Πρόσθετα',
   'admin.tabs.plugins': 'Plugins',
+  'admin.tabs.storage': 'Αποθήκευση',
   'admin.plugins.rescan': 'Επανασάρωση',
   'admin.plugins.rescanned': 'Ο φάκελος plugins σαρώθηκε ξανά',
   'admin.plugins.upload': 'Μεταφόρτωση plugin',
@@ -261,6 +269,7 @@ const admin: TranslationStrings = {
   'admin.plugins.updateTo': 'Update → v{version}',
   'admin.plugins.enabledToggle': 'Ενεργοποίηση plugin',
   'plugins.notFound': 'Το plugin δεν βρέθηκε',
+  'plugins.frameLoadFailed': 'This plugin could not be loaded.',
   'admin.plugins.title': 'Plugins',
   'admin.plugins.subtitle': 'Εγκαταστήστε και διαχειριστείτε plugins τρίτων στην εγκατάστασή σας.',
   'admin.plugins.disabledTitle': 'Τα plugins είναι απενεργοποιημένα',
@@ -369,6 +378,20 @@ const admin: TranslationStrings = {
     'Προσθήκη στηλών και ενεργειών στις προβολές του ταξιδιού (κρατήσεις, τοποθεσίες, ημέρες)',
   'admin.plugins.perm.hook:map-marker-provider':
     'Προσθήκη δεικτών στον χάρτη του ταξιδιού (π.χ. εμφάνιση κρατήσεων ή POI)',
+  'admin.plugins.perm.hook:map-layer-provider': 'Σχεδίαση διαδρομών, διαδρόμων και ζωνών στον χάρτη του ταξιδιού',
+  'admin.plugins.perm.hook:route-provider':
+    'Παροχή προφίλ δρομολόγησης με τα οποία ο σχεδιαστής υπολογίζει τις διαδρομές των ημερών (π.χ. δρομολόγηση ηλεκτρικού οχήματος με στάσεις φόρτισης)',
+  'admin.plugins.perm.hook:day-schedule-provider':
+    'Προσθήκη χρονικών καταχωρίσεων στο πλάνο της ημέρας (στάσεις φόρτισης, περιθώρια ασφαλείας)',
+  'admin.plugins.perm.hook:day-tint-provider':
+    'Χρωματική σήμανση ημερών στο πλάνο της ημέρας (π.χ. σε ποιο σκέλος του ταξιδιού ανήκει μια ημέρα)',
+  'admin.plugins.cap.mcpTools': 'Δημοσιεύει εργαλεία AI',
+  'admin.plugins.mcpToolsTitle': 'Δημοσιευμένα εργαλεία AI',
+  'admin.plugins.mcpToolsHint': 'Ένας βοηθός μπορεί να τα εκτελέσει εκ μέρους ενός χρήστη. Καθένα ενεργεί με τα δικαιώματα που δόθηκαν παραπάνω.',
+  'admin.plugins.perm.mcp:tools':
+    'Δημοσίευση εργαλείων που μπορεί να εκτελέσει ένας βοηθός AI εκ μέρους σας (ενεργεί με τα δικαιώματα που δίνετε εδώ στο πρόσθετο, όχι με τα δικά του)',
+  'admin.plugins.perm.geolocation:read':
+    'Αίτημα της τρέχουσας τοποθεσίας σας όσο μία από τις προβολές του είναι ανοιχτή (το TREK τη διαβάζει με την άδεια τοποθεσίας αυτού του ιστότοπου, όχι με δική του άδεια του πρόσθετου)',
   'admin.plugins.perm.hook:pdf-section-provider': 'Προσθήκη ενοτήτων κειμένου στην εξαγωγή PDF του ταξιδιού',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Επισήμανση χωρών στον παγκόσμιο χάρτη του Άτλαντα (π.χ. λίστες επιθυμιών ή ταξιδιωτικές οδηγίες)',
@@ -461,11 +484,31 @@ const admin: TranslationStrings = {
   'admin.plugins.sortUpdates': 'Ενημερώσεις πρώτα',
   'admin.plugins.sortDownloads': 'Περισσότερες λήψεις',
   'admin.plugins.updatesAvailable': 'Διαθέσιμες {count} ενημερώσεις για τα plugins σας.',
+  'admin.plugins.newerNeedsTrek': 'Διαθέσιμη η v{version} — απαιτεί TREK {range}',
+  'admin.plugins.versionsTitle': 'Εκδόσεις',
+  'admin.plugins.versionPickerTitle': 'Αλλαγή έκδοσης — {name}',
+  'admin.plugins.versionSwitch': 'Μετάβαση σε {version}',
+  'admin.plugins.versionNeedsTrek': 'απαιτεί TREK {range}',
+  'admin.plugins.changeVersion': 'Αλλαγή έκδοσης…',
+  'admin.plugins.noVersions': 'Δεν βρέθηκαν δημοσιευμένες εκδόσεις στο μητρώο.',
+  'admin.plugins.downgradeTitle': 'Επαναφορά αυτού του πρόσθετου;',
+  'admin.plugins.downgradeBody': 'Μετάβαση από v{from} σε v{to}: τα δεδομένα της νεότερης έκδοσης παραμένουν, και η παλαιότερη έκδοση ίσως να μην τα κατανοεί.',
+  'admin.plugins.downgradeConfirm': 'Επαναφορά',
+  'admin.plugins.updatesHeld': 'Οι ενημερώσεις είναι σε παύση στην v{version}',
+  'admin.plugins.resumeUpdates': 'Συνέχιση ενημερώσεων',
+  'admin.plugins.updatesResumed': 'Οι ενημερώσεις συνεχίστηκαν',
   'admin.plugins.updateAll': 'Ενημέρωση όλων',
   'admin.plugins.noMatchInstalled': 'Κανένα εγκατεστημένο plugin δεν ταιριάζει με την αναζήτησή σας.',
   'admin.plugins.noMatchRegistry': 'Κανένα plugin στο μητρώο δεν ταιριάζει με την αναζήτησή σας.',
   'admin.plugins.restart': 'Επανεκκίνηση',
   'admin.plugins.restarted': 'Το plugin επανεκκινήθηκε',
+  'admin.plugins.instanceSettings': 'Ρυθμίσεις εγκατάστασης',
+  'admin.plugins.settingsSaved': 'Οι ρυθμίσεις αποθηκεύτηκαν',
+  'admin.plugins.settingsSavedRestarted': 'Οι ρυθμίσεις αποθηκεύτηκαν — το plugin επανεκκινήθηκε',
+  'admin.plugins.actions': 'Ενέργειες',
+  'admin.plugins.actions.confirm': 'Εκτέλεση αυτής της ενέργειας;',
+  'admin.plugins.actions.inactive': 'Ενεργοποιήστε το plugin για να εκτελέσετε τις ενέργειές του',
+  'admin.plugins.requiredMissing': '"{field}" είναι υποχρεωτικό',
   'admin.plugins.cap.readsTrips': 'Διαβάζει τα ταξίδια σας',
   'admin.plugins.cap.readsUsers': 'Διαβάζει βασικά προφίλ',
   'admin.plugins.cap.readsCosts': 'Διαβάζει τα έξοδά σας',
@@ -489,6 +532,11 @@ const admin: TranslationStrings = {
   'admin.plugins.cap.calendar': 'Παρέχει συμβάντα ημερολογίου',
   'admin.plugins.cap.placeDetails': 'Εμπλουτίζει μέρη',
   'admin.plugins.cap.warnings': 'Επισημαίνει ζητήματα',
+  'admin.plugins.cap.mapLayers': 'Σχεδιάζει στον χάρτη',
+  'admin.plugins.cap.routing': 'Παρέχει δρομολόγηση',
+  'admin.plugins.cap.daySchedule': 'Προσθέτει χρόνους πλάνου',
+  'admin.plugins.cap.dayTint': 'Χρωματίζει τις ημέρες',
+  'admin.plugins.cap.geolocation': 'Διαβάζει την τοποθεσία σας',
   'admin.plugins.cap.events': 'Αντιδρά σε δραστηριότητα',
   'admin.plugins.cap.requiresAddon': 'Απαιτεί {addon}',
   'admin.plugins.cap.dependsOn': 'Χρειάζεται {id} {version}',
@@ -505,6 +553,19 @@ const admin: TranslationStrings = {
   'admin.plugins.dep.trekIncompatible': 'Απαιτεί TREK {range} — αυτός ο διακομιστής εκτελεί {host}',
   'admin.plugins.dep.trekUnknown': 'Δεν δηλώνει ποιες εκδόσεις TREK υποστηρίζει',
   'admin.plugins.installCompatible': 'Εγκατάσταση {version}',
+  'admin.plugins.installAnyway': 'Εγκατάσταση ούτως ή άλλως',
+  'admin.plugins.rangeBypass.pill': 'Έλεγχοι έκδοσης απενεργοποιημένοι',
+  'admin.plugins.rangeBypass.pillHint':
+    'Το TREK_PLUGINS_IGNORE_TREK_RANGE είναι ορισμένο — τα πρόσθετα μπορούν να εγκατασταθούν και να εκτελεστούν εκτός των εκδόσεων TREK που δηλώνουν οι δημιουργοί τους',
+  'admin.plugins.rangeBypass.title': 'Εκτός των υποστηριζόμενων εκδόσεων TREK',
+  'admin.plugins.rangeBypass.noticeTitle': 'Εγκαταστάθηκε εκτός των υποστηριζόμενων εκδόσεων TREK',
+  'admin.plugins.rangeBypass.body':
+    'Το «{name}» δηλώνει υποστήριξη για TREK {range}, ενώ αυτός ο διακομιστής εκτελεί {host}. Το TREK το επιτρέπει μόνο επειδή είναι ορισμένο το TREK_PLUGINS_IGNORE_TREK_RANGE. Ο δημιουργός δεν έχει ενημερώσει το εύρος εκδόσεων του πρόσθετου για αυτό το TREK, οπότε δεν υπάρχει εγγύηση ότι λειτουργεί — και σε σπάνιες περιπτώσεις ένα ασύμβατο πρόσθετο μπορεί να καταστρέψει δεδομένα του TREK. Συνεχίστε μόνο αν αποδέχεστε αυτόν τον κίνδυνο.',
+  'admin.plugins.rangeBypass.bodyUnknown':
+    'Το «{name}» δεν δηλώνει ποιες εκδόσεις TREK υποστηρίζει· αυτός ο διακομιστής εκτελεί {host}. Το TREK το επιτρέπει μόνο επειδή είναι ορισμένο το TREK_PLUGINS_IGNORE_TREK_RANGE. Τίποτα δεν δείχνει ότι ο δημιουργός το δοκίμασε σε αυτό το TREK, οπότε δεν υπάρχει εγγύηση ότι λειτουργεί — και σε σπάνιες περιπτώσεις ένα ασύμβατο πρόσθετο μπορεί να καταστρέψει δεδομένα του TREK. Συνεχίστε μόνο αν αποδέχεστε αυτόν τον κίνδυνο.',
+  'admin.plugins.dep.trekBypassed':
+    'Εκτός του εύρους TREK του ({range}) — έλεγχοι έκδοσης απενεργοποιημένοι',
+  'admin.plugins.dep.trekBypassedUnknown': 'Δεν δηλώνει εύρος TREK — έλεγχοι έκδοσης απενεργοποιημένοι',
   'admin.plugins.incompatible': 'Μη συμβατό',
   'admin.plugins.accessTitle': 'Σε τι έχει πρόσβαση',
   'admin.plugins.connectsTitle': 'Συνδέεται σε',
@@ -521,7 +582,7 @@ const admin: TranslationStrings = {
   'admin.addons.catalog.packing.name': 'Λίστες',
   'admin.addons.catalog.packing.description': 'Λίστες πακεταρίσματος και εργασίες προς εκτέλεση για τα ταξίδια σας',
   'admin.addons.catalog.budget.name': 'Κόστη',
-  'admin.addons.catalog.budget.description': 'Παρακολουθήστε τα έξοδα και σχεδιάστε τον προϋπολογισμό του ταξιδιού σας',
+  'admin.addons.catalog.budget.description': 'Παρακολουθήστε τα έξοδα του ταξιδιού και μοιράστε τα στους ταξιδιώτες',
   'admin.addons.catalog.documents.name': 'Έγγραφα',
   'admin.addons.catalog.documents.description': 'Αποθηκεύστε και διαχειριστείτε ταξιδιωτικά έγγραφα',
   'admin.addons.catalog.vacay.name': 'Vacay',
@@ -530,8 +591,7 @@ const admin: TranslationStrings = {
   'admin.addons.catalog.atlas.description':
     'Παγκόσμιος χάρτης με χώρες που έχετε επισκεφθεί και ταξιδιωτικά στατιστικά',
   'admin.addons.catalog.collab.name': 'Collab',
-  'admin.addons.catalog.collab.description':
-    'Σημειώσεις, δημοσκοπήσεις και συνομιλία πραγματικού χρόνου για σχεδιασμό ταξιδιού',
+  'admin.addons.catalog.collab.description': 'Σημειώσεις, ψηφοφορίες, συνομιλία και προτάσεις για κοινό σχεδιασμό',
   'admin.addons.catalog.memories.name': 'Φωτογραφίες (Immich)',
   'admin.addons.catalog.memories.description':
     'Μοιραστείτε φωτογραφίες ταξιδιού μέσω της δικής σας εγκατάστασης Immich',
@@ -540,6 +600,12 @@ const admin: TranslationStrings = {
   'admin.addons.subtitleBefore':
     'Ενεργοποιήστε ή απενεργοποιήστε λειτουργίες για να εξατομικεύσετε την εμπειρία σας στο ',
   'admin.addons.subtitleAfter': '.',
+  'admin.addons.catalog.naver_list_import.name': 'Naver List Import',
+  'admin.addons.catalog.naver_list_import.description': 'Εισαγωγή τοποθεσιών από κοινόχρηστη λίστα Naver Maps',
+  'admin.addons.catalog.airtrail.name': 'AirTrail',
+  'admin.addons.catalog.airtrail.description': 'Συγχρονισμός πτήσεων από τη δική σας εγκατάσταση AirTrail',
+  'admin.addons.catalog.llm_parsing.name': 'Ανάλυση με τεχνητή νοημοσύνη',
+  'admin.addons.catalog.llm_parsing.description': 'Διαβάζει κρατήσεις που δεν καταλαβαίνει ο ενσωματωμένος αναλυτής, με μοντέλο ΤΝ της επιλογής σας',
   'admin.addons.enabled': 'Ενεργοποιημένο',
   'admin.addons.disabled': 'Απενεργοποιημένο',
   'admin.addons.type.trip': 'Ταξίδι',
@@ -550,6 +616,7 @@ const admin: TranslationStrings = {
   'admin.addons.integrationHint': 'Υπηρεσίες backend και ενσωματώσεις API χωρίς ειδική σελίδα',
   'admin.addons.toast.updated': 'Το πρόσθετο ενημερώθηκε',
   'admin.addons.toast.error': 'Αποτυχία ενημέρωσης προσθέτου',
+  'admin.addons.group.count': '{enabled} από {total} ενεργοποιημένα',
   'admin.addons.noAddons': 'Δεν υπάρχουν διαθέσιμα πρόσθετα',
   'admin.weather.title': 'Δεδομένα Καιρού',
   'admin.weather.badge': 'Από 24 Μαρτίου 2026',
@@ -642,8 +709,7 @@ const admin: TranslationStrings = {
   'admin.addons.catalog.journey.description':
     'Παρακολούθηση ταξιδιών & ημερολόγιο ταξιδιών με αφίξεις, φωτογραφίες και καθημερινές ιστορίες',
   'admin.addons.catalog.collections.name': 'Συλλογές',
-  'admin.addons.catalog.collections.description':
-    'Προσωπική βιβλιοθήκη μερών — αποθήκευσε μέρη από όλα τα ταξίδια σε ονομασμένες λίστες, αντίγραψέ τα σε οποιοδήποτε ταξίδι, μοιράσου τα με άλλους',
+  'admin.addons.catalog.collections.description': 'Συγκεντρώστε τοποθεσίες από κάθε ταξίδι σε λίστες με όνομα και χρησιμοποιήστε τις ξανά',
   'admin.passkey.title': 'Σύνδεση με passkey',
   'admin.passkey.cardHint':
     'Επιτρέψτε στους χρήστες να συνδέονται με passkeys (WebAuthn). Απενεργοποιημένο από προεπιλογή.',
@@ -676,6 +742,9 @@ const admin: TranslationStrings = {
   'admin.defaultSettings.mapboxStylePlaceholder': 'Επιλέξτε ένα στυλ…',
   'admin.defaultSettings.mapbox3d': 'Κτίρια & ανάγλυφο 3D',
   'admin.defaultSettings.mapboxQuality': 'Λειτουργία υψηλής ποιότητας',
+  'admin.defaultSettings.cartoKey': 'Κοινόχρηστο κλειδί CARTO',
+  'admin.defaultSettings.cartoKeyHint':
+    'Χρησιμοποιείται για κάθε χρήστη που δεν έχει εισαγάγει το δικό του κλειδί, έτσι ολόκληρη η εγκατάσταση λαμβάνει πλακίδια CARTO χωρίς υδατογράφημα. Αποθηκεύεται κρυπτογραφημένο.',
   'admin.group.users': 'Users',
   'admin.group.config': 'Configuration',
   'admin.group.integration': 'Integrations',

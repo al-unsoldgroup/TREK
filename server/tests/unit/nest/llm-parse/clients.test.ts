@@ -10,6 +10,7 @@ vi.mock('../../../../src/utils/ssrfGuard', () => ({ safeFetchLlm: safeFetchLlmMo
 import { OpenAiCompatibleClient } from '../../../../src/nest/llm-parse/clients/openai-compatible.client';
 import { AnthropicClient } from '../../../../src/nest/llm-parse/clients/anthropic.client';
 import type { LlmExtractionInput } from '../../../../src/nest/llm-parse/llm-provider.interface';
+import { readEnv } from '../../../../src/app-config';
 
 const baseInput: LlmExtractionInput = {
   prompt: 'system',
@@ -47,6 +48,23 @@ describe('OpenAiCompatibleClient', () => {
     expect(out).toEqual([{ '@type': 'TrainReservation' }]);
   });
 
+  it('tolerates single-quoted, non-strict JSON output (Gemini, #1638)', async () => {
+    mockFetch(() =>
+      jsonResponse({
+        choices: [
+          {
+            message: {
+              content:
+                "[{ '@type': 'LodgingReservation', checkinTime: '2026-08-28T00:00:00', price: 146.25, }]",
+            },
+          },
+        ],
+      }),
+    );
+    const out = await new OpenAiCompatibleClient().extract(baseInput);
+    expect(out).toEqual([{ '@type': 'LodgingReservation', checkinTime: '2026-08-28T00:00:00', price: 146.25 }]);
+  });
+
   it('returns [] on malformed content', async () => {
     mockFetch(() => jsonResponse({ choices: [{ message: { content: 'not json' } }] }));
     expect(await new OpenAiCompatibleClient().extract(baseInput)).toEqual([]);
@@ -68,6 +86,26 @@ describe('OpenAiCompatibleClient', () => {
     const headers = (fetchFn.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
     expect(headers.authorization).toBe('Bearer sk-deepseek');
     expect(headers['cf-aig-authorization']).toBe('Bearer cf-token');
+  });
+
+  it('preserves gateway authentication through token and temperature retries', async () => {
+    const fetchFn = mockFetch(() => jsonResponse({}, false, 400));
+    safeFetchLlmMock
+      .mockResolvedValueOnce(jsonResponse({ error: 'use max_completion_tokens' }, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: 'temperature is not supported' }, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"reservations":[]}' } }] }));
+    await new OpenAiCompatibleClient().extract({
+      ...baseInput,
+      apiKey: 'provider-key',
+      extraHeaders: { 'cf-aig-authorization': 'Bearer gateway-token' },
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchFn.mock.calls) {
+      expect(init?.headers).toMatchObject({
+        authorization: 'Bearer provider-key',
+        'cf-aig-authorization': 'Bearer gateway-token',
+      });
+    }
   });
 
   it('omits extraHeaders when none are configured', async () => {
@@ -111,6 +149,99 @@ describe('OpenAiCompatibleClient', () => {
     expect(second.response_format).toEqual({ type: 'json_object' });
     expect(second.messages).toEqual(first.messages);
     expect(second.model).toBe(first.model);
+  });
+
+  it('retries with max_completion_tokens when the model rejects max_tokens (400, #1760)', async () => {
+    safeFetchLlmMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: { message: "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", code: 'unsupported_parameter' } },
+          false,
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: '{"reservations":[{"@type":"FlightReservation"}]}' } }] }),
+      );
+    const out = await new OpenAiCompatibleClient().extract(baseInput);
+    expect(out).toEqual([{ '@type': 'FlightReservation' }]);
+    expect(safeFetchLlmMock).toHaveBeenCalledTimes(2);
+
+    const first = JSON.parse((safeFetchLlmMock.mock.calls[0][1] as RequestInit).body as string);
+    const second = JSON.parse((safeFetchLlmMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(first.max_tokens).toBe(4096);
+    expect(first.max_completion_tokens).toBeUndefined();
+    // The retry swaps the token param but keeps everything else, json_schema included.
+    expect(second.max_completion_tokens).toBe(4096);
+    expect(second.max_tokens).toBeUndefined();
+    expect(second.response_format.type).toBe('json_schema');
+    expect(second.messages).toEqual(first.messages);
+  });
+
+  // #2262 — reasoning models (the gpt-5 family) reject any explicit temperature.
+  // temperature: 0 sat in the shared body, so it went out on every attempt
+  // including both retries, and the import could not succeed at all.
+  const TEMP_400 = { error: { message: "Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) value is supported.", code: 'unsupported_value' } };
+
+  it('drops temperature when the model rejects it (400, #2262)', async () => {
+    safeFetchLlmMock
+      .mockResolvedValueOnce(jsonResponse(TEMP_400, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"reservations":[{"@type":"FlightReservation"}]}' } }] }));
+    const out = await new OpenAiCompatibleClient().extract(baseInput);
+    expect(out).toEqual([{ '@type': 'FlightReservation' }]);
+    expect(safeFetchLlmMock).toHaveBeenCalledTimes(2);
+
+    const first = JSON.parse((safeFetchLlmMock.mock.calls[0][1] as RequestInit).body as string);
+    const second = JSON.parse((safeFetchLlmMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(first.temperature).toBe(0);
+    expect('temperature' in second).toBe(false);
+    // Only temperature goes; the schema and the token param are untouched.
+    expect(second.response_format.type).toBe('json_schema');
+    expect(second.max_tokens).toBe(4096);
+  });
+
+  // A gpt-5 rejects both parameters, and the API names one per response. Either
+  // order has to converge, which a chain of one-shot ifs cannot do.
+  it('combines the token-param and temperature remedies, token param named first', async () => {
+    safeFetchLlmMock
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead." } }, false, 400))
+      .mockResolvedValueOnce(jsonResponse(TEMP_400, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"reservations":[{"@type":"FlightReservation"}]}' } }] }));
+    const out = await new OpenAiCompatibleClient().extract(baseInput);
+    expect(out).toEqual([{ '@type': 'FlightReservation' }]);
+    expect(safeFetchLlmMock).toHaveBeenCalledTimes(3);
+
+    const third = JSON.parse((safeFetchLlmMock.mock.calls[2][1] as RequestInit).body as string);
+    expect(third.max_completion_tokens).toBe(4096);
+    expect('temperature' in third).toBe(false);
+    expect(third.response_format.type).toBe('json_schema');
+  });
+
+  it('combines them the other way round too, temperature named first', async () => {
+    safeFetchLlmMock
+      .mockResolvedValueOnce(jsonResponse(TEMP_400, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead." } }, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"reservations":[{"@type":"FlightReservation"}]}' } }] }));
+    const out = await new OpenAiCompatibleClient().extract(baseInput);
+    expect(out).toEqual([{ '@type': 'FlightReservation' }]);
+    expect(safeFetchLlmMock).toHaveBeenCalledTimes(3);
+
+    const third = JSON.parse((safeFetchLlmMock.mock.calls[2][1] as RequestInit).body as string);
+    expect(third.max_completion_tokens).toBe(4096);
+    expect('temperature' in third).toBe(false);
+  });
+
+  it('keeps temperature when a 400 only mentions the word in passing', async () => {
+    safeFetchLlmMock
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'Your prompt mentions temperature but the schema is invalid' } }, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"reservations":[]}' } }] }));
+    await new OpenAiCompatibleClient().extract(baseInput);
+
+    const second = JSON.parse((safeFetchLlmMock.mock.calls[1][1] as RequestInit).body as string);
+    // Not a parameter rejection, so it falls through to the json_object retry
+    // with deterministic sampling intact — which is what local models need.
+    expect(second.temperature).toBe(0);
+    expect(second.response_format.type).toBe('json_object');
   });
 
   it('throws when the json_object retry also fails (400 twice)', async () => {
@@ -202,6 +333,36 @@ describe('AnthropicClient', () => {
     expect(body.tools[0].name).toBe('emit_reservations');
   });
 
+  /*
+   * The model does not always send its tool input as the array the schema
+   * declares — sometimes it sends the same thing JSON-encoded, in one of two
+   * shapes. The old check only accepted arrays, so a good extraction was
+   * discarded and the import reported "no reservations found" with nothing in
+   * the log: exactly what a document containing no booking produces. Whether it
+   * happened came down to how the model serialised that particular call, so the
+   * same file behaved differently between attempts (#1968).
+   */
+  it('reads a tool input the model sent as a stringified array', async () => {
+    mockFetch(() =>
+      jsonResponse({ stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'emit_reservations', input: { reservations: JSON.stringify([{ '@type': 'LodgingReservation' }]) } }] }),
+    );
+    expect(await new AnthropicClient().extract(baseInput)).toEqual([{ '@type': 'LodgingReservation' }]);
+  });
+
+  it('reads one the model stringified and wrapped again', async () => {
+    mockFetch(() =>
+      jsonResponse({ stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'emit_reservations', input: { reservations: JSON.stringify({ reservations: [{ '@type': 'FlightReservation' }] }) } }] }),
+    );
+    expect(await new AnthropicClient().extract(baseInput)).toEqual([{ '@type': 'FlightReservation' }]);
+  });
+
+  it('still answers empty when the tool input really is not a list', async () => {
+    mockFetch(() =>
+      jsonResponse({ stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'emit_reservations', input: { reservations: 'no bookings in this document' } }] }),
+    );
+    expect(await new AnthropicClient().extract(baseInput)).toEqual([]);
+  });
+
   it('throws on a refusal stop_reason', async () => {
     mockFetch(() => jsonResponse({ stop_reason: 'refusal', content: [] }));
     await expect(new AnthropicClient().extract(baseInput)).rejects.toThrow(/declined/i);
@@ -218,5 +379,34 @@ describe('AnthropicClient', () => {
     const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
     const blocks = body.messages[0].content;
     expect(blocks.some((b: any) => b.type === 'document' && b.source.type === 'base64')).toBe(true);
+  });
+});
+
+/**
+ * The three per-client constants are gone; what replaced them is a config read.
+ * Nothing else in the suite would notice if one of them came back as a literal,
+ * so pin the seam itself: the abort deadline has to come from LLM_TIMEOUT_MS.
+ */
+describe('the abort deadline comes from the configured ceiling (#2230)', () => {
+  const setTimeoutSpy = () => vi.spyOn(globalThis, 'setTimeout');
+
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('AnthropicClient arms its AbortController with the configured value', async () => {
+    const spy = setTimeoutSpy();
+    mockFetch(() => jsonResponse({ content: [{ type: 'tool_use', name: 'emit_reservations', input: { reservations: [] } }] }));
+
+    await new AnthropicClient().extract(baseInput);
+
+    expect(spy).toHaveBeenCalledWith(expect.any(Function), readEnv().integrations.llmTimeoutMs);
+  });
+
+  it('OpenAiCompatibleClient arms its AbortController with the configured value', async () => {
+    const spy = setTimeoutSpy();
+    mockFetch(() => jsonResponse({ choices: [{ message: { content: '{"reservations":[]}' } }] }));
+
+    await new OpenAiCompatibleClient().extract({ ...baseInput, baseUrl: 'http://ollama.local:11434/v1' });
+
+    expect(spy).toHaveBeenCalledWith(expect.any(Function), readEnv().integrations.llmTimeoutMs);
   });
 });

@@ -62,11 +62,12 @@ export function clearExchangeRateCache(): void {
   } catch { /* ignore */ }
 }
 
-export function useExchangeRates(base: string) {
+export function useExchangeRates(base: string, enabled = true) {
   const upper = (base || 'EUR').toUpperCase()
-  const [rates, setRates] = useState<Record<string, number> | null>(() => readCache(upper)?.rates ?? null)
+  const [rates, setRates] = useState<Record<string, number> | null>(() => enabled ? readCache(upper)?.rates ?? null : null)
 
   useEffect(() => {
+    if (!enabled) return
     const cached = readCache(upper)
     if (cached) setRates(cached.rates)
     if (cached && Date.now() - cached.ts < TTL_MS) return
@@ -75,7 +76,7 @@ export function useExchangeRates(base: string) {
       if (!cancelled && r) setRates(r)
     })
     return () => { cancelled = true }
-  }, [upper])
+  }, [upper, enabled])
 
   const convert = useCallback(
     (amount: number, from: string | null | undefined): number => {

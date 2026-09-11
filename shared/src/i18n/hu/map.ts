@@ -15,5 +15,12 @@ const map: TranslationStrings = {
   'poi.cat.activities': 'Programok',
   'map.showAllConnections': 'Összes foglalási útvonal megjelenítése',
   'map.hideAllConnections': 'Összes foglalási útvonal elrejtése',
+  'map.baseLayer.default': 'Térkép',
+  'map.baseLayer.satellite': 'Műhold',
+  'map.baseLayer.switchToSatellite': 'Váltás műholdas nézetre',
+  'map.baseLayer.switchToDefault': 'Váltás térkép nézetre',
+  'map.location.denied': 'A helyhozzáférés le van tiltva. Ellenőrizd a készülék beállításait; a telepített alkalmazásnak saját helyengedélye van, a böngészőtől függetlenül.',
+  'map.location.unavailable': 'A tartózkodási helyed nem határozható meg.',
+  'map.location.timeout': 'A helymeghatározás túl sokáig tartott. Próbáld újra szabad ég alatt.',
 };
 export default map;

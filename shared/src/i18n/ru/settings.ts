@@ -16,6 +16,7 @@ const settings: TranslationStrings = {
   'settings.plugins.subtitle': 'Ваши личные настройки для используемых плагинов (ключи API, предпочтения).',
   'settings.plugins.empty': 'Нет активных плагинов.',
   'settings.plugins.saved': 'Настройки сохранены',
+  'settings.plugins.requiredMissing': '«{field}» обязательно',
   'settings.tabs.account': 'Аккаунт',
   'settings.tabs.offline': 'Офлайн-режим',
   'settings.tabs.about': 'О приложении',
@@ -23,7 +24,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Шаблон карты',
   'settings.mapTemplatePlaceholder.select': 'Выберите шаблон...',
   'settings.mapDefaultHint': 'Оставьте пустым для OpenStreetMap (по умолчанию)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'URL-шаблон для тайлов карты',
   'settings.mapProvider': 'Провайдер карты',
   'settings.mapProviderHint': 'Применяется к Trip Planner и Journey. Atlas всегда использует Leaflet.',
@@ -34,6 +34,12 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Токен доступа Mapbox',
   'settings.mapMapboxTokenHint': 'Публичный токен (pk.*) с',
   'settings.mapMapboxTokenLink': 'mapbox.com → Токены доступа',
+  'settings.mapCartoKey': 'Ключ API CARTO',
+  'settings.mapCartoKeyHint':
+    'Без ключа на базовых картах CARTO появляется водяной знак. Бесплатно и без учётной записи, на',
+  'settings.mapCartoKeyLink': 'ключ API базовых карт carto.com',
+  'settings.mapCartoKeyMissing':
+    'Этот шаблон является базовой картой CARTO. Без ключа CARTO наносит "API KEY REQUIRED" на каждый тайл. Пока ключ не указан, TREK показывает базовую карту по умолчанию.',
   'settings.mapStyle': 'Стиль карты',
   'settings.mapStylePlaceholder': 'Выберите стиль Mapbox',
   'settings.mapStyleHint': 'Preset или собственный URL mapbox://styles/USER/ID',
@@ -77,6 +83,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Напоминания о поездке',
   'settings.notifyTodoDue': 'Задача к сроку',
   'settings.notifyVacayInvite': 'Приглашения слияния Vacay',
+  'settings.notifyVacayShare': 'Общий доступ к календарю Vacay',
   'settings.notifyPhotosShared': 'Общие фото (Immich)',
   'settings.notifyCollabMessage': 'Сообщения чата (Collab)',
   'settings.notifyPackingTagged': 'Список вещей: назначения',
@@ -150,7 +157,7 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.redirectUris': 'URI перенаправления',
   'settings.oauth.modal.redirectUrisPlaceholder': 'https://your-app.com/callback\nhttps://your-app.com/auth',
   'settings.oauth.modal.redirectUrisHint':
-    'Один URI на строку. Требуется HTTPS (localhost исключён). Требуется точное совпадение.',
+    'Один URI на строку. HTTPS, локальный HTTP или собственная схема приложения (myapp://). Требуется точное совпадение, кроме порта локального URI.',
   'settings.oauth.modal.scopes': 'Разрешённые области доступа',
   'settings.oauth.modal.scopesHint':
     'list_trips и get_trip_summary всегда доступны — область не требуется. Они помогают ИИ находить нужные ID поездок.',
@@ -180,6 +187,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Предложить функцию',
   'settings.about.featureRequestHint': 'Предложите новую функцию',
   'settings.about.wikiHint': 'Документация и руководства',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Ежемесячные спонсоры',
   'settings.about.supporters.title': 'Спутники TREK',
   'settings.about.supporters.subtitle':
@@ -259,6 +270,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Фото профиля обновлено',
   'settings.avatarRemoved': 'Фото профиля удалено',
   'settings.avatarError': 'Ошибка загрузки',
+  'settings.avatarRemoveError': 'Ошибка удаления',
   'settings.bookingLabels': 'Подписи маршрутов бронирований',
   'settings.bookingLabelsHint':
     'Отображает названия станций / аэропортов на карте. Если выключено, показывается только значок.',
@@ -298,8 +310,9 @@ const settings: TranslationStrings = {
   'settings.notificationPreferences.webhook': 'Webhook',
   'settings.notificationPreferences.email': 'Email',
   'settings.notificationPreferences.ntfy': 'Ntfy',
-  'settings.currency': 'Валюта',
-  'settings.currencyHint': 'Все расходы будут конвертированы и показаны в этой валюте.',
+  'settings.currency': 'Валюта отображения',
+  'settings.currencyHint':
+    'Суммы в разделе «Расходы» отображаются в этой валюте только для просмотра — исходные суммы не изменяются.',
   'settings.currencyTrip': 'Валюта поездки',
   'settings.passkey.title': 'Passkeys',
   'settings.passkey.description':
@@ -348,11 +361,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Не удалось подключиться',
   'settings.aiParsing.title': 'Распознавание с помощью ИИ',
   'settings.aiParsing.hint':
-    'Используйте собственную модель ИИ для извлечения бронирований из загруженных файлов. Это работает только в том случае, если администратор не настроил модель для всего экземпляра.',
+    'Выберите модель ИИ для извлечения бронирований из загруженных файлов. Это работает только в том случае, если администратор не настроил модель для всего экземпляра.',
   'settings.aiParsing.provider': 'Провайдер',
   'settings.aiParsing.providerLocal': 'Локально (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'Локальная конечная точка (Ollama) настраивается один раз для всего экземпляра в настройках администратора. Свой ключ OpenAI или Anthropic вы по-прежнему можете использовать здесь.',
   'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
   'settings.aiParsing.gatewayAccountId': 'ID аккаунта Cloudflare',
   'settings.aiParsing.gatewayId': 'ID шлюза',
@@ -438,8 +453,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Названия мест, описания',
   'settings.appearance.example.small': 'Адреса, подписи',
   'settings.appearance.experimental': 'Экспериментальные настройки',
+  'settings.appearance.mobileNav': 'Нижняя панель навигации',
+  'settings.appearance.mobileNav.hint':
+    'Выберите, какие элементы отображаются на панели, а какие — в меню «Ещё». Дашборд всегда остаётся первым.',
+  'settings.appearance.mobileNav.inBar': 'На панели',
+  'settings.appearance.mobileNav.underMore': 'В меню «Ещё»',
+  'settings.appearance.mobileNav.moreEmpty': 'Здесь пока пусто — всё умещается на панели.',
+  'settings.appearance.mobileNav.pinned': 'Закреплено',
+  'settings.appearance.mobileNav.toMore': 'Переместить в меню «Ещё»',
+  'settings.appearance.mobileNav.toBar': 'Переместить на панель',
+  'settings.appearance.dashOrder': 'Порядок панели',
+  'settings.appearance.dashOrder.hint':
+    'Измените порядок, в котором список поездок и виджеты располагаются на панели телефона. Избранная поездка всегда остаётся сверху.',
+  'settings.appearance.dashOrder.trips': 'Поездки',
+  'settings.appearance.dashOrder.hidden': 'Скрыто',
   'settings.general.languageRegion': 'Язык и регион',
   'settings.general.travelMap': 'Карта и путешествия',
+  'settings.general.startup': 'Запуск',
+  'settings.startPage': 'Стартовая страница',
+  'settings.startPageDashboard': 'Панель управления',
+  'settings.startPageActiveTrip': 'Активная поездка',
+  'settings.startPageHint':
+    'TREK сразу открывает поездку, которая идёт сейчас, иначе ближайшую предстоящую. Это та же поездка, которую выделяет панель управления.',
+  'settings.startTripTab': 'Стартовая вкладка',
+  'settings.startTripTabHint':
+    'Вкладка, с которой открывается поездка. Если она относится к отключённому дополнению, откроется план.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Офлайн-кэш',
@@ -467,6 +505,14 @@ const settings: TranslationStrings = {
   'settings.offline.storage.tripsTitle': 'Поездки',
   'settings.offline.storage.tripOn': 'Хранится офлайн',
   'settings.offline.storage.tripOff': 'Не хранится',
+  'settings.offline.storage.tripFinished': 'Завершена. Сохраняется, только если вы её включите.',
+  'settings.offline.notice.stored': 'На этом устройстве сохранено поездок: {count}',
+  'settings.offline.notice.nothing': 'Сохранять нечего. Включите поездки, которые хотите оставить.',
+  'settings.offline.notice.busy': 'Синхронизация уже идёт. Повторите попытку через мгновение.',
+  'settings.offline.notice.offline': 'Нет соединения. Подключитесь, чтобы сохранить поездки офлайн.',
+  'settings.offline.notice.signedOut': 'Сеанс завершён. Войдите снова, чтобы синхронизировать.',
+  'settings.offline.notice.failed': 'Загрузку не удалось завершить. Проверьте соединение и повторите попытку.',
+  'settings.offline.notice.loadFailed': 'Не удалось прочитать офлайн-хранилище этого устройства. Обычно помогает очистка кэша.',
   'settings.offline.clear': 'Очистить кэш',
   'settings.offline.clearConfirm':
     'Очистить все офлайн-данные поездок? Вы сможете синхронизировать их снова в любой момент при наличии подключения.',
@@ -504,7 +550,32 @@ const settings: TranslationStrings = {
   'settings.pluginActivity.columns.when': 'Когда',
   'settings.pluginActivity.columns.status': 'Результат',
   'settings.alwaysShowRoutes': 'Всегда показывать маршруты бронирований',
-  'settings.alwaysShowRoutesHint': 'Автоматически показывает на карте маршрут для каждого рейса, поезда и другого бронирования — без необходимости включать это отдельно для каждого элемента.',
+  'settings.alwaysShowRoutesHint':
+    'Автоматически показывает на карте маршрут для каждого рейса, поезда и другого бронирования — без необходимости включать это отдельно для каждого элемента.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Ключи API',
+  'settings.apiKeys.description': 'Ключи для публичного API, чтобы другие программы могли читать ваши поездки. Только чтение: ключ ничего не изменит и не удалит.',
+  'settings.apiKeys.create': 'Создать ключ',
+  'settings.apiKeys.empty': 'Ключей пока нет. Создайте один, чтобы подключить другую программу.',
+  'settings.apiKeys.createdAt': 'создан',
+  'settings.apiKeys.usedAt': 'последнее использование',
+  'settings.apiKeys.deleteTitle': 'Удалить ключ',
+  'settings.apiKeys.deleteMessage': 'Всё, что использует этот ключ, сразу перестанет работать. Отменить нельзя.',
+  'settings.apiKeys.deleted': 'Ключ удалён',
+  'settings.apiKeys.deleteFailed': 'Не удалось удалить ключ',
+  'settings.apiKeys.createFailed': 'Не удалось создать ключ',
+  'settings.apiKeys.copy': 'Копировать',
+  'settings.apiKeys.docsHint': 'Отправляйте ключ как "Authorization: Bearer ..." или "X-API-Key: ..." на /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Создать ключ API',
+  'settings.apiKeys.modal.name': 'Название',
+  'settings.apiKeys.modal.namePlaceholder': 'например, Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Только для вас, чтобы позже узнать ключ.',
+  'settings.apiKeys.modal.creating': 'Создание...',
+  'settings.apiKeys.modal.create': 'Создать',
+  'settings.apiKeys.modal.createdTitle': 'Ключ API создан',
+  'settings.apiKeys.modal.createdWarning': 'Скопируйте ключ сейчас. Он показывается один раз, позже получить его нельзя.',
+  'settings.apiKeys.modal.done': 'Готово',
 };
 
 export default settings;

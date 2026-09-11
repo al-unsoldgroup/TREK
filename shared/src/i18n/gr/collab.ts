@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Πρόσβαση μόνο για ανάγνωση σε αυτήν τη συνομιλία',
+  'collab.chat.messageOptions': 'Επιλογές μηνύματος',
+  'collab.polls.confirmDeleteTitle': 'Διαγραφή δημοσκόπησης;',
+  'collab.polls.confirmDeleteBody': 'Αυτή η δημοσκόπηση θα διαγραφεί οριστικά.',
+  'collab.polls.countdownDaysHours': 'Απομένουν {d} ημ. {h} ώ.',
+  'collab.polls.countdownHoursMinutes': 'Απομένουν {h} ώ. {m} λ.',
+  'collab.polls.countdownMinutes': 'Απομένουν {m} λ.',
+  'collab.polls.clearDeadline': 'Απαλοιφή προθεσμίας',
   'collab.tabs.chat': 'Συνομιλία',
   'collab.tabs.notes': 'Σημειώσεις',
   'collab.tabs.polls': 'Δημοσκοπήσεις',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Ξεκινήστε να καταγράφετε ιδέες και σχέδια',
   'collab.notes.all': 'Όλες',
   'collab.notes.titlePlaceholder': 'Τίτλος σημείωσης',
+  'collab.notes.content': 'Περιεχόμενο',
+  'collab.notes.removeFile': 'Αφαίρεση {name}',
   'collab.notes.contentPlaceholder': 'Γράψτε κάτι...',
   'collab.notes.categoryPlaceholder': 'Κατηγορία',
   'collab.notes.newCategory': 'Νέα κατηγορία...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Ρωτήστε την ομάδα και ψηφίστε μαζί',
   'collab.polls.question': 'Ερώτηση',
   'collab.polls.questionPlaceholder': 'Τι πρέπει να κάνουμε;',
+  'collab.polls.markdownHint': 'Υποστηρίζεται Markdown',
   'collab.polls.addOption': '+ Προσθήκη επιλογής',
   'collab.polls.optionPlaceholder': 'Επιλογή {n}',
   'collab.polls.create': 'Δημιουργία Δημοσκόπησης',

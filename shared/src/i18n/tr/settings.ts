@@ -16,6 +16,7 @@ const settings: TranslationStrings = {
   'settings.plugins.subtitle': 'Kullandığın eklentiler için kişisel ayarların (API anahtarları, tercihler).',
   'settings.plugins.empty': 'Etkin eklenti yok.',
   'settings.plugins.saved': 'Ayarlar kaydedildi',
+  'settings.plugins.requiredMissing': '"{field}" gerekli',
   'settings.tabs.account': 'Hesap',
   'settings.tabs.offline': 'Çevrimdışı',
   'settings.tabs.about': 'Hakkında',
@@ -23,7 +24,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Harita Şablonu',
   'settings.mapTemplatePlaceholder.select': 'Şablon seçin...',
   'settings.mapDefaultHint': 'OpenStreetMap için boş bırakın (varsayılan)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'Harita kutucukları için URL şablonu',
   'settings.mapProvider': 'Harita Sağlayıcısı',
   'settings.mapProviderHint': 'Seyahat planlayıcı ve Journey haritalarını etkiler. Atlas her zaman Leaflet kullanır.',
@@ -34,6 +34,12 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Mapbox Erişim Anahtarı',
   'settings.mapMapboxTokenHint': 'Genel anahtar (pk.*) kaynağı:',
   'settings.mapMapboxTokenLink': 'Mapbox.com → Jetonlara erişim',
+  'settings.mapCartoKey': 'CARTO API anahtarı',
+  'settings.mapCartoKeyHint':
+    'CARTO temel haritaları anahtar olmadan filigran gösterir. Ücretsiz, hesap gerekmez, kaynağı:',
+  'settings.mapCartoKeyLink': 'carto.com temel harita API anahtarı',
+  'settings.mapCartoKeyMissing':
+    'Bu şablon bir CARTO temel haritası. Anahtar olmadan CARTO her karoya "API KEY REQUIRED" damgası basar. Anahtar girilene kadar TREK varsayılan temel haritayı gösterir.',
   'settings.mapStyle': 'Harita Stili',
   'settings.mapStylePlaceholder': 'Bir Mapbox stili seçin',
   'settings.mapStyleHint': 'Ön ayar veya kendi mapbox://styles/KULLANICI/ID adresiniz',
@@ -80,6 +86,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Seyahat hatırlatıcıları',
   'settings.notifyTodoDue': 'Yapılacak vadesi yakında',
   'settings.notifyVacayInvite': 'Vacay birleştirme davetleri',
+  'settings.notifyVacayShare': 'Vacay takvim paylaşımları',
   'settings.notifyPhotosShared': 'Paylaşılan fotoğraflar (Immich)',
   'settings.notifyCollabMessage': 'Sohbet mesajları (Collab)',
   'settings.notifyPackingTagged': 'Paket listesi: atamalar',
@@ -188,7 +195,7 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.redirectUris': "URI'leri Yönlendir",
   'settings.oauth.modal.redirectUrisPlaceholder': 'https://uygulamaniz.com/callback\\nhttps://uygulamaniz.com/auth',
   'settings.oauth.modal.redirectUrisHint':
-    'Satır başına bir URI. HTTPS gerekli (yerel ana bilgisayar hariç). Tam eşleşme uygulandı.',
+    'Satır başına bir URI. HTTPS, geri döngü HTTP veya kendi uygulama şeması (myapp://). Geri döngü URI portu dışında tam eşleşme gerekir.',
   'settings.oauth.modal.scopes': 'İzin Verilen Kapsamlar',
   'settings.oauth.modal.scopesHint':
     'list_trips ve get_trip_summary her zaman kullanılabilir; kapsam gerektirmez. Yapay zekanın başka herhangi bir aracı kullanmak için gereken yolculuk kimliklerini keşfetmesine olanak tanıyorlar.',
@@ -211,6 +218,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Özellik İsteği',
   'settings.about.featureRequestHint': 'Yeni bir özellik önerin',
   'settings.about.wikiHint': 'Belgeler ve kılavuzlar',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Aylık Destekçiler',
   'settings.about.supporters.title': 'TREK için seyahat Arkadaşları',
   'settings.about.supporters.subtitle':
@@ -263,6 +274,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Profil resmi güncellendi',
   'settings.avatarRemoved': 'Profil resmi kaldırıldı',
   'settings.avatarError': 'Yükleme başarısız oldu',
+  'settings.avatarRemoveError': 'Kaldırma başarısız oldu',
   'settings.mfa.title': 'İki faktörlü kimlik doğrulama (2FA)',
   'settings.mfa.description':
     'E-posta ve şifreyle oturum açtığınızda ikinci bir adım ekler. Bir kimlik doğrulama uygulaması kullanın (Google Authenticator, Authy vb.).',
@@ -296,8 +308,9 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.machineClientUsage':
     'Bir jeton alın: grant_type=client_credentials, client_id ve client_secret ile POST /oauth/token. Tarayıcı yok, yenileme belirteci yok.',
   'settings.oauth.badge.machine': 'makine',
-  'settings.currency': 'Currency',
-  'settings.currencyHint': 'All amounts in Costs are converted to and shown in this currency.',
+  'settings.currency': 'Görüntüleme para birimi',
+  'settings.currencyHint':
+    'Maliyetler bölümündeki tutarlar yalnızca görüntüleme amacıyla bu para birimine çevrilerek gösterilir — orijinal tutarlar değişmez.',
   'settings.currencyTrip': 'Gezi para birimi',
   'settings.passkey.title': 'Passkey’ler',
   'settings.passkey.description':
@@ -345,11 +358,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Bağlantı başarısız',
   'settings.aiParsing.title': 'Yapay zekâ ayrıştırma',
   'settings.aiParsing.hint':
-    'Yüklenen dosyalardan rezervasyonları çıkarmak için kendi yapay zekâ modelini kullan. Bu yalnızca yöneticin tüm uygulama geneli için bir model yapılandırmadığında geçerlidir.',
+    'Yüklenen dosyalardan rezervasyonları çıkarmak için kullanılacak yapay zekâ modelini seç. Bu yalnızca yöneticin tüm uygulama geneli için bir model yapılandırmadığında geçerlidir.',
   'settings.aiParsing.provider': 'Sağlayıcı',
   'settings.aiParsing.providerLocal': 'Yerel (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'Yerel (Ollama) uç noktası, tüm örnek için bir kez yönetici ayarlarında yapılandırılır. Kendi OpenAI veya Anthropic anahtarını burada kullanmaya devam edebilirsin.',
   'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
   'settings.aiParsing.gatewayAccountId': 'Cloudflare hesap kimliği',
   'settings.aiParsing.gatewayId': 'Ağ geçidi kimliği',
@@ -434,8 +449,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Place names, descriptions',
   'settings.appearance.example.small': 'Addresses, labels',
   'settings.appearance.experimental': 'Experimental',
+  'settings.appearance.mobileNav': 'Alt gezinme çubuğu',
+  'settings.appearance.mobileNav.hint':
+    'Hangi öğelerin çubukta görüneceğini, hangilerinin “Diğer” altında yer alacağını seçin. Dashboard her zaman ilk sırada kalır.',
+  'settings.appearance.mobileNav.inBar': 'Çubukta',
+  'settings.appearance.mobileNav.underMore': '“Diğer” altında',
+  'settings.appearance.mobileNav.moreEmpty': 'Burada henüz bir şey yok — her şey çubuğa sığıyor.',
+  'settings.appearance.mobileNav.pinned': 'Sabit',
+  'settings.appearance.mobileNav.toMore': '“Diğer” altına taşı',
+  'settings.appearance.mobileNav.toBar': 'Çubuğa taşı',
+  'settings.appearance.dashOrder': 'Panel sıralaması',
+  'settings.appearance.dashOrder.hint':
+    'Gezi listesi ve widget’ların telefon panelinizde nasıl sıralanacağını yeniden düzenleyin. Öne çıkan gezi her zaman en üstte kalır.',
+  'settings.appearance.dashOrder.trips': 'Geziler',
+  'settings.appearance.dashOrder.hidden': 'Gizli',
   'settings.general.languageRegion': 'Language & region',
   'settings.general.travelMap': 'Travel & map',
+  'settings.general.startup': 'Başlangıç',
+  'settings.startPage': 'Başlangıç sayfası',
+  'settings.startPageDashboard': 'Pano',
+  'settings.startPageActiveTrip': 'Aktif seyahat',
+  'settings.startPageHint':
+    'TREK doğrudan devam eden seyahati, yoksa sıradaki seyahati açar. Panonun öne çıkardığı seyahatin aynısı.',
+  'settings.startTripTab': 'Başlangıç sekmesi',
+  'settings.startTripTabHint':
+    'Seyahatin açılacağı sekme. Kapalı bir eklentiye aitse onun yerine plan görünümü açılır.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Çevrimdışı önbellek',
@@ -463,6 +501,14 @@ const settings: TranslationStrings = {
   'settings.offline.storage.tripsTitle': 'Geziler',
   'settings.offline.storage.tripOn': 'Çevrimdışı saklandı',
   'settings.offline.storage.tripOff': 'Saklanmadı',
+  'settings.offline.storage.tripFinished': 'Tamamlandı. Yalnızca açarsanız saklanır.',
+  'settings.offline.notice.stored': 'Bu cihaza {count} gezi kaydedildi',
+  'settings.offline.notice.nothing': 'Kaydedilecek bir şey yok. Saklamak istediğiniz gezileri açın.',
+  'settings.offline.notice.busy': 'Zaten bir eşitleme sürüyor. Birazdan yeniden deneyin.',
+  'settings.offline.notice.offline': 'Bağlantı yok. Gezileri çevrimdışı kaydetmek için bağlanın.',
+  'settings.offline.notice.signedOut': 'Oturumunuz sona erdi. Eşitlemek için tekrar giriş yapın.',
+  'settings.offline.notice.failed': 'İndirme tamamlanamadı. Bağlantınızı kontrol edip yeniden deneyin.',
+  'settings.offline.notice.loadFailed': 'Bu cihazın çevrimdışı deposu okunamadı. Genellikle önbelleği temizlemek sorunu çözer.',
   'settings.offline.clear': 'Önbelleği temizle',
   'settings.offline.clearConfirm':
     'Tüm çevrimdışı gezi verileri silinsin mi? Çevrimiçiyken istediğiniz zaman yeniden senkronize edebilirsiniz.',
@@ -500,7 +546,32 @@ const settings: TranslationStrings = {
   'settings.pluginActivity.columns.when': 'Ne zaman',
   'settings.pluginActivity.columns.status': 'Sonuç',
   'settings.alwaysShowRoutes': 'Rezervasyon rotalarını her zaman göster',
-  'settings.alwaysShowRoutesHint': 'Haritada her uçuş, tren ve diğer rezervasyonun rotasını, tek tek açmaya gerek kalmadan otomatik olarak gösterir.',
+  'settings.alwaysShowRoutesHint':
+    'Haritada her uçuş, tren ve diğer rezervasyonun rotasını, tek tek açmaya gerek kalmadan otomatik olarak gösterir.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'API Anahtarları',
+  'settings.apiKeys.description': 'Genel API için anahtarlar, böylece başka yazılımlar gezilerini okuyabilir. Yalnızca okuma: bir anahtar hiçbir şeyi değiştiremez veya silemez.',
+  'settings.apiKeys.create': 'Anahtar oluştur',
+  'settings.apiKeys.empty': 'Henüz anahtar yok. Başka bir yazılımı bağlamak için bir tane oluştur.',
+  'settings.apiKeys.createdAt': 'oluşturuldu',
+  'settings.apiKeys.usedAt': 'son kullanım',
+  'settings.apiKeys.deleteTitle': 'Anahtarı sil',
+  'settings.apiKeys.deleteMessage': 'Bu anahtarı kullanan her şey hemen çalışmayı durdurur. Bu işlem geri alınamaz.',
+  'settings.apiKeys.deleted': 'Anahtar silindi',
+  'settings.apiKeys.deleteFailed': 'Anahtar silinemedi',
+  'settings.apiKeys.createFailed': 'Anahtar oluşturulamadı',
+  'settings.apiKeys.copy': 'Kopyala',
+  'settings.apiKeys.docsHint': 'Anahtarı "Authorization: Bearer ..." veya "X-API-Key: ..." olarak /api/v1 adresine gönder.',
+  'settings.apiKeys.modal.createTitle': 'API anahtarı oluştur',
+  'settings.apiKeys.modal.name': 'Ad',
+  'settings.apiKeys.modal.namePlaceholder': 'örn. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Yalnızca senin için, anahtarı sonradan tanıyabilmen için.',
+  'settings.apiKeys.modal.creating': 'Oluşturuluyor...',
+  'settings.apiKeys.modal.create': 'Oluştur',
+  'settings.apiKeys.modal.createdTitle': 'API anahtarı oluşturuldu',
+  'settings.apiKeys.modal.createdWarning': 'Anahtarı şimdi kopyala. Yalnızca bir kez gösterilir ve sonradan alınamaz.',
+  'settings.apiKeys.modal.done': 'Tamam',
 };
 
 export default settings;

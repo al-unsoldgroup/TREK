@@ -16,6 +16,7 @@ const settings: TranslationStrings = {
   'settings.plugins.subtitle': 'Dina personliga inställningar för de tillägg du använder (API-nycklar, inställningar).',
   'settings.plugins.empty': 'Inga tillägg är aktiva.',
   'settings.plugins.saved': 'Inställningar sparade',
+  'settings.plugins.requiredMissing': '"{field}" krävs',
   'settings.tabs.account': 'Konto',
   'settings.tabs.offline': 'Offline',
   'settings.tabs.about': 'Om',
@@ -23,7 +24,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Kartmall',
   'settings.mapTemplatePlaceholder.select': 'Välj mall...',
   'settings.mapDefaultHint': 'Lämna fältet tomt för OpenStreetMap (standard)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'URL-mall för kartrutor',
   'settings.mapProvider': 'Kartleverantör',
   'settings.mapProviderHint': 'Påverkar resplaneraren och resedagbokens kartor. Atlas använder alltid Leaflet.',
@@ -37,6 +37,11 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Mapbox-åtkomsttoken',
   'settings.mapMapboxTokenHint': 'Offentlig token (pk.*) från',
   'settings.mapMapboxTokenLink': 'mapbox.com → Åtkomsttoken',
+  'settings.mapCartoKey': 'CARTO API-nyckel',
+  'settings.mapCartoKeyHint': 'CARTO-bakgrundskartor visar en vattenstämpel utan nyckel. Gratis och utan konto, från',
+  'settings.mapCartoKeyLink': 'API-nyckel för bakgrundskartor på carto.com',
+  'settings.mapCartoKeyMissing':
+    'Den här mallen är en CARTO-bakgrundskarta. Utan nyckel stämplar CARTO "API KEY REQUIRED" på varje ruta. Tills en nyckel anges visar TREK standardbakgrundskartan.',
   'settings.mapStyle': 'Kartstil',
   'settings.mapStylePlaceholder': 'Välj en Mapbox-stil',
   'settings.mapStyleHint': 'Förinställda eller egna mapbox://styles/USER/ID länk',
@@ -85,6 +90,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Påminnelser inför resan',
   'settings.notifyTodoDue': 'Att göra ska göras snart',
   'settings.notifyVacayInvite': 'Vacay samanslagnings inbjudningar',
+  'settings.notifyVacayShare': 'Vacay kalender delningar',
   'settings.notifyPhotosShared': 'Delade foton (Immich)',
   'settings.notifyCollabMessage': 'Chatt meddelande (Samarbete)',
   'settings.notifyPackingTagged': 'Packningslista: uppgifter',
@@ -194,7 +200,7 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.redirectUris': 'Omdirigerings-URI:er',
   'settings.oauth.modal.redirectUrisPlaceholder': 'https://din-app.com/callback\nhttps://din-app.com/auth',
   'settings.oauth.modal.redirectUrisHint':
-    'En URI per rad. HTTPS krävs (med undantag för localhost). Exakt matchning krävs.',
+    'En URI per rad. HTTPS, loopback-HTTP eller ett eget app-schema (myapp://). Exakt matchning, utom porten i en loopback-URI.',
   'settings.oauth.modal.scopes': 'Tillåtna tillämpningsområden',
   'settings.oauth.modal.scopesHint':
     'list_trips och get_trip_summary är alltid tillgängliga – inget tillämpningsområden krävs. De gör det möjligt för AI:n att hämta de res-ID:n som behövs för att använda andra verktyg.',
@@ -224,6 +230,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Förslag på ny funktion',
   'settings.about.featureRequestHint': 'Föreslå en ny funktion',
   'settings.about.wikiHint': 'Dokumentation och handledningar',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Månatliga bidragsgivare',
   'settings.about.supporters.title': 'Resekompisar för TREK',
   'settings.about.supporters.subtitle':
@@ -275,6 +285,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Profilbilden har uppdaterats',
   'settings.avatarRemoved': 'Profilbilden har tagits bort',
   'settings.avatarError': 'Uppladdning misslyckades',
+  'settings.avatarRemoveError': 'Borttagningen misslyckades',
   'settings.mfa.title': 'Tvåfaktorsautentisering (2FA)',
   'settings.mfa.description':
     'Lägger till ett extra steg när du loggar in med e-postadress och lösenord. Använd en autentiseringsapp (Google Authenticator, Authy m.fl.).',
@@ -302,8 +313,9 @@ const settings: TranslationStrings = {
   'settings.mfa.toastEnabled': 'Tvåfaktorsautentisering är aktiverad',
   'settings.mfa.toastDisabled': 'Tvåfaktorsautentisering är inaktiverad',
   'settings.mfa.demoBlocked': 'Finns inte i demoläge',
-  'settings.currency': 'Valuta',
-  'settings.currencyHint': 'Alla belopp under kostnader omräknas till och redovisas i denna valuta.',
+  'settings.currency': 'Visningsvaluta',
+  'settings.currencyHint':
+    'Belopp under Kostnader visas omräknade till denna valuta endast för visning – de ursprungliga beloppen ändras inte.',
   'settings.currencyTrip': 'Resans valuta',
   'settings.passkey.title': 'Inloggningsnycklar',
   'settings.passkey.description':
@@ -348,11 +360,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Anslutning misslyckades',
   'settings.aiParsing.title': 'AI-analys',
   'settings.aiParsing.hint':
-    'Använd din egen AI-modell för att extrahera bokningar från uppladdade filer. Detta gäller endast när din administratör inte har konfigurerat en modell för hela instansen.',
+    'Välj den AI-modell som används för att extrahera bokningar från uppladdade filer. Detta gäller endast när din administratör inte har konfigurerat en modell för hela instansen.',
   'settings.aiParsing.provider': 'Leverantör',
   'settings.aiParsing.providerLocal': 'Lokal (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'En lokal slutpunkt (Ollama) ställs in en gång för hela instansen i administratörsinställningarna. Du kan fortfarande använda din egen OpenAI- eller Anthropic-nyckel här.',
   'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
   'settings.aiParsing.gatewayAccountId': 'Cloudflare-konto-ID',
   'settings.aiParsing.gatewayId': 'Gateway-ID',
@@ -435,8 +449,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Place names, descriptions',
   'settings.appearance.example.small': 'Addresses, labels',
   'settings.appearance.experimental': 'Experimental',
+  'settings.appearance.mobileNav': 'Nedre navigeringsfält',
+  'settings.appearance.mobileNav.hint':
+    'Välj vilka objekt som ska visas i fältet och vilka som hamnar under ”Mer”. Dashboard ligger alltid först.',
+  'settings.appearance.mobileNav.inBar': 'I fältet',
+  'settings.appearance.mobileNav.underMore': 'Under ”Mer”',
+  'settings.appearance.mobileNav.moreEmpty': 'Inget här ännu — allt får plats i fältet.',
+  'settings.appearance.mobileNav.pinned': 'Fäst',
+  'settings.appearance.mobileNav.toMore': 'Flytta under ”Mer”',
+  'settings.appearance.mobileNav.toBar': 'Flytta till fältet',
+  'settings.appearance.dashOrder': 'Instrumentpanelens ordning',
+  'settings.appearance.dashOrder.hint':
+    'Ändra ordningen på hur reselistan och widgetarna staplas på telefonens instrumentpanel. Den utvalda resan ligger alltid överst.',
+  'settings.appearance.dashOrder.trips': 'Resor',
+  'settings.appearance.dashOrder.hidden': 'Dold',
   'settings.general.languageRegion': 'Language & region',
   'settings.general.travelMap': 'Travel & map',
+  'settings.general.startup': 'Start',
+  'settings.startPage': 'Startsida',
+  'settings.startPageDashboard': 'Översikt',
+  'settings.startPageActiveTrip': 'Aktiv resa',
+  'settings.startPageHint':
+    'TREK öppnar direkt i resan som pågår, annars i nästa som börjar. Det är samma resa som översikten lyfter fram.',
+  'settings.startTripTab': 'Startflik',
+  'settings.startTripTabHint':
+    'Fliken som resan öppnas med. Hör den till ett avstängt tillägg öppnas planvyn i stället.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Offline-cache',
@@ -463,6 +500,14 @@ const settings: TranslationStrings = {
   'settings.offline.storage.tripsTitle': 'Resor',
   'settings.offline.storage.tripOn': 'Lagrad offline',
   'settings.offline.storage.tripOff': 'Inte lagrad',
+  'settings.offline.storage.tripFinished': 'Avslutad. Sparas bara om du slår på den.',
+  'settings.offline.notice.stored': '{count} resa/resor sparade på den här enheten',
+  'settings.offline.notice.nothing': 'Inget att spara. Slå på de resor du vill behålla.',
+  'settings.offline.notice.busy': 'En synkronisering pågår redan. Försök igen om en stund.',
+  'settings.offline.notice.offline': 'Ingen anslutning. Anslut för att spara resor offline.',
+  'settings.offline.notice.signedOut': 'Din session har upphört. Logga in igen för att synkronisera.',
+  'settings.offline.notice.failed': 'Nedladdningen kunde inte slutföras. Kontrollera anslutningen och försök igen.',
+  'settings.offline.notice.loadFailed': 'Kunde inte läsa enhetens offlinelagring. Att rensa cachen brukar hjälpa.',
   'settings.offline.clear': 'Rensa cache',
   'settings.offline.clearConfirm': 'Rensa alla offline-resdata? Du kan synkronisera om när som helst när du är online.',
   'settings.offline.stats.trips': 'Cachelagrade resor',
@@ -499,7 +544,32 @@ const settings: TranslationStrings = {
   'settings.pluginActivity.columns.when': 'När',
   'settings.pluginActivity.columns.status': 'Resultat',
   'settings.alwaysShowRoutes': 'Visa alltid bokningsrutter',
-  'settings.alwaysShowRoutesHint': 'Visar automatiskt rutten för varje flyg, tåg och annan bokning på kartan, utan att du behöver aktivera det för varje bokning för sig.',
+  'settings.alwaysShowRoutesHint':
+    'Visar automatiskt rutten för varje flyg, tåg och annan bokning på kartan, utan att du behöver aktivera det för varje bokning för sig.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'API-nycklar',
+  'settings.apiKeys.description': 'Nycklar för det publika API:et, så att annan programvara kan läsa dina resor. Endast läsning: en nyckel kan inte ändra eller ta bort något.',
+  'settings.apiKeys.create': 'Skapa nyckel',
+  'settings.apiKeys.empty': 'Inga nycklar än. Skapa en för att koppla annan programvara.',
+  'settings.apiKeys.createdAt': 'skapad',
+  'settings.apiKeys.usedAt': 'senast använd',
+  'settings.apiKeys.deleteTitle': 'Ta bort nyckel',
+  'settings.apiKeys.deleteMessage': 'Allt som använder den här nyckeln slutar fungera direkt. Det går inte att ångra.',
+  'settings.apiKeys.deleted': 'Nyckeln togs bort',
+  'settings.apiKeys.deleteFailed': 'Kunde inte ta bort nyckeln',
+  'settings.apiKeys.createFailed': 'Kunde inte skapa nyckeln',
+  'settings.apiKeys.copy': 'Kopiera',
+  'settings.apiKeys.docsHint': 'Skicka nyckeln som "Authorization: Bearer ..." eller "X-API-Key: ..." till /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Skapa API-nyckel',
+  'settings.apiKeys.modal.name': 'Namn',
+  'settings.apiKeys.modal.namePlaceholder': 't.ex. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Bara för dig, så att du känner igen nyckeln senare.',
+  'settings.apiKeys.modal.creating': 'Skapar...',
+  'settings.apiKeys.modal.create': 'Skapa',
+  'settings.apiKeys.modal.createdTitle': 'API-nyckel skapad',
+  'settings.apiKeys.modal.createdWarning': 'Kopiera nyckeln nu. Den visas en gång och kan inte hämtas senare.',
+  'settings.apiKeys.modal.done': 'Klar',
 };
 
 export default settings;

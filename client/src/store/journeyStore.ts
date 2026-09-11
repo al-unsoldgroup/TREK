@@ -11,6 +11,16 @@ export interface Journey {
   cover_gradient?: string | null
   cover_image?: string | null
   status: 'draft' | 'active' | 'completed' | 'archived'
+  /**
+   * Draw the GPX tracks of the journey's linked trips on its map (#2194).
+   * Off unless the owner asks for it — see the migration for why the default
+   * flipped. Optional so a cached pre-#2194 journey still parses.
+   *
+   * Typed as the wire shape, not as the concept: the column is INTEGER and the
+   * journey rows are read with SELECT *, so what arrives is 0 or 1. Declaring it
+   * boolean would make `=== true` compile and never hold.
+   */
+  show_trip_tracks?: number
   created_at: number
   updated_at: number
 }
@@ -36,6 +46,9 @@ export interface JourneyEntry {
   pros_cons?: { pros: string[]; cons: string[] } | null
   visibility: string
   sort_order: number
+  // Switched off by hand: the stop stays in the journal but is left out of the
+  // route, the distance and the countries that Studio prints.
+  stats_excluded?: boolean
   photos: JourneyPhoto[]
   created_at: number
   updated_at: number
@@ -110,6 +123,7 @@ export interface JourneyDetail extends Journey {
   contributors: JourneyContributor[]
   stats: { entries: number; photos: number; places: number }
   hide_skeletons?: boolean
+  my_role?: 'owner' | 'editor' | 'viewer'
 }
 
 interface JourneyState {
@@ -136,6 +150,29 @@ interface JourneyState {
   deletePhoto: (photoId: number) => Promise<void>
 
   clear: () => void
+}
+
+/**
+ * The gallery rows behind pictures that were uploaded onto an entry.
+ *
+ * A picture put on an entry is in the gallery too, because that is where the
+ * row lives: the entry only holds a link to it. The upload route answers with
+ * the entry's view of that row and, on the paths that have it, the gallery's
+ * as well; this derives the missing ones, so a picture added from anywhere
+ * shows up wherever the gallery is read rather than after the journey has been
+ * fetched again. Rows already in the gallery are skipped, since a retry can
+ * hand back a picture that is in it.
+ */
+function galleryRowsFor(
+  journey: JourneyDetail,
+  uploaded: JourneyPhoto[],
+  answered: GalleryPhoto[] | undefined,
+): GalleryPhoto[] {
+  const known = new Set([...(journey.gallery || []), ...(answered || [])].map(p => p.id))
+  const derived = uploaded
+    .filter(p => !known.has(p.id))
+    .map(({ entry_id: _entry, ...rest }) => ({ ...rest, journey_id: journey.id }))
+  return [...(answered || []), ...derived]
 }
 
 export const useJourneyStore = create<JourneyState>((set, get) => ({
@@ -253,9 +290,9 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
         fd.append('photos', file)
         const data = await journeyApi.uploadPhotos(entryId, fd, opts)
         const photos: JourneyPhoto[] = data.photos || []
-        const gallery: GalleryPhoto[] = data.gallery || []
         set(s => {
           if (!s.current) return s
+          const gallery = galleryRowsFor(s.current, photos, data.gallery)
           return {
             current: {
               ...s.current,
@@ -349,5 +386,5 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
     })
   },
 
-  clear: () => set({ journeys: [], current: null, loading: false }),
+  clear: () => set({ journeys: [], current: null, loading: false, notFound: false }),
 }))

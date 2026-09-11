@@ -16,6 +16,7 @@ const settings: TranslationStrings = {
   'settings.plugins.subtitle': 'إعداداتك الشخصية للإضافات التي تستخدمها (مفاتيح API، التفضيلات).',
   'settings.plugins.empty': 'لا توجد إضافات نشطة.',
   'settings.plugins.saved': 'تم حفظ الإعدادات',
+  'settings.plugins.requiredMissing': '"{field}" مطلوب',
   'settings.tabs.account': 'الحساب',
   'settings.tabs.about': 'حول',
   'settings.map': 'الخريطة',
@@ -32,6 +33,11 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'رمز وصول Mapbox',
   'settings.mapMapboxTokenHint': 'الرمز العام (pk.*) من',
   'settings.mapMapboxTokenLink': 'mapbox.com ← رموز الوصول',
+  'settings.mapCartoKey': 'مفتاح CARTO API',
+  'settings.mapCartoKeyHint': 'تعرض خرائط CARTO الأساسية علامة مائية بدون مفتاح. مجاني وبدون حساب، من',
+  'settings.mapCartoKeyLink': 'مفتاح API لخرائط carto.com الأساسية',
+  'settings.mapCartoKeyMissing':
+    'هذا القالب خريطة أساسية من CARTO. بدون مفتاح تطبع CARTO عبارة "API KEY REQUIRED" على كل بلاطة. إلى أن تُدخل مفتاحًا، تعرض TREK الخريطة الأساسية الافتراضية بدلاً منها.',
   'settings.mapStyle': 'نمط الخريطة',
   'settings.mapStylePlaceholder': 'اختر نمط Mapbox',
   'settings.mapStyleHint': 'إعداد مسبق أو عنوان URL mapbox://styles/USER/ID خاص بك',
@@ -77,6 +83,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'تذكيرات الرحلات',
   'settings.notifyTodoDue': 'مهمة مستحقة',
   'settings.notifyVacayInvite': 'دعوات دمج الإجازات',
+  'settings.notifyVacayShare': 'مشاركات تقويم Vacay',
   'settings.notifyPhotosShared': 'صور مشتركة (Immich)',
   'settings.notifyCollabMessage': 'رسائل الدردشة (Collab)',
   'settings.notifyPackingTagged': 'قائمة الأمتعة: التعيينات',
@@ -165,7 +172,8 @@ const settings: TranslationStrings = {
   'settings.oauth.modal.clientName': 'اسم التطبيق',
   'settings.oauth.modal.clientNamePlaceholder': 'مثال: Claude Web، تطبيق MCP الخاص بي',
   'settings.oauth.modal.redirectUris': 'عناوين URI لإعادة التوجيه',
-  'settings.oauth.modal.redirectUrisHint': 'عنوان URI واحد لكل سطر. يُطلب HTTPS (localhost مستثنى). يُطبق تطابق دقيق.',
+  'settings.oauth.modal.redirectUrisHint':
+    'عنوان URI واحد لكل سطر. يُسمح بـ HTTPS أو HTTP محلي أو مخطط تطبيق خاص (myapp://). يُطبق تطابق دقيق، باستثناء منفذ العنوان المحلي.',
   'settings.oauth.modal.scopes': 'النطاقات المسموح بها',
   'settings.oauth.modal.scopesHint':
     'list_trips وget_trip_summary متاحان دائماً — لا يُطلب نطاق. يساعدان الذكاء الاصطناعي في اكتشاف معرّفات الرحلات.',
@@ -194,6 +202,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'اقتراح ميزة',
   'settings.about.featureRequestHint': 'اقترح ميزة جديدة',
   'settings.about.wikiHint': 'التوثيق والأدلة',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'الداعمون الشهريون',
   'settings.about.supporters.title': 'رفاق رحلة TREK',
   'settings.about.supporters.subtitle':
@@ -238,6 +250,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'تم تحديث صورة الملف الشخصي',
   'settings.avatarRemoved': 'تمت إزالة صورة الملف الشخصي',
   'settings.avatarError': 'فشل الرفع',
+  'settings.avatarRemoveError': 'فشل الحذف',
   'settings.mfa.title': 'المصادقة الثنائية (2FA)',
   'settings.mfa.description':
     'تضيف خطوة ثانية عند تسجيل الدخول. استخدم تطبيق مصادقة (Google Authenticator، Authy، إلخ).',
@@ -264,7 +277,6 @@ const settings: TranslationStrings = {
   'settings.mfa.toastDisabled': 'تم تعطيل المصادقة الثنائية',
   'settings.mfa.demoBlocked': 'غير متاح في الوضع التجريبي',
   'settings.tabs.offline': 'Offline', // en-fallback
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', // en-fallback
   'settings.notificationPreferences.email': 'Email', // en-fallback
   'settings.notificationPreferences.webhook': 'Webhook', // en-fallback
   'settings.notificationPreferences.inapp': 'In-App', // en-fallback
@@ -286,8 +298,9 @@ const settings: TranslationStrings = {
   'settings.about.supporter.tier.businessClassDreamer': 'Business Class Dreamer', // en-fallback
   'settings.about.supporter.tier.budgetTraveller': 'Budget Traveller', // en-fallback
   'settings.about.supporter.tier.hostelBunkmate': 'Hostel Bunkmate', // en-fallback
-  'settings.currency': 'Currency',
-  'settings.currencyHint': 'All amounts in Costs are converted to and shown in this currency.',
+  'settings.currency': 'عملة العرض',
+  'settings.currencyHint':
+    'تُعرض المبالغ في التكاليف محوّلة إلى هذه العملة للعرض فقط — تبقى المبالغ الأصلية دون تغيير.',
   'settings.currencyTrip': 'عملة الرحلة',
   'settings.passkey.title': 'مفاتيح المرور',
   'settings.passkey.description':
@@ -335,11 +348,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'فشل الاتصال',
   'settings.aiParsing.title': 'التحليل بالذكاء الاصطناعي',
   'settings.aiParsing.hint':
-    'استخدم نموذج الذكاء الاصطناعي الخاص بك لاستخراج الحجوزات من الملفات المرفوعة. لا يسري هذا إلا عندما لا يكون المسؤول قد أعدّ نموذجًا للنظام بأكمله.',
+    'اختر نموذج الذكاء الاصطناعي المستخدم لاستخراج الحجوزات من الملفات المرفوعة. لا يسري هذا إلا عندما لا يكون المسؤول قد أعدّ نموذجًا للنظام بأكمله.',
   'settings.aiParsing.provider': 'المزوّد',
   'settings.aiParsing.providerLocal': 'محلي (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'يتم إعداد نقطة نهاية محلية (Ollama) مرة واحدة للمثيل بأكمله من إعدادات المسؤول. ولا يزال بإمكانك استخدام مفتاح OpenAI أو Anthropic الخاص بك هنا.',
   'settings.aiParsing.providerCloudflare': 'Cloudflare AI Gateway (DeepSeek)',
   'settings.aiParsing.gatewayAccountId': 'معرّف حساب Cloudflare',
   'settings.aiParsing.gatewayId': 'معرّف البوابة',
@@ -421,8 +436,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Place names, descriptions',
   'settings.appearance.example.small': 'Addresses, labels',
   'settings.appearance.experimental': 'Experimental',
+  'settings.appearance.mobileNav': 'شريط التنقّل السفلي',
+  'settings.appearance.mobileNav.hint':
+    'اختَر العناصر التي تظهر في الشريط وتلك التي توضَع ضمن «المزيد». تبقى لوحة التحكّم دائماً في المقدّمة.',
+  'settings.appearance.mobileNav.inBar': 'في الشريط',
+  'settings.appearance.mobileNav.underMore': 'ضمن «المزيد»',
+  'settings.appearance.mobileNav.moreEmpty': 'لا شيء هنا بعد — كل العناصر تتّسع في الشريط.',
+  'settings.appearance.mobileNav.pinned': 'مثبَّت',
+  'settings.appearance.mobileNav.toMore': 'نقل إلى «المزيد»',
+  'settings.appearance.mobileNav.toBar': 'نقل إلى الشريط',
+  'settings.appearance.dashOrder': 'ترتيب لوحة التحكم',
+  'settings.appearance.dashOrder.hint':
+    'أعد ترتيب تسلسل قائمة الرحلات والأدوات على لوحة تحكم هاتفك. تبقى الرحلة المميّزة دائمًا في الأعلى.',
+  'settings.appearance.dashOrder.trips': 'الرحلات',
+  'settings.appearance.dashOrder.hidden': 'مخفي',
   'settings.general.languageRegion': 'Language & region',
   'settings.general.travelMap': 'Travel & map',
+  'settings.general.startup': 'البدء',
+  'settings.startPage': 'صفحة البدء',
+  'settings.startPageDashboard': 'لوحة التحكم',
+  'settings.startPageActiveTrip': 'الرحلة النشطة',
+  'settings.startPageHint':
+    'يفتح TREK مباشرةً على الرحلة الجارية، وإن لم توجد فعلى الرحلة القادمة التالية. وهي نفس الرحلة التي تبرزها لوحة التحكم.',
+  'settings.startTripTab': 'علامة تبويب البدء',
+  'settings.startTripTabHint':
+    'علامة التبويب التي تفتح بها الرحلة. إذا كانت تابعة لإضافة أوقفت تشغيلها، تُفتح الخطة بدلاً منها.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'ذاكرة التخزين المؤقت دون اتصال',
@@ -449,6 +487,14 @@ const settings: TranslationStrings = {
   'settings.offline.storage.tripsTitle': 'الرحلات',
   'settings.offline.storage.tripOn': 'مخزّن دون اتصال',
   'settings.offline.storage.tripOff': 'غير مخزّن',
+  'settings.offline.storage.tripFinished': 'منتهية. لن تُحفظ إلا إذا فعّلتها.',
+  'settings.offline.notice.stored': 'تم حفظ {count} رحلة على هذا الجهاز',
+  'settings.offline.notice.nothing': 'لا شيء للحفظ. فعّل الرحلات التي تريد الاحتفاظ بها.',
+  'settings.offline.notice.busy': 'تتم مزامنة بالفعل. حاول مجددًا بعد قليل.',
+  'settings.offline.notice.offline': 'لا يوجد اتصال. اتصل بالإنترنت لحفظ الرحلات للاستخدام دون اتصال.',
+  'settings.offline.notice.signedOut': 'انتهت جلستك. سجّل الدخول مرة أخرى للمزامنة.',
+  'settings.offline.notice.failed': 'تعذّر إكمال التنزيل. تحقّق من اتصالك ثم حاول مرة أخرى.',
+  'settings.offline.notice.loadFailed': 'تعذّرت قراءة التخزين غير المتصل على هذا الجهاز. عادةً ما يُصلِح مسح الذاكرة المؤقتة المشكلة.',
   'settings.offline.clear': 'مسح ذاكرة التخزين المؤقت',
   'settings.offline.clearConfirm':
     'هل تريد مسح جميع بيانات الرحلة المخزّنة دون اتصال؟ يمكنك إعادة المزامنة في أي وقت أثناء الاتصال.',
@@ -486,7 +532,32 @@ const settings: TranslationStrings = {
   'settings.pluginActivity.columns.when': 'الوقت',
   'settings.pluginActivity.columns.status': 'النتيجة',
   'settings.alwaysShowRoutes': 'إظهار مسارات الحجوزات دائمًا',
-  'settings.alwaysShowRoutesHint': 'يعرض تلقائيًا مسار كل رحلة طيران وقطار وحجز آخر على الخريطة، دون الحاجة إلى تفعيله لكل عنصر على حدة.',
+  'settings.alwaysShowRoutesHint':
+    'يعرض تلقائيًا مسار كل رحلة طيران وقطار وحجز آخر على الخريطة، دون الحاجة إلى تفعيله لكل عنصر على حدة.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'مفاتيح API',
+  'settings.apiKeys.description': 'مفاتيح لواجهة API العامة، حتى تتمكن برامج أخرى من قراءة رحلاتك. للقراءة فقط: لا يمكن للمفتاح تغيير أي شيء أو حذفه.',
+  'settings.apiKeys.create': 'إنشاء مفتاح',
+  'settings.apiKeys.empty': 'لا توجد مفاتيح بعد. أنشئ مفتاحًا لربط برامج أخرى.',
+  'settings.apiKeys.createdAt': 'أُنشئ',
+  'settings.apiKeys.usedAt': 'آخر استخدام',
+  'settings.apiKeys.deleteTitle': 'حذف المفتاح',
+  'settings.apiKeys.deleteMessage': 'كل ما يستخدم هذا المفتاح سيتوقف فورًا. لا يمكن التراجع عن ذلك.',
+  'settings.apiKeys.deleted': 'تم حذف المفتاح',
+  'settings.apiKeys.deleteFailed': 'تعذّر حذف المفتاح',
+  'settings.apiKeys.createFailed': 'تعذّر إنشاء المفتاح',
+  'settings.apiKeys.copy': 'نسخ',
+  'settings.apiKeys.docsHint': 'أرسل المفتاح بصيغة "Authorization: Bearer ..." أو "X-API-Key: ..." إلى /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'إنشاء مفتاح API',
+  'settings.apiKeys.modal.name': 'الاسم',
+  'settings.apiKeys.modal.namePlaceholder': 'مثال: Dawarich',
+  'settings.apiKeys.modal.nameHint': 'لك وحدك، لتتعرّف على المفتاح لاحقًا.',
+  'settings.apiKeys.modal.creating': 'جارٍ الإنشاء...',
+  'settings.apiKeys.modal.create': 'إنشاء',
+  'settings.apiKeys.modal.createdTitle': 'تم إنشاء مفتاح API',
+  'settings.apiKeys.modal.createdWarning': 'انسخ المفتاح الآن. يُعرض مرة واحدة فقط ولا يمكن استرجاعه لاحقًا.',
+  'settings.apiKeys.modal.done': 'تم',
 };
 
 export default settings;

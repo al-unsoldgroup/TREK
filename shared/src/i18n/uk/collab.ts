@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Доступ лише для читання до цього чату',
+  'collab.chat.messageOptions': 'Параметри повідомлення',
+  'collab.polls.confirmDeleteTitle': 'Видалити опитування?',
+  'collab.polls.confirmDeleteBody': 'Це опитування буде видалено безповоротно.',
+  'collab.polls.countdownDaysHours': 'Залишилось {d} дн {h} год',
+  'collab.polls.countdownHoursMinutes': 'Залишилось {h} год {m} хв',
+  'collab.polls.countdownMinutes': 'Залишилось {m} хв',
+  'collab.polls.clearDeadline': 'Прибрати термін',
   'collab.tabs.chat': 'Чат',
   'collab.tabs.notes': 'Нотатки',
   'collab.tabs.polls': 'Опитування',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Почніть записувати ідеї та плани',
   'collab.notes.all': 'Усі',
   'collab.notes.titlePlaceholder': 'Назва нотатки',
+  'collab.notes.content': 'Зміст',
+  'collab.notes.removeFile': 'Видалити {name}',
   'collab.notes.contentPlaceholder': 'Напишіть щось...',
   'collab.notes.categoryPlaceholder': 'Категорія',
   'collab.notes.newCategory': 'Нова категорія...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Поставте питання групі і голосуйте разом',
   'collab.polls.question': 'Питання',
   'collab.polls.questionPlaceholder': 'Що нам робити?',
+  'collab.polls.markdownHint': 'Підтримується Markdown',
   'collab.polls.addOption': '+ Додати варіант',
   'collab.polls.optionPlaceholder': 'Варіант {n}',
   'collab.polls.create': 'Створити опитування',

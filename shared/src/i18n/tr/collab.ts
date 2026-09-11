@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Bu sohbete salt okunur erişim',
+  'collab.chat.messageOptions': 'Mesaj seçenekleri',
+  'collab.polls.confirmDeleteTitle': 'Anket silinsin mi?',
+  'collab.polls.confirmDeleteBody': 'Bu anket kalıcı olarak silinecek.',
+  'collab.polls.countdownDaysHours': '{d}g {h}sa kaldı',
+  'collab.polls.countdownHoursMinutes': '{h}sa {m}dk kaldı',
+  'collab.polls.countdownMinutes': '{m}dk kaldı',
+  'collab.polls.clearDeadline': 'Son tarihi kaldır',
   'collab.tabs.chat': 'Sohbet',
   'collab.tabs.notes': 'Notlar',
   'collab.tabs.polls': 'Anketler',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Fikir ve planları kaydetmeye başlayın',
   'collab.notes.all': 'Tüm',
   'collab.notes.titlePlaceholder': 'Not başlığı',
+  'collab.notes.content': 'İçerik',
+  'collab.notes.removeFile': '{name} kaldır',
   'collab.notes.contentPlaceholder': 'Bir şeyler yazın...',
   'collab.notes.categoryPlaceholder': 'Kategori',
   'collab.notes.newCategory': 'Yeni kategori...',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Gruba sorun ve birlikte oy verin',
   'collab.polls.question': 'Soru',
   'collab.polls.questionPlaceholder': 'Ne yapalım?',
+  'collab.polls.markdownHint': 'Markdown desteklenir',
   'collab.polls.addOption': '+ Seçenek ekle',
   'collab.polls.optionPlaceholder': 'Seçenek {n}',
   'collab.polls.create': 'Anket Oluştur',

@@ -15,5 +15,12 @@ const map: TranslationStrings = {
   'poi.cat.activities': 'アクティビティ',
   'map.showAllConnections': 'すべての予約ルートを表示',
   'map.hideAllConnections': 'すべての予約ルートを非表示',
+  'map.baseLayer.default': '地図',
+  'map.baseLayer.satellite': '衛星',
+  'map.baseLayer.switchToSatellite': '衛星表示に切り替える',
+  'map.baseLayer.switchToDefault': '地図表示に切り替える',
+  'map.location.denied': '位置情報へのアクセスがブロックされています。端末の設定を確認してください。インストールしたアプリにはブラウザとは別の位置情報の許可があります。',
+  'map.location.unavailable': '現在地を特定できませんでした。',
+  'map.location.timeout': '位置情報の取得に時間がかかりすぎました。空がよく見える場所でもう一度お試しください。',
 };
 export default map;

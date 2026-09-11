@@ -21,13 +21,16 @@ describe('createPluginContext', () => {
     const ctx = createPluginContext('p', {}, transport, 'inv-1');
 
     await ctx.db.query('SELECT 1', 'a');
-    expect(rpc).toHaveBeenCalledWith('db.query', { sql: 'SELECT 1', args: ['a'] });
+    expect(rpc).toHaveBeenCalledWith('db.query', { sql: 'SELECT 1', args: ['a'], _inv: 'inv-1' });
 
     await ctx.db.migrate('001', 'CREATE TABLE t (x)');
-    expect(rpc).toHaveBeenCalledWith('db.migrate', { id: '001', sql: 'CREATE TABLE t (x)' });
+    expect(rpc).toHaveBeenCalledWith('db.migrate', { id: '001', sql: 'CREATE TABLE t (x)', _inv: 'inv-1' });
 
     await ctx.trips.getById(1);
     expect(rpc).toHaveBeenCalledWith('trips.getById', { tripId: 1, _inv: 'inv-1' });
+
+    await ctx.journal.addEntryPhoto(5, { name: 'a.jpg', content_base64: 'eA==' });
+    expect(rpc).toHaveBeenCalledWith('journal.addEntryPhoto', { entryId: 5, input: { name: 'a.jpg', content_base64: 'eA==' }, _inv: 'inv-1' });
 
     await ctx.ws.broadcastToTrip(1, 'ping', { a: 1 });
     // carries _inv so the host can bind the acting user — without it the broadcast was refused
@@ -37,7 +40,7 @@ describe('createPluginContext', () => {
     expect(rpc).toHaveBeenCalledWith('users.getById', { id: 3, _inv: 'inv-1' });
 
     await ctx.db.exec('DELETE FROM t');
-    expect(rpc).toHaveBeenCalledWith('db.exec', { sql: 'DELETE FROM t', args: [] });
+    expect(rpc).toHaveBeenCalledWith('db.exec', { sql: 'DELETE FROM t', args: [], _inv: 'inv-1' });
 
     await ctx.trips.getPlaces(1);
     expect(rpc).toHaveBeenCalledWith('trips.getPlaces', { tripId: 1, _inv: 'inv-1' });

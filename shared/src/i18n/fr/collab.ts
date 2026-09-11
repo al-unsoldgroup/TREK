@@ -1,6 +1,14 @@
 import type { TranslationStrings } from '../types';
 
 const collab: TranslationStrings = {
+  'collab.chat.readOnly': 'Accès en lecture seule à cette discussion',
+  'collab.chat.messageOptions': 'Options du message',
+  'collab.polls.confirmDeleteTitle': 'Supprimer le sondage ?',
+  'collab.polls.confirmDeleteBody': 'Ce sondage sera définitivement supprimé.',
+  'collab.polls.countdownDaysHours': 'Reste {d} j {h} h',
+  'collab.polls.countdownHoursMinutes': 'Reste {h} h {m} min',
+  'collab.polls.countdownMinutes': 'Reste {m} min',
+  'collab.polls.clearDeadline': "Effacer l'échéance",
   'collab.tabs.chat': 'Discussion',
   'collab.tabs.notes': 'Notes',
   'collab.tabs.polls': 'Sondages',
@@ -29,6 +37,8 @@ const collab: TranslationStrings = {
   'collab.notes.emptyHint': 'Commencez à capturer vos idées et plans',
   'collab.notes.all': 'Toutes',
   'collab.notes.titlePlaceholder': 'Titre de la note',
+  'collab.notes.content': 'Contenu',
+  'collab.notes.removeFile': 'Retirer {name}',
   'collab.notes.contentPlaceholder': 'Écrivez quelque chose…',
   'collab.notes.categoryPlaceholder': 'Catégorie',
   'collab.notes.newCategory': 'Nouvelle catégorie…',
@@ -57,6 +67,7 @@ const collab: TranslationStrings = {
   'collab.polls.emptyHint': 'Posez des questions au groupe et votez ensemble',
   'collab.polls.question': 'Question',
   'collab.polls.questionPlaceholder': 'Que devrait-on faire ?',
+  'collab.polls.markdownHint': 'Markdown pris en charge',
   'collab.polls.addOption': '+ Ajouter une option',
   'collab.polls.optionPlaceholder': 'Option {n}',
   'collab.polls.create': 'Créer le sondage',
