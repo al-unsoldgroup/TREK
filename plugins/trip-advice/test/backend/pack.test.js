@@ -48,3 +48,22 @@ test('packer rejects symlinks without reading their targets', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('packaged pages version their own scripts and styles to invalidate cached updates', () => {
+  const dir = fixture();
+  try {
+    for (const page of ['index.html', 'guest.html']) {
+      writeFileSync(join(dir, 'client', page), '<link href="advice.css" rel="stylesheet"><script src="advice.js"></script><script src=\'advice-model.js\'></script>');
+    }
+    execFileSync(process.execPath, [join(ROOT, 'tools/pack.mjs'), dir], { encoding: 'utf8' });
+    for (const page of ['index.html', 'guest.html']) {
+      const html = execFileSync('unzip', ['-p', join(dir, 'dist/trip-advice-1.0.0.zip'), `client/${page}`], { encoding: 'utf8' });
+      assert.match(html, /href="advice\.css\?v=1\.0\.0"/);
+      assert.match(html, /src="advice\.js\?v=1\.0\.0"/);
+      assert.match(html, /src='advice-model\.js\?v=1\.0\.0'/);
+      assert.doesNotMatch(readFileSync(join(dir, 'client', page), 'utf8'), /\?v=/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
