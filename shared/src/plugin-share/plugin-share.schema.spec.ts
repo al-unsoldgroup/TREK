@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adviceActionSchema, adviceFeedbackWriteSchema, adviceShareConfigSchema, adviceReadActionSchema, adviceOwnerWriteSchema } from './plugin-share.schema';
+import { adviceActionSchema, adviceFeedbackWriteSchema, adviceShareConfigSchema, adviceReadActionSchema, adviceOwnerWriteSchema, advicePhotoResultSchema } from './plugin-share.schema';
 import type { AdviceShareConfig } from './plugin-share.types';
 const config: AdviceShareConfig = {
   version: 1, publicTitle: 'Japan',
@@ -9,6 +9,14 @@ const config: AdviceShareConfig = {
   shortlist: [{ placeId: 2, cityId: 'tokyo', category: 'eat', publicTitle: 'Cafe', locality: 'Tokyo', countryCode: 'JP' }],
 };
 describe('advice wire contracts', () => {
+  it('requires a safe source link for available Google Maps photos', () => {
+    const photo = { state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/2Q==', authors: [], googleAttribution: 'Google Maps' };
+    expect(advicePhotoResultSchema.safeParse({ ...photo, googleMapsUri: 'https://www.google.com/maps/photo' }).success).toBe(true);
+    expect(advicePhotoResultSchema.safeParse(photo).success).toBe(false);
+    expect(advicePhotoResultSchema.safeParse({ ...photo, googleMapsUri: 'javascript:alert(1)' }).success).toBe(false);
+    expect(advicePhotoResultSchema.safeParse({ ...photo, googleMapsUri: 'not a URL' }).success).toBe(false);
+    expect(advicePhotoResultSchema.safeParse({ ...photo, googleMapsUri: 'https://user:password@www.google.com/maps/photo' }).success).toBe(false);
+  });
   it('accepts repeated stays with one city shortlist', () => expect(adviceShareConfigSchema.parse(config)).toEqual(config));
   it.each([
     { ...config, ownerId: 1 },

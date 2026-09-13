@@ -105,9 +105,9 @@ describe('publicShareApi', () => {
   })
 
   it('FE-USG215-API-006: requests only a scoped, CSRF-protected photo envelope', async () => {
-    fetchMock.mockResolvedValue(response({ state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/', authors: [], googleAttribution: '© Google' }))
+    fetchMock.mockResolvedValue(response({ state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/', authors: [], googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo' }))
 
-    await expect(publicShareApi.photo('ta_public', 'photo-handle', 'csrf-secret')).resolves.toMatchObject({ state: 'available' })
+    await expect(publicShareApi.photo('ta_public', 'photo-handle', 'csrf-secret')).resolves.toMatchObject({ state: 'available', googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo' })
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
     expect(fetchMock).toHaveBeenCalledWith('/api/shared/ta_public/plugins/trip-advice/photos/photo-handle', expect.objectContaining({
       method: 'GET', credentials: 'include', cache: 'no-store',

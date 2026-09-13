@@ -112,7 +112,7 @@ describe('Google Places monthly spending reservations', () => {
         if (String(url).includes('autocomplete')) return response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] });
         if (String(url).includes('/media')) return response({ photoUri: 'https://lh3.googleusercontent.com/photo' });
         if (String(url).includes('googleusercontent')) return new Response(new Uint8Array([255, 216, 255, 217]), { headers: { 'content-type': 'image/jpeg' } });
-        return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1' }] });
+        return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', googleMapsUri: 'https://www.google.com/maps/photo' }] });
       });
       const places = make(fetcher);
       const found = await places.autocomplete(principal, searchAction);
@@ -199,7 +199,7 @@ describe('GooglePlacesProvider', () => {
     const resolved = await places.resolveAction(principal, { version: 1, kind: 'places.resolve', searchId: actionId, predictionId: autocomplete.data.suggestions[0].predictionId });
     expect(resolved.data.place.photoHandle).toBeTypeOf('string');
     const photo = await places.photo(principal, resolved.data.place.photoHandle!);
-    expect(photo).toMatchObject({ state: 'available', mimeType: 'image/jpeg', googleAttribution: '© Google', authors: [{ displayName: 'Author', uri: 'https://example.test/author' }] });
+    expect(photo).toMatchObject({ state: 'available', mimeType: 'image/jpeg', googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo', authors: [{ displayName: 'Author', uri: 'https://example.test/author' }] });
 
     let noPhotoStep = 0;
     const noPhoto = provider(async (url) => {
@@ -213,9 +213,23 @@ describe('GooglePlacesProvider', () => {
     expect(noPhotoResolved.data.place).not.toHaveProperty('photoHandle');
   });
 
+  it.each([undefined, 'http://www.google.com/maps/photo', 'https://user:password@www.google.com/maps/photo'])(
+    'withholds a photo handle when its source URL is missing or unsafe: %s', async googleMapsUri => {
+      Object.assign(process.env, baseEnv);
+      const fetcher = vi.fn<GooglePlacesFetch>(async url => String(url).includes('autocomplete')
+        ? response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] })
+        : response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', ...(googleMapsUri ? { googleMapsUri } : {}) }] }));
+      const places = provider(fetcher);
+      const autocomplete = await places.autocomplete(principal, searchAction);
+      const resolved = await places.resolveAction(principal, { version: 1, kind: 'places.resolve', searchId: actionId, predictionId: autocomplete.data.suggestions[0].predictionId });
+      expect(resolved.data.place).not.toHaveProperty('photoHandle');
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it('fails closed for malicious photo URLs and oversized media', async () => {
     Object.assign(process.env, baseEnv);
-    const malicious = provider(async (url) => String(url).includes('autocomplete') ? response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] }) : String(url).includes('/media') ? response({ photoUri: 'https://evil.example.test/photo' }) : response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', authorAttributions: [] }] }));
+    const malicious = provider(async (url) => String(url).includes('autocomplete') ? response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] }) : String(url).includes('/media') ? response({ photoUri: 'https://evil.example.test/photo' }) : response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', googleMapsUri: 'https://www.google.com/maps/photo', authorAttributions: [] }] }));
     const autocomplete = await malicious.autocomplete(principal, { version: 1, kind: 'places.autocomplete', searchId: actionId, cityId: 'elsewhere', category: 'see', input: 'Place', locale: 'en' });
     const resolved = await malicious.resolveAction(principal, { version: 1, kind: 'places.resolve', searchId: actionId, predictionId: autocomplete.data.suggestions[0].predictionId });
     expect(await malicious.photo(principal, resolved.data.place.photoHandle!)).toMatchObject({ state: 'unavailable' });
@@ -224,7 +238,7 @@ describe('GooglePlacesProvider', () => {
     const oversized = provider(async (url) => {
       step++;
       if (step === 1) return response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] });
-      if (step === 2) return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', authorAttributions: [] }] });
+      if (step === 2) return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', googleMapsUri: 'https://www.google.com/maps/photo', authorAttributions: [] }] });
       if (step === 3) return response({ photoUri: 'https://lh3.googleusercontent.com/photo' });
       return new Response(new Uint8Array(512 * 1024 + 1), { status: 200, headers: { 'content-type': 'image/jpeg' } });
     });

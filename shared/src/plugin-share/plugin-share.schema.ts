@@ -100,8 +100,10 @@ export const adviceResolvedSelectionSchema = z.strictObject({ googlePlaceId: act
   duplicate: z.strictObject({ placeKey: actionText(160), cityId: key, category }).nullable().optional(),
 });
 export const advicePhotoAuthorSchema = z.strictObject({ displayName: actionText(200), uri: z.url().max(2000).refine(v => {
-  const parsed = new URL(v);
-  return parsed.protocol === 'https:' && !parsed.username && !parsed.password && !parsed.hash;
+  try {
+    const parsed = new URL(v);
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password && !parsed.hash;
+  } catch { return false; }
 }) });
 const photoAuthor = advicePhotoAuthorSchema;
 export const advicePlacesAutocompleteResultSchema = z.strictObject({
@@ -115,11 +117,12 @@ export const advicePhotoResultSchema = z.strictObject({
   state: z.enum(['available', 'unavailable']), mimeType: z.string().regex(/^image\/(?:jpeg|png|webp)$/).nullable(),
   bytesBase64: z.string().max(750000).nullable(), authors: z.array(photoAuthor).max(20),
   googleAttribution: z.string().max(200).nullable(),
+  googleMapsUri: photoAuthor.shape.uri.optional(),
 }).superRefine((value, ctx) => {
-  if (value.state === 'unavailable' && (value.mimeType !== null || value.bytesBase64 !== null || value.authors.length !== 0 || value.googleAttribution !== null)) {
+  if (value.state === 'unavailable' && (value.mimeType !== null || value.bytesBase64 !== null || value.authors.length !== 0 || value.googleAttribution !== null || value.googleMapsUri !== undefined)) {
     ctx.addIssue({ code: 'custom', message: 'Unavailable photos must not carry bytes or attribution' });
   }
-  if (value.state === 'available' && (value.mimeType === null || value.bytesBase64 === null || value.authors.length < 0 || value.googleAttribution === null)) {
+  if (value.state === 'available' && (value.mimeType === null || value.bytesBase64 === null || value.googleMapsUri === undefined || value.googleAttribution !== 'Google Maps')) {
     ctx.addIssue({ code: 'custom', message: 'Available photos require bytes and complete attribution' });
   }
 });

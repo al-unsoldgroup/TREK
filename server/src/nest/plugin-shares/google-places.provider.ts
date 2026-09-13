@@ -53,7 +53,7 @@ type City = { bounds: { south: number; west: number; north: number; east: number
 type HandleBase = { shareId: string; sessionId: string; guestId: string; epoch: number; expiresAt: number };
 type PredictionHandle = HandleBase & { kind: 'prediction'; searchId: string; sessionToken: string; placeId: string; cityId: string };
 type SelectionHandle = HandleBase & { kind: 'selection'; googlePlaceId: string; cityId: string; title: string; locality: string; countryCode: string; photoHandle?: string };
-type PhotoHandle = HandleBase & { kind: 'photo'; photoName: string; authors: Array<{ displayName: string; uri: string }> };
+type PhotoHandle = HandleBase & { kind: 'photo'; photoName: string; googleMapsUri: string; authors: Array<{ displayName: string; uri: string }> };
 type Handle = PredictionHandle | SelectionHandle | PhotoHandle;
 
 function opaque(): string { return randomBytes(32).toString('base64url'); }
@@ -251,7 +251,8 @@ export class GooglePlacesProvider {
       let photoHandle: string | undefined;
       if (photo) {
         if (!/^places\/[^/]+\/photos\/[^/]+$/.test(photo.name)) throw new ServiceUnavailableException('Google place photo reference is invalid');
-        photoHandle = this.addHandle({ ...principal, kind: 'photo', expiresAt: Date.now() + HANDLE_TTL_MS, photoName: photo.name, authors });
+        const googleMapsUri = photo.googleMapsUri ? safeHttpsUrl(photo.googleMapsUri) : null;
+        if (googleMapsUri) photoHandle = this.addHandle({ ...principal, kind: 'photo', expiresAt: Date.now() + HANDLE_TTL_MS, photoName: photo.name, googleMapsUri, authors });
       }
       const selection = { googlePlaceId: raw.id, cityId, title: raw.displayName.text, locality: localityComponent?.longText ?? raw.formattedAddress ?? '', countryCode, ...(photoHandle ? { photoHandle } : {}) };
       const selectionId = this.addHandle({ ...principal, kind: 'selection', expiresAt: Date.now() + HANDLE_TTL_MS, ...selection });
@@ -287,7 +288,7 @@ export class GooglePlacesProvider {
       const { bytes, truncated } = await readCapped(response, PHOTO_LIMIT);
       if (truncated || bytes.length === 0 || !hasImageSignature(bytes, contentType)) return advicePhotoResultSchema.parse({ state: 'unavailable', mimeType: null, bytesBase64: null, authors: [], googleAttribution: null });
       this.shares.validatePrincipal(principal);
-      return advicePhotoResultSchema.parse({ state: 'available', mimeType: contentType, bytesBase64: bytes.toString('base64'), authors: photo.authors, googleAttribution: '© Google' });
+      return advicePhotoResultSchema.parse({ state: 'available', mimeType: contentType, bytesBase64: bytes.toString('base64'), authors: photo.authors, googleMapsUri: photo.googleMapsUri, googleAttribution: 'Google Maps' });
     } finally { release(); }
   }
 }
