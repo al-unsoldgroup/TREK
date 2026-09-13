@@ -1,0 +1,13 @@
+{
+  "name": "trip-advice",
+  "version": "1.0.2",
+  "private": true,
+  "description": "Standalone TREK Trip Advice addon",
+  "type": "commonjs",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node tools/generate-guest-template.mjs . --check && node --test test/backend/*.test.js test/client/*.test.js",
+    "pack": "node tools/pack.mjs .",
+    "preflight": "node tools/preflight.mjs"
+  }
+}

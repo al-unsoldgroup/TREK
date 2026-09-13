@@ -43,6 +43,7 @@ on:
       - 'client/**'
       - 'shared/**'
       - 'plugin-sdk/**'
+      - 'plugins/trip-advice/**'
       # npm workspaces hoist every dependency into the single root lockfile,
       # so a dependency bump touches none of the four directories above — and
       # a native binding like better-sqlite3 is exactly what needs the suite.
@@ -62,6 +63,7 @@ on:
       - 'client/**'
       - 'shared/**'
       - 'plugin-sdk/**'
+      - 'plugins/trip-advice/**'
       # npm workspaces hoist every dependency into the single root lockfile,
       # so a dependency bump touches none of the four directories above — and
       # a native binding like better-sqlite3 is exactly what needs the suite.
@@ -326,6 +328,9 @@ jobs:
 
       - name: Run tests with coverage
         run: cd server && npm run test:coverage
+
+      - name: Test the standalone Trip Advice plugin
+        run: npm --prefix plugins/trip-advice test
 
       - name: Upload coverage
         uses: actions/upload-artifact@v6

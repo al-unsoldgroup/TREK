@@ -198,10 +198,10 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   // tests/integration/plugins/boot-registry-order.test.ts). onApplicationBootstrap
   // is guaranteed to run after EVERY module's onModuleInit, registry scan included.
   onApplicationBootstrap(): void {
+    if (!pluginsEnabled()) return;
     this.shareLifecycle?.bind((method, input) => method === 'invoke.publicShare.purge'
       ? this.invokePublicSharePurge(input.shareId)
       : this.invokePublicShareEraseGuest(input.shareId, input.guestId));
-    if (!pluginsEnabled()) return;
     // If a restore staged plugin trees, swap them into place NOW — before we open any
     // plugin DB below. This is where a restored backup's plugin data/code actually
     // takes effect (the restore itself only stages, since the runtime holds the DBs

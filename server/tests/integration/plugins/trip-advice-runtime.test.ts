@@ -46,10 +46,7 @@ class PublicProjectionRpc {
 function addonRoot(): string | undefined {
   const candidates = [
     process.env.TREK_TRIP_ADVICE_ROOT,
-    path.resolve(process.cwd(), '../trip-advice'),
-    '/Users/astemarie/code/trip-advice',
-    '/root/code/trip-advice',
-    '/root/trip-advice',
+    path.resolve(__dirname, '../../../../plugins/trip-advice'),
   ].filter((value): value is string => Boolean(value));
   return candidates.find(root => fs.existsSync(path.join(root, 'server/index.js')) &&
     fs.existsSync(path.join(root, 'server/lib/advice-service.js')));
