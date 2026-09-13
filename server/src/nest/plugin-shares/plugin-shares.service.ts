@@ -263,6 +263,15 @@ export class PluginSharesService {
     if (row.epoch !== scope.epoch || !session || session.epoch !== scope.epoch || session.guest_id !== scope.guestId || !Number.isFinite(Date.parse(session.expires_at)) || Date.parse(session.expires_at) <= Date.now()) this.unavailable();
     return row;
   }
+  completeGuestErasure(scope: PublicSharePrincipal): void {
+    this.db.transaction(() => {
+      this.validatePrincipal(scope);
+      this.lifecycle?.enqueueEraseGuest(scope.shareId, scope.guestId);
+      this.db.run('DELETE FROM plugin_share_sessions WHERE id = ? AND share_id = ? AND guest_id = ?',
+        scope.sessionId, scope.shareId, scope.guestId);
+    });
+    this.lifecycle?.flushInBackground();
+  }
   snapshot(scope: PublicSharePrincipal) {
     const row = this.validatePrincipal(scope);
     return this.projection.build(row.trip_id, adviceShareConfigSchema.parse(JSON.parse(row.config_json)));

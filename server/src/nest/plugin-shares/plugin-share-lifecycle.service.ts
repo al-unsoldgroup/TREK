@@ -28,7 +28,7 @@ export class PluginShareLifecycleService implements OnModuleDestroy {
     this.invoker = undefined;
   }
 
-  private flushInBackground(): void {
+  flushInBackground(): void {
     void this.flush().catch(() => this.logger.error('Unable to read the plugin-share cleanup queue; delivery will retry.'));
   }
 

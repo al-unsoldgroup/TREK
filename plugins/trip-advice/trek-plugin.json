@@ -1,7 +1,7 @@
 {
   "id": "trip-advice",
   "name": "Trip Advice",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "apiVersion": 1,
   "author": "Unsold Group",
   "description": "A public, owner-controlled way for trusted guests to advise on a trip.",

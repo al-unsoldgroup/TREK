@@ -34,6 +34,165 @@ const candidateRows = {
   shortlist: [{ placeId: 'place-a', publicTitle: 'Cafe', category: 'eat', cityId: 'city-a' }],
 };
 
+function removalDocument() {
+  const document = { createElement: tag => ({
+    tag, children: [], listeners: {}, attributes: {}, disabled: false, value: '', dataset: {},
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = nodes; },
+    addEventListener(name, handler) { this.listeners[name] = handler; },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    removeAttribute(name) { delete this.attributes[name]; },
+    all() { return this.children.flatMap(child => [child, ...child.all()]); },
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    focus() { document.activeElement = this; },
+    click() { if (!this.disabled) return this.listeners.click?.(); },
+  }) };
+  return document;
+}
+
+function guestHarness(action) {
+  const document = removalDocument();
+  const ids = new Map([...fs.readFileSync('client/guest.html', 'utf8').matchAll(/id="([^"]+)"/g)]
+    .map(([, id]) => [id, document.createElement('div')]));
+  document.getElementById = id => ids.get(id) || null;
+  const root = ids.get('app');
+  root.querySelector = selector => ids.get(selector.match(/^\[id="([^"]+)"\]$/)?.[1]) || null;
+  const projection = {
+    version: 1, revision: '1', title: 'Synthetic advice',
+    cities: [{ id: 'city-a', label: 'Test city', countryCodes: ['JP'] }],
+    stays: [{ id: 'stay-a', cityId: 'city-a', shortlistCityId: 'city-a', days: [] }], shortlists: [],
+  };
+  const feedback = { projection, feedbackRevision: 1, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null };
+  const calls = []; let closed = false;
+  const bridge = {
+    action: async input => { calls.push(input); return action ? action(input, feedback) : feedback; },
+    close: () => { closed = true; },
+  };
+  loadController({ document }).renderGuest(root, projection, bridge, {});
+  const control = label => [...ids.values()].flatMap(node => [node, ...node.all()]).find(node => node.tag === 'button' && node.textContent === label);
+  return { document, ids, feedback, calls, control, closed: () => closed };
+}
+const settleGuest = () => new Promise(resolve => setImmediate(resolve));
+
+test('rendered guest deletion sends only the selected comment and refreshes the inbox', async () => {
+  const page = guestHarness((action, feedback) => {
+    if (action.kind === 'comment.delete') {
+      feedback.myComments = [];
+      return { commentId: action.commentId, deleted: true };
+    }
+    return feedback;
+  });
+  page.feedback.myComments = [{ id: 'comment-a', text: 'My private tip', deleted: false }];
+  await settleGuest();
+  page.control('Delete comment').click();
+  assert.equal(page.calls.length, 1);
+  await page.control('Confirm delete comment').click();
+  const write = page.calls.find(action => action.kind === 'comment.delete');
+  assert.equal(write.commentId, 'comment-a');
+  assert.deepEqual(Object.keys(write).sort(), ['commentId', 'kind', 'requestId', 'version']);
+  assert.equal(page.control('Delete comment'), undefined);
+  assert.equal(page.ids.get('announcement').textContent, 'Comment deleted.');
+});
+
+test('rendered withdrawal targets the guest pending suggestion', async () => {
+  const page = guestHarness((action, feedback) => {
+    if (action.kind === 'suggestion.withdraw') {
+      feedback.myPendingSuggestions = [];
+      return { suggestionId: action.suggestionId, state: 'withdrawn' };
+    }
+    return feedback;
+  });
+  page.feedback.myPendingSuggestions = [{ key: 's:suggestion-a', title: 'A garden', cityId: 'city-a', category: 'see', state: 'pending' }];
+  await settleGuest();
+  page.control('Withdraw suggestion').click();
+  await page.control('Confirm withdraw suggestion').click();
+  assert.equal(page.calls.find(action => action.kind === 'suggestion.withdraw').suggestionId, 'suggestion-a');
+  assert.equal(page.control('Withdraw suggestion'), undefined);
+});
+
+test('erase-all closes the guest page and ignores a stale read response', async () => {
+  let finishRead;
+  const page = guestHarness((action, feedback) => {
+    if (action.kind === 'read') return new Promise(resolve => { finishRead = () => resolve(feedback); });
+    if (action.kind === 'session.erase') return { erased: true };
+    assert.fail('unexpected action after erasure');
+  });
+  page.control('Erase my feedback').click();
+  assert.equal(page.calls.length, 1);
+  await page.control('Confirm erase my feedback').click();
+  assert.equal(page.closed(), true);
+  assert.equal(page.ids.get('content').hidden, true);
+  assert.equal(page.ids.get('erasure-status').hidden, false);
+  assert.equal(page.document.activeElement, page.ids.get('erasure-status'));
+  finishRead(); await settleGuest();
+  assert.equal(page.ids.get('content').hidden, true);
+  await page.ids.get('comment-form').listeners.submit({ preventDefault() {} });
+  assert.deepEqual(page.calls.map(action => action.kind), ['read', 'session.erase']);
+});
+
+test('unconfirmed erasure keeps the page usable and retries with the same request ID', async () => {
+  let attempt = 0;
+  const page = guestHarness((action, feedback) => action.kind === 'session.erase' ? { erased: ++attempt > 1 } : feedback);
+  await settleGuest();
+  page.control('Erase my feedback').click();
+  const confirm = page.control('Confirm erase my feedback');
+  await confirm.click();
+  assert.equal(page.closed(), false);
+  assert.equal(page.ids.get('content').inert, false);
+  assert.equal(confirm.disabled, false);
+  await confirm.click();
+  const writes = page.calls.filter(action => action.kind === 'session.erase');
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].requestId, writes[1].requestId);
+  assert.equal(page.closed(), true);
+});
+
+test('removal control requires confirmation and restores focus on cancel', async () => {
+  const document = removalDocument();
+  let calls = 0;
+  const control = loadController({ document }).removalControl('Delete comment', 'This removes your comment.', async () => { calls++; });
+  const launch = control.children[0];
+  launch.click();
+  assert.equal(calls, 0);
+  assert.equal(control.children[0].textContent, 'This removes your comment.');
+  const confirm = control.children[1];
+  assert.equal(document.activeElement, confirm);
+  control.children[2].click();
+  assert.equal(control.children[0], launch);
+  assert.equal(document.activeElement, launch);
+  assert.equal(calls, 0);
+  launch.click();
+  await control.children[1].click();
+  assert.equal(calls, 1);
+});
+
+test('removal control prevents duplicate writes and permits retry after failure', async () => {
+  const document = removalDocument();
+  let reject; let calls = 0;
+  const control = loadController({ document }).removalControl('Withdraw suggestion', 'Remove this pending suggestion?', () => {
+    calls++;
+    return new Promise((resolve, fail) => { reject = fail; });
+  });
+  control.children[0].click();
+  const confirm = control.children[1]; const cancel = control.children[2];
+  const pending = confirm.click();
+  confirm.click(); cancel.click();
+  assert.equal(calls, 1);
+  assert.equal(confirm.disabled, true);
+  assert.equal(cancel.disabled, true);
+  reject(new Error('Try again later.'));
+  await pending;
+  assert.equal(confirm.disabled, false);
+  assert.equal(cancel.disabled, false);
+  assert.equal(control.children[3].textContent, 'Try again later.');
+  assert.equal(control.children[3].attributes.role, 'alert');
+  const retry = confirm.click();
+  assert.equal(calls, 2);
+  reject(new Error('Still unavailable.'));
+  await retry;
+});
+
 test('first-run owner selection is explicit and starts empty', () => {
   const controller = loadController();
   assert.equal(controller.storedOwnerConfig({ version: 1, config: null }), null);
