@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import Modal from '../shared/Modal'
-import { tripsApi, authApi, shareApi, tripInviteApi } from '../../api/client'
+import { apiClient, tripsApi, authApi, shareApi, tripInviteApi } from '../../api/client'
 import { useToast } from '../shared/Toast'
 import { useAuthStore } from '../../store/authStore'
 import { useCanDo } from '../../store/permissionsStore'
@@ -173,7 +173,28 @@ function ShareLinkSection({ tripId, t }: { tripId: number; t: (key: string, para
 function AdviceShareEntry({ tripId, onClose, t }: { tripId: number; onClose: () => void; t: (key: string, params?: Record<string, string | number>) => string }) {
   const navigate = useNavigate()
   const plugin = usePluginStore((s) => s.getById('trip-advice'))
-  if (!plugin || plugin.type !== 'trip-page') return null
+  const available = plugin?.type === 'trip-page'
+  const toast = useToast()
+  const [link, setLink] = useState<{ tripId: number; token: string | null; failed: boolean } | null>(null)
+  useEffect(() => {
+    if (!available) return
+    let cancelled = false
+    apiClient.get<{ token?: unknown; enabled?: unknown; expiresAt?: unknown } | null>(`/trips/${tripId}/share-link/plugins/trip-advice`)
+      .then(({ data }) => {
+        const token = data?.enabled === true && typeof data.token === 'string' && /^ta_[A-Za-z0-9_-]{32}$/.test(data.token) &&
+          typeof data.expiresAt === 'string' && Date.parse(data.expiresAt) > Date.now() ? data.token : null
+        if (!cancelled) setLink({ tripId, token, failed: false })
+      }).catch(() => { if (!cancelled) setLink({ tripId, token: null, failed: true }) })
+    return () => { cancelled = true }
+  }, [tripId, available])
+  if (!plugin || !available) return null
+  const current = link?.tripId === tripId ? link : null
+  const url = current?.token ? `${window.location.origin}/shared/${current.token}` : null
+  const copyAdviceLink = async () => {
+    if (!url) return
+    if (await copyText(url)) toast.success(t('common.copied'))
+    else toast.error(t('common.error'))
+  }
 
   return (
     <div className="border-t border-edge-faint" style={{ marginTop: 20, paddingTop: 20 }}>
@@ -186,6 +207,17 @@ function AdviceShareEntry({ tripId, onClose, t }: { tripId: number; onClose: () 
       <p className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', marginBottom: 12, lineHeight: 1.5 }}>
         {t('admin.plugins.perm.share:guest')}
       </p>
+      {current?.failed && <p role="alert" className="text-content-muted">{t('common.error')}</p>}
+      {url && (
+        <div className="mb-3 flex min-w-0 items-center gap-2">
+          <input aria-label={`${plugin.name} · ${t('share.linkTitle')}`} value={url} readOnly
+            className="min-h-11 min-w-0 flex-1 rounded-lg border border-edge bg-surface-tertiary px-2 text-content" />
+          <button type="button" aria-label={`${plugin.name} · ${t('common.copy')}`} onClick={copyAdviceLink}
+            className="flex min-h-11 items-center gap-1 rounded-lg border border-edge px-3 text-content">
+            <Copy size={14} /> {t('common.copy')}
+          </button>
+        </div>
+      )}
       <button
         type="button"
         className="border border-edge text-content-muted"
