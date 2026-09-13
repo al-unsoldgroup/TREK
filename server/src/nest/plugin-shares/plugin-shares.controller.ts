@@ -86,6 +86,10 @@ export class PluginSharePublicController {
           : adviceFeedbackWriteSchema.safeParse(result);
     if (!parsed.success) throw new ServiceUnavailableException('Advice temporarily unavailable');
     if (action.kind === 'session.erase') {
+      if (!('kind' in parsed.data) || parsed.data.kind !== 'session.erase' || parsed.data.data.erased !== true) {
+        throw new ServiceUnavailableException('Advice erasure was not confirmed');
+      }
+      this.shares.completeGuestErasure(principal);
       res.clearCookie(ADVICE_COOKIE, { secure: true, httpOnly: true, sameSite: 'strict', path: this.shares.cookiePath(token) });
     }
     return parsed.data;

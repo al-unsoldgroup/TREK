@@ -22,6 +22,26 @@
     return (c === 'x' ? r : r & 3 | 8).toString(16);
   });
   const errorText = error => error?.message || 'TREK could not complete that action.';
+  function removalControl(label, explanation, remove) {
+    const group = el('div', undefined, 'removal-control');
+    const launch = button(label, () => {
+      const status = el('p', '', 'small'); status.setAttribute('role', 'alert');
+      const confirm = button(`Confirm ${label.toLowerCase()}`, async () => {
+        if (confirm.disabled) return;
+        confirm.disabled = true; cancel.disabled = true; status.textContent = '';
+        try { await remove(); }
+        catch (caught) {
+          status.textContent = errorText(caught);
+          confirm.disabled = false; cancel.disabled = false;
+        }
+      }, 'button');
+      const cancel = button('Cancel', () => { group.replaceChildren(launch); launch.focus(); }, 'button');
+      group.replaceChildren(el('p', explanation, 'small'), confirm, cancel, status);
+      confirm.focus();
+    }, 'button');
+    group.append(launch);
+    return group;
+  }
   const categoryLabel = category => category === 'eat' ? 'Eat' : 'See';
   const ownerConfigKeys = ['cities', 'stays', 'schedule', 'shortlist'];
   const ownerEmptyConfig = () => ({ version: 1, publicTitle: '', cities: [], stays: [], schedule: [], shortlist: [] });
@@ -299,7 +319,7 @@
     return link;
   }
 
-  function placeRow(place, state, projection, bridge, onVote, onJump) {
+  function placeRow(place, state, projection, bridge, onVote, onJump, onWithdraw) {
     const row = el('article', undefined, 'place-row');
     row.id = `place-${String(place.key).replace(/[^a-z0-9_-]/gi, '-')}`;
     row.tabIndex = -1;
@@ -316,6 +336,9 @@
     }
     if (place.suggested) {
       copy.append(el('p', 'Voting opens if the owner publishes this suggestion to the shortlist.', 'pending-note'));
+      if (onWithdraw && place.status === 'pending' && place.key.startsWith('s:')) copy.append(removalControl(
+        'Withdraw suggestion', 'The owner will no longer see this as a pending suggestion.', () => onWithdraw(place)
+      ));
       row.append(copy);
       return row;
     }
@@ -341,8 +364,12 @@
     let opener = null;
     let searchTimer = null;
     let searchSerial = 0;
+    let phase = 'active';
+    const transport = bridge;
+    bridge = { ...transport, action: action => phase === 'active'
+      ? transport.action(action) : Promise.reject(new Error('This guest session is closing or erased.')) };
 
-    function announce(message) { $('announcement').textContent = message; }
+    function announce(message) { if (phase === 'active') $('announcement').textContent = message; }
     function syncSuggestionCities(selectedCityId) {
       const select = $('suggest-city');
       if (!select) return;
@@ -354,8 +381,9 @@
       });
       if (selectedCityId && (projection.cities || []).some(city => city.id === selectedCityId)) select.value = selectedCityId;
     }
-    function error(message, busyKey) { state = Model.apply(state, { type: 'error', message, key: busyKey }, projection); render(); }
+    function error(message, busyKey) { if (phase !== 'active') return; state = Model.apply(state, { type: 'error', message, key: busyKey }, projection); render(); }
     function readFeedback(data, appendComments = false) {
+      if (phase !== 'active') return;
       const read = Protocol.readData(data);
       if (!read) throw new Error('TREK returned an invalid advice projection.');
       projection = read.projection;
@@ -364,6 +392,7 @@
       render();
     }
     async function refresh(commentsCursor, appendComments = false) {
+      if (phase !== 'active') return;
       state = { ...state, message: '', error: '', busy: { ...state.busy, ...(appendComments ? { comments: true } : {}) } };
       render();
       try {
@@ -386,6 +415,7 @@
     }
     async function commentSubmit(event) {
       event.preventDefault();
+      if (phase !== 'active') return;
       const text = $('comment-text').value.trim();
       if (!text) { $('comment-status').textContent = 'Write a comment before sending it.'; $('comment-text').focus(); return; }
       state = Model.apply(state, { type: 'display-name', value: $('display-name').value }, projection);
@@ -397,6 +427,17 @@
         $('comment-status').textContent = state.message;
         await refresh();
       } catch (caught) { error(errorText(caught), 'comment'); $('comment-status').textContent = state.error; }
+    }
+    function removeFeedback(kind, idKey, id, message) {
+      const requestId = uuid();
+      return async () => {
+        const result = await bridge.action({ version: 1, kind, requestId, [idKey]: id });
+        if (result?.[idKey] !== id || (kind === 'comment.delete' ? typeof result.deleted !== 'boolean' : result.state !== 'withdrawn')) {
+          throw new Error('TREK did not confirm the removal. Try again.');
+        }
+        await refresh();
+        announce(message);
+      };
     }
     function duplicateTarget(result) {
       const duplicate = result?.duplicate;
@@ -578,11 +619,14 @@
       ['see', 'eat'].forEach(tabCategory => {
         const panel = el('div', undefined, category === tabCategory ? 'tab-panel' : 'tab-panel hidden'); panel.id = `panel-${canonicalId}-${tabCategory}`; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', `tab-${canonicalId}-${tabCategory}`); panel.tabIndex = 0;
         const heading = el('div', undefined, 'advice-heading'); heading.append(el('h3', tabCategory === 'eat' ? 'Good things to eat' : 'Worth a detour'));
-        heading.append(button(`Suggest ${tabCategory === 'eat' ? 'an' : 'a'} idea`, () => openDialog(cityId, tabCategory), 'button primary'));
+        heading.append(button('Suggest an idea', () => openDialog(cityId, tabCategory), 'button primary'));
         panel.append(heading);
         const places = Model.shortlistFor(projection, cityId, tabCategory).concat(state.pendingSuggestions.filter(item => item.cityId === cityId && item.category === tabCategory).map(item => item.place || item));
         if (!places.length) panel.append(el('p', `No ${tabCategory === 'eat' ? 'food places' : 'sights'} are shortlisted yet.`, 'empty'));
-        places.forEach(place => panel.append(placeRow(place, state, projection, bridge, vote, jumpToPlace)));
+        places.forEach(place => {
+          const withdraw = removeFeedback('suggestion.withdraw', 'suggestionId', place.key.slice(2), 'Suggestion withdrawn.');
+          panel.append(placeRow(place, state, projection, bridge, vote, jumpToPlace, () => withdraw()));
+        });
         panel.setAttribute('aria-label', `${Model.cityLabel(projection, cityId)} ${categoryLabel(tabCategory)} ideas`);
         advice.append(panel);
       });
@@ -613,7 +657,13 @@
       const list = $('comments'); list.replaceChildren();
       const visibleComments = state.comments.filter(comment => comment && comment.deleted !== true && typeof comment.text === 'string' && comment.text);
       if (!visibleComments.length) list.append(el('p', 'Your sent comments will appear here when TREK returns them.', 'muted small'));
-      visibleComments.forEach(comment => { const item = el('article', undefined, 'comment'); item.append(el('strong', comment.displayName || 'Guest adviser'), el('span', comment.createdAt ? ` · ${comment.createdAt}` : '', 'muted small'), el('p', comment.text)); list.append(item); });
+      visibleComments.forEach(comment => {
+        const item = el('article', undefined, 'comment');
+        item.append(el('strong', comment.displayName || 'Guest adviser'), el('span', comment.createdAt ? ` · ${comment.createdAt}` : '', 'muted small'), el('p', comment.text));
+        item.append(removalControl('Delete comment', 'This removes your comment from the advice inbox.',
+          removeFeedback('comment.delete', 'commentId', comment.id, 'Comment deleted.')));
+        list.append(item);
+      });
       if (typeof state.nextCommentsCursor === 'string' && state.nextCommentsCursor) {
         const more = button('Load more comments', () => refresh(state.nextCommentsCursor, true), 'button');
         more.disabled = Boolean(state.busy.comments);
@@ -621,6 +671,7 @@
       }
     }
     function render() {
+      if (phase !== 'active') return;
       $('trip-title').textContent = projection.title;
       $('trip-meta').textContent = `${projection.cities.length} destination${projection.cities.length === 1 ? '' : 's'} · settled schedule and local advice`;
       $('loading').hidden = true; $('content').hidden = false;
@@ -629,6 +680,34 @@
       renderRoute(); renderDates(); renderCards(); renderComments(); revealDate();
       if (state.dialog) renderDialog();
     }
+    const eraseRequestId = uuid();
+    $('privacy-controls').append(removalControl('Erase my feedback',
+      'Remove your votes, comments, and suggestions from this advice link and end this guest session. Owner-added trip places remain.', async () => {
+        if (phase !== 'active') return;
+        phase = 'erasing';
+        $('content').inert = true;
+        global.clearTimeout(searchTimer);
+        if ($('suggest-dialog').open) $('suggest-dialog').close();
+        try {
+          const result = await transport.action({ version: 1, kind: 'session.erase', requestId: eraseRequestId });
+          if (result?.erased !== true) throw new Error('TREK did not confirm erasure. Try again.');
+          phase = 'erased';
+          state = Model.initial(projection);
+          $('comment-text').value = ''; $('display-name').value = '';
+          $('suggest-name').value = ''; $('suggest-reason').value = '';
+          $('comments').replaceChildren();
+          $('content').hidden = true;
+          $('error-banner').hidden = true;
+          const status = $('erasure-status');
+          status.textContent = 'Your feedback has been erased and this guest session has ended. Reload the shared page to start a new session.';
+          status.hidden = false;
+          status.focus();
+          transport.close?.();
+        } catch (caught) {
+          if (phase !== 'erased') { phase = 'active'; $('content').inert = false; }
+          throw caught;
+        }
+      }));
     root.querySelectorAll('[data-initial]').forEach(node => node.removeAttribute('data-initial'));
     $('comment-form').addEventListener('submit', commentSubmit);
     $('display-name').addEventListener('input', event => { state = Model.apply(state, { type: 'display-name', value: event.target.value }, projection); });
@@ -760,6 +839,6 @@
     bridge.context().then(value => { context = value; applyTheme(context); if (!tripId()) ownerError('TREK did not provide an owner trip context.'); else load(); }).catch(caught => ownerError(errorText(caught)));
   }
 
-  global.TrekAdviceController = Object.freeze({ ownerSelectionModel, ownerConfigFromControls, storedOwnerConfig, applyTheme, OwnerBridge, validVoteResult: Protocol.validVoteResult });
+  global.TrekAdviceController = Object.freeze({ ownerSelectionModel, ownerConfigFromControls, storedOwnerConfig, applyTheme, OwnerBridge, removalControl, renderGuest, validVoteResult: Protocol.validVoteResult });
   global.addEventListener('DOMContentLoaded', () => { applyTheme(null); guest(); owner(); });
 })(window);

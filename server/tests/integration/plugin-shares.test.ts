@@ -48,7 +48,7 @@ const permission = vi.spyOn(permissions, 'checkPermission');
 const limiter = new RateLimitService();
 const projection = new PluginShareProjectionService(db);
 const shares = new PluginSharesService(db, permissions, projection, limiter);
-const invoke = vi.fn(async (principal: PublicSharePrincipal): Promise<AdviceReadResult> => ({
+const invoke = vi.fn(async (principal: PublicSharePrincipal): Promise<unknown> => ({
   projection: shares.snapshot(principal), feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
 }));
 const legacyRead = vi.fn();
@@ -194,6 +194,39 @@ describe('advice authority and public HTTP', () => {
     expect(() => shares.validatePrincipal(live)).toThrow();
     db.run('UPDATE plugin_share_links SET enabled = 1, expires_at = ?', '2000-01-01T00:00:00.000Z');
     expect(() => shares.bootstrap(rotated.token)).toThrow();
+  });
+  it('revokes erased guest credentials server-side while preserving another guest session', async () => {
+    const link = publish();
+    const erased = shares.session(link.token, undefined, 'erase-ip');
+    const other = shares.session(link.token, undefined, 'other-ip');
+    invoke.mockResolvedValueOnce({ version: 1, kind: 'session.erase', data: { erased: true } });
+    const result = await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin)
+      .set('Cookie', `${ADVICE_COOKIE}=${erased.credential}`).set('X-Trek-Advice-CSRF', erased.csrfToken)
+      .send({ version: 1, kind: 'session.erase', requestId: '11111111-1111-4111-8111-111111111111' }).expect(200);
+    expect(result.headers['set-cookie'][0]).toContain(`${ADVICE_COOKIE}=;`);
+    expect(() => shares.authorize(link.token, erased.credential, erased.csrfToken)).toThrow();
+    expect(() => shares.authorize(link.token, other.credential, other.csrfToken)).not.toThrow();
+  });
+  it('keeps the guest session when erasure is not acknowledged', async () => {
+    const link = publish();
+    const session = shares.session(link.token, undefined, 'erase-ip');
+    invoke.mockResolvedValueOnce({ version: 1, kind: 'session.erase', data: { erased: false } });
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin)
+      .set('Cookie', `${ADVICE_COOKIE}=${session.credential}`).set('X-Trek-Advice-CSRF', session.csrfToken)
+      .send({ version: 1, kind: 'session.erase', requestId: '11111111-1111-4111-8111-111111111111' }).expect(503);
+    expect(() => shares.authorize(link.token, session.credential, session.csrfToken)).not.toThrow();
+  });
+  it('durably queues residual guest cleanup with server-side revocation', () => {
+    const link = publish();
+    const session = shares.session(link.token, undefined, 'erase-ip');
+    const principal = shares.authorize(link.token, session.credential, session.csrfToken);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const lifecycleShares = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
+    lifecycleShares.completeGuestErasure(principal);
+    expect(() => shares.validatePrincipal(principal)).toThrow();
+    expect(db.all('SELECT method, share_id, guest_id FROM plugin_share_lifecycle_outbox')).toEqual([
+      { method: 'erase_guest', share_id: principal.shareId, guest_id: principal.guestId },
+    ]);
   });
   it('discards a result completed after share revocation', async () => {
     const link = publish(); const session = shares.session(link.token, undefined, 'ip');

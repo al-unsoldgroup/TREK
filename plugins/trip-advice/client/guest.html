@@ -15,6 +15,7 @@
     <main class="shell">
       <div id="loading" class="loading" role="status" aria-live="polite">Loading the shared trip…</div>
       <div id="error-banner" class="error" role="alert" hidden></div>
+      <p id="erasure-status" class="status" role="status" tabindex="-1" hidden></p>
       <div id="content" hidden>
         <header class="hero">
           <p class="eyebrow">A trip to advise on</p>
@@ -42,6 +43,7 @@
             <div class="form-actions"><p id="comment-status" class="status" role="status" aria-live="polite"></p><button type="submit" class="button primary">Send comment</button></div>
           </form>
           <div id="comments" aria-label="Your sent comments"></div>
+          <div id="privacy-controls" aria-label="Your feedback privacy controls"></div>
         </section>
         <footer class="footer">Shared through TREK. Advice is separate from the settled schedule. Google Maps links open in a new tab.</footer>
       </div>

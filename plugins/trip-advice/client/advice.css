@@ -118,6 +118,8 @@ textarea { min-height: 88px; resize: vertical; }
 .form-actions { display: flex; justify-content: flex-end; align-items: center; gap: 9px; margin-top: 10px; }
 .form-actions .status { flex: 1; }
 .comment { padding: 13px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.removal-control { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.removal-control p { flex-basis: 100%; margin: 0; }
 .comment p { margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .footer { padding: 25px 0 0; color: var(--muted); font-size: .75rem; text-align: center; }
 dialog { width: min(570px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; padding: 22px; border: 1px solid var(--line); border-radius: 13px; color: var(--ink); background: var(--paper); box-shadow: 0 20px 60px var(--shadow); }
