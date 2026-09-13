@@ -113,6 +113,44 @@ afterAll(async () => { await app.close(); testDb.close(); vi.unstubAllEnvs(); })
 const publish = () => shares.write(tripId, owner, { config, expectedRevision: 0, enabled: true, expiresInDays: 10 });
 
 describe('advice authority and public HTTP', () => {
+  it('keeps unlocated saved places in Elsewhere without adding a fictitious city', () => {
+    db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE trip_id = ?', tripId);
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Museum, Tokyo, Japan', scheduledPlaceId);
+    const preset = projection.preset(tripId);
+    expect(preset.cities.map(city => city.label)).toEqual(['Tokyo']);
+    expect(preset.shortlist[0]?.cityId).toBe('elsewhere');
+    const result = projection.build(tripId, preset);
+    const elsewhere = result.shortlists.find(list => list.cityId === 'elsewhere')!;
+    const place = [...elsewhere.see, ...elsewhere.eat][0]!;
+    expect(place.key).toBe(`p:${shortlistPlaceId}`);
+    expect(new URL(place.mapsUrl).searchParams.get('query')).toBe(place.title);
+  });
+  it('keeps a day-trip place location separate from the main city of its day', () => {
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE trip_id = ?', 'Place, Tokyo, Japan', tripId);
+    const secondTokyo = createPlace(testDb, tripId, { name: 'Tokyo museum' }).id;
+    const hakone = createPlace(testDb, tripId, { name: 'Hakone garden' }).id;
+    for (const [id, address] of [[secondTokyo, 'Museum, Tokyo, Japan'], [hakone, 'Garden, Hakone, Japan']] as const) {
+      db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', address, id);
+      createDayAssignment(testDb, dayId, id);
+    }
+    const preset = projection.preset(tripId);
+    const result = projection.build(tripId, preset);
+    expect(preset.cities.find(city => city.id === result.stays[0]?.cityId)?.label).toBe('Tokyo');
+    const place = result.stays[0]?.days[0]?.schedule.find(row => row.place.key === `p:${hakone}`)?.place;
+    expect(place?.locality).toBe('Hakone');
+    expect(new URL(place!.mapsUrl).searchParams.get('query')).toBe('Hakone garden Hakone JP');
+  });
+  it.each(['Tokyo', 'Osaka'])('hides country-less %s addresses using native location evidence instead of creating district cities', city => {
+    db.run('UPDATE places SET lat = NULL, lng = NULL WHERE trip_id = ?', tripId);
+    db.run('UPDATE places SET address = ? WHERE id = ?', `Place, ${city}, Japan`, scheduledPlaceId);
+    if (city === 'Tokyo') db.run('INSERT INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)', scheduledPlaceId, 'JP', 'JP-13', 'Tokyo');
+    db.run('UPDATE places SET address = ? WHERE id = ?', city === 'Tokyo' ? '1 Street, Chuo City, Ginza, Tokyo 104-0061' : '1 Street, Chuo Ward, Osaka', shortlistPlaceId);
+    const preset = projection.preset(tripId);
+    expect(preset.cities.map(city => city.label)).toEqual([city]);
+    expect(preset.shortlist[0]?.countryCode).toBe('JP');
+    const hidden = { cityIds: [preset.cities[0]!.id], dayIds: [], placeIds: [], assignmentIds: [] };
+    expect(projection.preset(tripId, hidden).shortlist).toEqual([]);
+  });
   it('groups country-first Japanese addresses with existing cities and ignores unknown day votes', () => {
     db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Japan, 〒104-0061 Tokyo, Chuo City, Ginza, 1-2-3', scheduledPlaceId);
     db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Place, Tokyo, Japan', shortlistPlaceId);

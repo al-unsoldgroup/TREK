@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { adviceCountry, adviceLocality } from '../../../src/nest/plugin-shares/plugin-share-location';
 
 describe('native advice city inference', () => {
+  it('uses unique native region evidence only when an address omits its country', () => {
+    const regions = [{ country_code: 'JP', region_name: 'Tokyo' }, { country_code: 'AE', region_name: 'Abu Dhabi' }];
+    expect(adviceCountry('1 Street, Ginza, Tokyo 104-0061', regions)).toBe('JP');
+    expect(adviceCountry('Cafe, Tokyo, Abu Dhabi', regions)).toBeNull();
+    expect(adviceCountry('Cafe, Tokyo, France', regions)).toBe('FR');
+  });
   it('recognizes country-first addresses without treating street words as countries', () => {
     expect(adviceCountry('Japan, 〒104-0061 Tokyo, Chuo City, Ginza, 1-2-3')).toBe('JP');
     expect(adviceCountry('Place, Tokyo, Japan')).toBe('JP');

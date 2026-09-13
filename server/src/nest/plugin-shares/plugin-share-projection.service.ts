@@ -57,6 +57,10 @@ export class PluginShareProjectionService {
   }
 
   preset(tripId: number, hidden: NonNullable<AdviceShareConfig['hidden']> = { cityIds: [], dayIds: [], placeIds: [], assignmentIds: [] }): AdviceShareConfig {
+    return this.nativePreset(tripId, hidden).config;
+  }
+
+  private nativePreset(tripId: number, hidden: NonNullable<AdviceShareConfig['hidden']> = { cityIds: [], dayIds: [], placeIds: [], assignmentIds: [] }) {
     const native = this.nativeCandidates(tripId);
     const trip = this.db.get<{ title: string }>('SELECT title FROM trips WHERE id = ?', tripId);
     if (!trip) throw new UnprocessableEntityException('Trip is unavailable');
@@ -66,10 +70,19 @@ export class PluginShareProjectionService {
     const unlocatedCities = new Set<string>();
     const placeCities = new Map<number, string>();
     const categories = new Map<number, 'see' | 'eat'>();
-    for (const place of [...native.schedule, ...native.shortlist]) {
+    const locatedPlaces = [...native.schedule, ...native.shortlist].map(place => {
       const detail = byId.get(place.placeId);
       const located = place.lat !== null && place.lng !== null;
-      const countryCode = detail?.country_code || (located ? getCountryFromCoords(place.lat!, place.lng!) : null) || adviceCountry(detail?.address);
+      const country = detail?.country_code || (located ? getCountryFromCoords(place.lat!, place.lng!) : null) || adviceCountry(detail?.address);
+      return { place, detail, located, country };
+    });
+    const countryEvidence = [...metadata, ...locatedPlaces.flatMap(({ country, detail }) => {
+      if (!country) return [];
+      const locality = adviceLocality(detail?.address, country, detail?.region_name ?? null);
+      return locality ? [{ country_code: country, region_name: locality }] : [];
+    })];
+    for (const { place, detail, located, country } of locatedPlaces) {
+      const countryCode = country || adviceCountry(detail?.address, countryEvidence);
       const knownLocality = adviceLocality(detail?.address, countryCode, detail?.region_name ?? null);
       const locality = knownLocality || 'Location not specified';
       const cityId = `city-${createHash('sha256').update(`${countryCode ?? ''}/${locality.toLocaleLowerCase('en')}`).digest('hex').slice(0, 16)}`;
@@ -104,7 +117,7 @@ export class PluginShareProjectionService {
       JOIN places p ON p.id = a.place_id AND p.trip_id = a.trip_id
       JOIN days s ON s.id = a.start_day_id AND s.trip_id = a.trip_id
       JOIN days e ON e.id = a.end_day_id AND e.trip_id = a.trip_id WHERE a.trip_id = ?`, tripId).flatMap(stay => {
-      const country = adviceCountry(stay.address);
+      const country = adviceCountry(stay.address, countryEvidence);
       const parts = new Set(stay.address?.normalize('NFKC').split(',').map(part => part.trim().replace(/^〒?\s*\d{3}-\d{4}\s+/, '').toLocaleLowerCase('en')));
       const matches = [...cities.values()].filter(city => country && city.countryCodes.includes(country) && parts.has(city.label.normalize('NFKC').toLocaleLowerCase('en')));
       return matches.length === 1 ? [{ startDate: stay.startDate, endDate: stay.endDate, cityId: matches[0]!.id }] : [];
@@ -129,18 +142,20 @@ export class PluginShareProjectionService {
       previousDate = day.date;
     }
     const includedDays = new Set(stays.flatMap(stay => stay.dayIds));
-    return adviceShareConfigSchema.parse({ version: 1, source: 'trip', hidden, publicTitle: trip.title.slice(0, 200),
-      cities: [...cities.values()].filter(city => !hidden.cityIds.includes(city.id)), stays,
+    const config = adviceShareConfigSchema.parse({ version: 1, source: 'trip', hidden, publicTitle: trip.title.slice(0, 200),
+      cities: [...cities.values()].filter(city => !unlocatedCities.has(city.id) && !hidden.cityIds.includes(city.id)), stays,
       schedule: native.schedule.filter(row => includedDays.has(row.dayId) && !hidden.placeIds.includes(row.placeId) && !hidden.assignmentIds.includes(row.assignmentId) && !hidden.cityIds.includes(placeCities.get(row.placeId)!)).map(row => ({ assignmentId: row.assignmentId, publicTitle: row.publicTitle, category: categories.get(row.placeId)! })),
       shortlist: native.shortlist.filter(row => !hidden.placeIds.includes(row.placeId) && !hidden.cityIds.includes(placeCities.get(row.placeId)!)).map(row => {
         const city = cities.get(placeCities.get(row.placeId)!)!;
-        return { placeId: row.placeId, publicTitle: row.publicTitle, category: categories.get(row.placeId)!, cityId: city.id, locality: city.label, countryCode: city.countryCodes[0] ?? null };
+        return { placeId: row.placeId, publicTitle: row.publicTitle, category: categories.get(row.placeId)!, cityId: unlocatedCities.has(city.id) ? 'elsewhere' : city.id, locality: city.label, countryCode: city.countryCodes[0] ?? null };
       }),
     });
+    return { config, placeCities };
   }
 
   build(tripId: number, config: AdviceShareConfig, validate = false): z.infer<typeof adviceProjectionSchema> {
-    if (config.source === 'trip') config = this.preset(tripId, config.hidden);
+    const native = config.source === 'trip' ? this.nativePreset(tripId, config.hidden) : null;
+    if (native) config = native.config;
     const days = this.db.all<Day>('SELECT id, date, day_number FROM days WHERE trip_id = ? ORDER BY day_number, id', tripId);
     const places = this.db.all<Place>('SELECT id, google_place_id FROM places WHERE trip_id = ?', tripId);
     const assignments = this.db.all<Assignment>(`SELECT a.id, a.place_id, a.day_id, a.assignment_time, a.order_index
@@ -164,7 +179,8 @@ export class PluginShareProjectionService {
 
     const summary = (p: Place, text: string, category: 'see' | 'eat', cityId: string, locality: string, countryCode: string | null): AdvicePlace => {
       const maps = new URL('https://www.google.com/maps/search/');
-      maps.searchParams.set('api', '1'); maps.searchParams.set('query', [text, locality, countryCode].filter(Boolean).join(' '));
+      const queryLocality = ['Location not specified', 'Trip days'].includes(locality) ? null : locality;
+      maps.searchParams.set('api', '1'); maps.searchParams.set('query', [text, queryLocality, countryCode].filter(Boolean).join(' '));
       if (p.google_place_id) maps.searchParams.set('query_place_id', p.google_place_id);
       return { key: `p:${p.id}`, title: text, category, cityId, locality, countryCode, googlePlaceId: p.google_place_id, mapsUrl: maps.href };
     };
@@ -175,13 +191,14 @@ export class PluginShareProjectionService {
           schedule: assignments.filter(a => a.day_id === day.id && selectedAssignments.has(a.id) && !excluded.has(a.place_id) && !excludedAssignments.has(a.id)).map(a => {
             const selection = selectedAssignments.get(a.id)!;
             const p = places.find(p => p.id === a.place_id)!;
+            const placeCity = config.cities.find(c => c.id === native?.placeCities.get(p.id)) ?? city;
             const booked = !!this.db.get(`SELECT 1 FROM reservations r WHERE r.trip_id = ?
               AND COALESCE(r.ingest_state, 'live') <> 'staged' AND r.status = 'confirmed'
               AND r.type IN ('restaurant','event','tour','activity')
               AND (r.assignment_id = ? OR (r.assignment_id IS NULL AND r.place_id = ? AND r.day_id = ?
                 AND (SELECT COUNT(*) FROM day_assignments x WHERE x.place_id = ? AND x.day_id = ?) = 1)) LIMIT 1`,
             tripId, a.id, p.id, day.id, p.id, day.id);
-            return { key: `a:${a.id}`, place: summary(p, selection.publicTitle, selection.category, city.id, city.label, city.countryCodes[0] ?? null),
+            return { key: `a:${a.id}`, place: summary(p, selection.publicTitle, selection.category, placeCity.id, placeCity.label, placeCity.countryCodes[0] ?? null),
               time: a.assignment_time && /^\d{2}:\d{2}$/.test(a.assignment_time) ? a.assignment_time : null, booked };
           }),
         })),
