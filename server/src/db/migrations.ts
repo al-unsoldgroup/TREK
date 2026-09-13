@@ -4317,6 +4317,14 @@ function runMigrations(db: Database.Database): void {
           INSERT OR IGNORE INTO plugin_share_lifecycle_outbox(method, share_id, guest_id) VALUES ('purge', OLD.id, '');
         END;`);
     },
+    // USG-213: retain owner feedback for 90 days after expiry or first disable.
+    () => {
+      const columns = db.prepare('PRAGMA table_info(plugin_share_links)').all() as { name: string }[];
+      if (!columns.some(column => column.name === 'retention_started_at')) db.exec('ALTER TABLE plugin_share_links ADD COLUMN retention_started_at TEXT');
+      if (!columns.some(column => column.name === 'feedback_purge_queued')) db.exec('ALTER TABLE plugin_share_links ADD COLUMN feedback_purge_queued INTEGER NOT NULL DEFAULT 0');
+      db.exec("UPDATE plugin_share_links SET retention_started_at = MIN(expires_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE enabled = 0 AND retention_started_at IS NULL");
+      db.exec('CREATE INDEX IF NOT EXISTS plugin_share_retention ON plugin_share_links(feedback_purge_queued, COALESCE(retention_started_at, expires_at))');
+    },
   ];
 
   if (currentVersion < migrations.length) {

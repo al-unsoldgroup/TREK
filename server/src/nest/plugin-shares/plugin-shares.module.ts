@@ -6,8 +6,10 @@ import { PluginShareProjectionService } from './plugin-share-projection.service'
 import { PluginSharesRpc } from './plugin-shares.rpc';
 import { PluginShareLifecycleService } from './plugin-share-lifecycle.service';
 import { GooglePlacesProvider, GOOGLE_PLACES_FETCH } from './google-places.provider';
+import { SchedulingModule } from '../scheduling/scheduling.module';
+import { PluginShareRetentionJob } from './plugin-share-retention.job';
 
 /** Leaf authorization/data module: never imports the runtime that consumes it. */
-@Module({ imports: [PermissionsModule, RateLimitModule], providers: [PluginSharesService, PluginShareProjectionService, PluginSharesRpc, PluginShareLifecycleService, GooglePlacesProvider,
+@Module({ imports: [PermissionsModule, RateLimitModule, SchedulingModule], providers: [PluginSharesService, PluginShareProjectionService, PluginSharesRpc, PluginShareLifecycleService, PluginShareRetentionJob, GooglePlacesProvider,
   { provide: GOOGLE_PLACES_FETCH, useValue: globalThis.fetch.bind(globalThis) }], exports: [PluginSharesService, PluginShareLifecycleService, GooglePlacesProvider] })
 export class PluginSharesModule {}

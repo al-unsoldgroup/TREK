@@ -386,7 +386,7 @@
       const select = $('suggest-city');
       if (!select) return;
       select.replaceChildren();
-      (projection.cities || []).forEach(city => {
+      (projection.cities || []).filter(city => city.countryCodes.length).forEach(city => {
         const option = el('option', city.label);
         option.value = city.id;
         select.append(option);
@@ -501,7 +501,8 @@
     }
     function chooseCity(cityId) {
       state = Model.apply(state, { type: 'city', cityId }, projection); render();
-      const target = $(`stay-${cityId.replace(/[^a-z0-9_-]/gi, '-')}`);
+      const stay = Model.cardStays(projection).find(item => item.cityId === cityId);
+      const target = stay ? $(`stay-${stay.id.replace(/[^a-z0-9_-]/gi, '-')}`) : null;
       if (target) { target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     }
     function revealDate() {
@@ -515,6 +516,9 @@
       if (bounds.right > right) ribbon.scrollLeft += bounds.right - right;
     }
     function openDialog(cityId, category) {
+      const searchable = (projection.cities || []).filter(city => city.countryCodes.length);
+      cityId = searchable.find(city => city.id === cityId)?.id || searchable[0]?.id;
+      if (!cityId) { error('No destinations are available for place search yet.'); return; }
       opener = document.activeElement;
       state = Model.apply(state, { type: 'dialog', value: { cityId, category, query: '', results: [], active: -1, selection: null, searchId: uuid(), pending: false } }, projection);
       $('suggest-dialog').showModal();
@@ -594,11 +598,11 @@
     function renderRoute() {
       const list = $('route-list'); list.replaceChildren();
       const seen = new Set();
-      (projection.stays || []).forEach(stay => {
+      Model.cardStays(projection).forEach(stay => {
         if (seen.has(stay.cityId)) return;
         seen.add(stay.cityId);
         const item = el('li');
-        item.append(button(`${Model.cityLabel(projection, stay.cityId)} · ${stay.days?.length || 0} day${stay.days?.length === 1 ? '' : 's'}`, () => chooseCity(stay.cityId)));
+        item.append(button(`${Model.cityLabel(projection, stay.cityId)} · ${stay.days?.length ? `${stay.days.length} day${stay.days.length === 1 ? '' : 's'}` : 'Ideas'}`, () => chooseCity(stay.cityId)));
         list.append(item);
       });
     }
@@ -647,7 +651,7 @@
     function renderCards() {
       const container = $('stays'); container.replaceChildren();
       const renderedAdvice = new Set();
-      (projection.stays || []).forEach(stay => {
+      Model.cardStays(projection).forEach(stay => {
         const card = el('section', undefined, 'stay-card'); card.id = `stay-${stay.id.replace(/[^a-z0-9_-]/gi, '-')}`; card.tabIndex = -1; card.setAttribute('role', 'region'); card.setAttribute('aria-label', `${Model.cityLabel(projection, stay.cityId)} stay`);
         const header = el('header', undefined, 'stay-header'); header.append(el('h2', Model.cityLabel(projection, stay.cityId)), el('span', stay.days?.length ? `${stay.days.length} day${stay.days.length === 1 ? '' : 's'}` : 'Ideas beyond the settled route', 'muted small')); card.append(header);
         if (!stay.days?.length) card.append(el('p', 'No settled dates here. Suggestions stay separate from the plan.', 'empty'));
@@ -760,39 +764,18 @@
   function owner() {
     const root = $('owner-app'); if (!root) return;
     const bridge = OwnerBridge();
-    let context; let response; let draft = null; let editorModel = ownerSelectionModel(null, null); let previewRevision = null;
+    let context; let response; let previewRevision = null; let previewRun = 0;
     let setupEditor = null;
     const ownerError = message => { $('owner-error').hidden = false; $('owner-error').textContent = message; };
     const tripId = () => context?.tripId;
-    function input(label, value, type = 'text') { const wrap = el('label', undefined, 'field'); wrap.append(el('span', label)); const control = document.createElement('input'); control.type = type; control.value = value ?? ''; wrap.append(control); return { wrap, control }; }
     function configEditor(config, candidates) {
-      setupEditor = null;
-      if (Array.isArray(candidates?.days)) {
-        setupEditor = global.TrekAdviceOwner.createEditor($('config-editor'), config, candidates, () => {
-          previewRevision = null;
-          $('preview-status').textContent = 'Selection changed. Preview again before enabling the link.';
-        });
-        return;
-      }
-      editorModel = ownerSelectionModel(config, candidates);
-      draft = editorModel.config;
-      const panel = $('config-editor'); panel.replaceChildren();
-      const title = input('Public trip title', editorModel.config.publicTitle || '', 'text'); title.control.maxLength = 200; title.control.dataset.field = 'title'; panel.append(title.wrap);
-      panel.append(el('p', 'Choose exactly which cities, stays, schedule rows, and shortlist places are visible. Private notes, member data, bookings details, and credentials never enter this form.', 'muted small'));
-      const makeGroup = (heading, rows, checked, getLabel, dataKey) => {
-        const group = el('fieldset', undefined, 'config-group'); group.append(el('legend', heading));
-        (rows || []).forEach(row => { const label = el('label', undefined, 'check-row'); const check = document.createElement('input'); check.type = 'checkbox'; check.checked = checked(row); check.dataset.key = dataKey; check.dataset.id = String(row.id ?? row.assignmentId ?? row.placeId); label.append(check, el('span', getLabel(row))); group.append(label); });
-        panel.append(group);
-      };
-      makeGroup('Cities', editorModel.available.cities, row => editorModel.selected.cities.has(ownerRowId(row, 'cities')), row => `${row.label || row.publicTitle || 'City'} · ${(row.countryCodes || []).join(', ')}`, 'cities');
-      makeGroup('Stays', editorModel.available.stays, row => editorModel.selected.stays.has(ownerRowId(row, 'stays')), row => `${row.cityId || row.label || 'Stay'} · ${(row.dayIds || []).length} selected day${row.dayIds?.length === 1 ? '' : 's'}`, 'stays');
-      makeGroup('Settled schedule', editorModel.available.schedule, row => editorModel.selected.schedule.has(ownerRowId(row, 'schedule')), row => `${row.publicTitle || row.title || 'Schedule row'} · ${categoryLabel(row.category)}`, 'schedule');
-      makeGroup('Shortlist', editorModel.available.shortlist, row => editorModel.selected.shortlist.has(ownerRowId(row, 'shortlist')), row => `${row.publicTitle || row.title || 'Shortlist place'} · ${categoryLabel(row.category)} · ${row.cityId || ''}`, 'shortlist');
+      setupEditor = global.TrekAdviceOwner.createEditor($('config-editor'), config, candidates, () => {
+        previewRun++;
+        previewRevision = null;
+        $('preview-status').textContent = 'Hidden items changed. Preview before saving.';
+      });
     }
-    function currentConfig() {
-      if (setupEditor) return setupEditor.read();
-      return ownerConfigFromControls(draft, editorModel.available, document);
-    }
+    function currentConfig() { return setupEditor?.read(); }
     function renderInbox(inbox) {
       const panel = $('inbox'); panel.replaceChildren();
       if (!inbox) { panel.append(el('p', 'Owner feedback inbox is not included in the current host response.', 'muted')); return; }
@@ -814,21 +797,21 @@
         const stored = storedOwnerConfig(ownerConfig);
         const candidates = response?.candidates || ownerConfig?.candidates || response?.tripReads || response?.trip || null;
         configEditor(stored, candidates);
-        if (!candidates) ownerError(stored
-          ? 'TREK did not supply selectable trip items. Your saved selection is shown. A TREK host update is required to add items.'
-          : 'TREK did not supply selectable trip items. No advice link is configured. A TREK host update is required to start setup.');
-        $('enabled').checked = Boolean(ownerConfig?.enabled ?? response?.enabled);
+        showLink(ownerConfig);
         if (Number.isInteger(ownerConfig?.expiresInDays)) $('expires').value = ownerConfig.expiresInDays;
         renderInbox(response?.inbox); $('owner-loading').hidden = true; $('owner-content').hidden = false;
+        await preview(false);
       } catch (caught) { ownerError(errorText(caught)); }
       finally { $('owner-loading').hidden = true; }
     }
-    async function preview() {
+    async function preview(scroll = true) {
+      const run = ++previewRun;
       const control = $('preview-button'); control.disabled = true; $('owner-error').hidden = true;
       try {
         const config = currentConfig();
         if (!config) throw new Error('Select the trip information to preview.');
         const result = await bridge.invoke(`/owner/preview?tripId=${encodeURIComponent(tripId())}`, 'POST', config);
+        if (run !== previewRun) return;
         const projection = result?.projection || result;
         if (!Protocol.validProjection(projection)) throw new Error('TREK returned an invalid preview.');
         previewRevision = projection.revision;
@@ -840,14 +823,46 @@
         const previewBridge = global.TrekAdvicePreview.bridge(projection, url => global.parent.postMessage({ type: 'trek:openExternal', url }, '*'));
         renderGuest(panel, projection, previewBridge, context);
         $('preview-status').textContent = 'Review the guest page below before enabling the link.';
-        panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      } catch (caught) { previewRevision = null; ownerError(errorText(caught)); }
+        if (scroll) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch (caught) { if (run === previewRun) { previewRevision = null; ownerError(errorText(caught)); } }
       finally { control.disabled = false; }
     }
-    async function publish() { try { const config = currentConfig(); if (!config) { ownerError('TREK has not supplied a usable owner configuration. Publishing is unavailable.'); return; } if ($('enabled').checked && !previewRevision) { ownerError('Run a current preview before enabling the advice link.'); return; } const result = await bridge.invoke(`/owner/config?tripId=${encodeURIComponent(tripId())}`, 'PUT', { enabled: $('enabled').checked, expiresInDays: Number($('expires').value), expectedRevision: response?.config?.revision || response?.revision || 0, ...($('enabled').checked && previewRevision ? { previewRevision } : {}), config }); response = result; $('publish-status').textContent = result?.token ? 'Advice link published. Copy it from the host share controls.' : 'Advice configuration published.'; } catch (caught) { ownerError(errorText(caught)); } }
-    $('config-editor').addEventListener('input', () => { previewRevision = null; $('preview-status').textContent = 'Configuration changed. Run a fresh preview before enabling.'; });
-    $('config-editor').addEventListener('change', () => { previewRevision = null; $('preview-status').textContent = 'Configuration changed. Run a fresh preview before enabling.'; });
-    $('preview-button').addEventListener('click', preview); $('publish-button').addEventListener('click', publish); $('reload-button').addEventListener('click', load);
+    let saving = false;
+    async function publish(enabled = true) {
+      if (saving) return;
+      saving = true;
+      $('publish-button').disabled = true; $('pause-button').disabled = true;
+      try {
+        const config = currentConfig();
+        if (!config) throw new Error('The trip preset is not ready.');
+        if (enabled && !previewRevision) throw new Error('Refresh the preview before sharing your changes.');
+        const result = await bridge.invoke(`/owner/config?tripId=${encodeURIComponent(tripId())}`, 'PUT', {
+          enabled, expiresInDays: Number($('expires').value),
+          expectedRevision: response?.config?.revision || response?.revision || 0,
+          ...(enabled ? { previewRevision } : {}), config,
+        });
+        response = { ...response, config: result };
+        showLink(result);
+        $('publish-status').textContent = enabled ? 'Advice link ready. Copy it to invite friends.' : 'Link paused. Friends cannot open it.';
+      } catch (caught) { ownerError(errorText(caught)); }
+      finally { saving = false; $('publish-button').disabled = false; $('pause-button').disabled = false; }
+    }
+    function showLink(config) {
+      const active = Boolean(config?.enabled && config?.token && Date.parse(config.expiresAt) > Date.now());
+      $('share-link-row').hidden = !active;
+      $('share-link').value = active ? new URL('/shared/' + encodeURIComponent(config.token), global.location.href).href : '';
+      $('pause-button').hidden = !active;
+      $('publish-button').textContent = active ? 'Save changes' : 'Create advice link';
+    }
+    $('copy-button').addEventListener('click', async () => {
+      const field = $('share-link');
+      try { await global.navigator.clipboard.writeText(field.value); $('publish-status').textContent = 'Link copied.'; }
+      catch { field.focus(); field.select(); $('publish-status').textContent = 'Link selected. Copy it using your browser’s copy command.'; }
+    });
+    $('preview-button').addEventListener('click', () => preview());
+    $('publish-button').addEventListener('click', () => publish(true));
+    $('pause-button').addEventListener('click', () => publish(false));
+    $('reload-button').addEventListener('click', load);
     bridge.context().then(value => { context = value; applyTheme(context); if (!tripId()) ownerError('TREK did not provide an owner trip context.'); else load(); }).catch(caught => ownerError(errorText(caught)));
   }
 

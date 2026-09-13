@@ -113,6 +113,66 @@ afterAll(async () => { await app.close(); testDb.close(); vi.unstubAllEnvs(); })
 const publish = () => shares.write(tripId, owner, { config, expectedRevision: 0, enabled: true, expiresInDays: 10 });
 
 describe('advice authority and public HTTP', () => {
+  it('refreshes the public bootstrap title from the native trip for automatic shares', () => {
+    const preset = projection.preset(tripId);
+    const link = shares.write(tripId, owner, { config: preset, expectedRevision: 0, enabled: true, expiresInDays: 10 });
+    db.run('UPDATE trips SET title = ? WHERE id = ?', 'Renamed Japan trip', tripId);
+    expect(shares.bootstrap(link.token).title).toBe('Renamed Japan trip');
+  });
+  it('hides a whole city and new places there while leaving other cities included', () => {
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
+    const kyoto = createPlace(testDb, tripId, { name: 'Kyoto temple', lat: 35.01, lng: 135.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Temple, Kyoto, Japan', kyoto);
+    const tokyo = projection.preset(tripId).cities.find(city => city.label === 'Tokyo')!;
+    const added = createPlace(testDb, tripId, { name: 'New Tokyo cafe', lat: 35.68, lng: 139.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Cafe, Tokyo, Japan', added);
+    const hidden = { cityIds: [tokyo.id], dayIds: [], placeIds: [], assignmentIds: [] };
+    const preset = projection.preset(tripId, hidden);
+    expect(preset.cities.map(city => city.label)).toEqual(['Kyoto']);
+    expect(preset.stays).toEqual([]);
+    expect(preset.schedule).toEqual([]);
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([kyoto]);
+    expect(projection.build(tripId, preset).cities.map(city => city.label)).toEqual(['Kyoto']);
+  });
+  it('excludes native logistics categories without requiring a linked reservation', () => {
+    for (const name of ['Hotel', 'Accommodation', 'Transport', 'Airport']) {
+      const category = createCategory(testDb, { name });
+      const place = createPlace(testDb, tripId, { name: `PRIVATE-${name}` });
+      db.run('UPDATE places SET category_id = ? WHERE id = ?', category.id, place.id);
+      createDayAssignment(testDb, dayId, place.id);
+    }
+    expect(JSON.stringify(projection.candidates(tripId))).not.toContain('PRIVATE-');
+    expect(projection.preset(tripId).schedule).toHaveLength(1);
+  });
+  it('builds automatic cities and return stays from the trip with everything eligible included', () => {
+    db.run('UPDATE trips SET title = ? WHERE id = ?', 'Japan trip', tripId);
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
+    const middleDay = createDay(testDb, tripId, { date: '2026-10-10' }).id;
+    const kyoto = createPlace(testDb, tripId, { name: 'Kyoto temple', lat: 35.01, lng: 135.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Temple, Kyoto, Japan', kyoto);
+    createDayAssignment(testDb, middleDay, kyoto);
+    const returnDay = db.get<{ id: number }>('SELECT id FROM days WHERE trip_id = ? AND date = ?', tripId, '2026-10-23')!.id;
+    createDayAssignment(testDb, returnDay, scheduledPlaceId);
+    const preset = projection.preset(tripId);
+    expect(preset.publicTitle).toBe('Japan trip');
+    expect(preset.cities.map(city => city.label).sort()).toEqual(['Kyoto', 'Tokyo']);
+    const labels = new Map(preset.cities.map(city => [city.id, city.label]));
+    expect(preset.stays.map(stay => labels.get(stay.cityId))).toEqual(['Tokyo', 'Kyoto', 'Tokyo']);
+    expect(preset.schedule).toHaveLength(3);
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([shortlistPlaceId]);
+    expect(JSON.stringify(preset)).not.toContain('PRIVATE-CANARY');
+  });
+  it('applies hide exceptions without excluding new native places or exposing private logistics', () => {
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
+    const hotel = createPlace(testDb, tripId, { name: 'PRIVATE-HOTEL' }).id;
+    db.run("INSERT INTO reservations (trip_id, place_id, title, type) VALUES (?, ?, 'PRIVATE-HOTEL', 'hotel')", tripId, hotel);
+    const added = createPlace(testDb, tripId, { name: 'New cafe', lat: 35.01, lng: 135.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Cafe, Kyoto, Japan', added);
+    const preset = projection.preset(tripId, { placeIds: [shortlistPlaceId], cityIds: [], dayIds: [], assignmentIds: [] });
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([added]);
+    expect(preset.schedule).toHaveLength(1);
+    expect(JSON.stringify(preset)).not.toContain('PRIVATE-HOTEL');
+  });
   it('returns owner-only setup candidates before a share exists without leaking private fields', () => {
     const otherOwner = createUser(testDb).user as User;
     const otherTrip = createTrip(testDb, otherOwner.id).id;
@@ -208,13 +268,56 @@ describe('advice authority and public HTTP', () => {
     expect(() => managed.validatePrincipal(principal)).toThrow();
     expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([]);
   });
-  it.each(['disable', 'delete'] as const)('still queues cleanup for explicit %s', change => {
+  it.each(['disable', 'delete'] as const)('applies the approved cleanup policy for explicit %s', change => {
     const link = publish();
     const lifecycle = new PluginShareLifecycleService(db);
     const managed = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
     if (change === 'delete') managed.revoke(tripId, owner, link.revision, false);
     else managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 10 });
+    expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual(change === 'delete' ? [{ method: 'purge' }] : []);
+  });
+  it.each(['expiry', 'disable'] as const)('automatically queues cleanup exactly 90 days after %s without a guest request', async reason => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const link = publish();
+      const lifecycle = new PluginShareLifecycleService(db);
+      const managed = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
+      if (reason === 'expiry') db.run('UPDATE plugin_share_links SET expires_at = ? WHERE id = ?', new Date(now).toISOString(), link.shareId);
+      else managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 10 });
+      expect(() => managed.bootstrap(link.token)).toThrow();
+      clock.mockReturnValue(now + 90 * 86400000 - 1);
+      await lifecycle.flush();
+      expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([]);
+      clock.mockReturnValue(now + 90 * 86400000);
+      await lifecycle.flush();
+      await lifecycle.flush();
+      expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+    } finally { clock.mockRestore(); }
+  });
+  it('does not extend retention when an already disabled link is saved again', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const link = publish();
+      const lifecycle = new PluginShareLifecycleService(db);
+      const managed = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
+      const disabled = managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 90 });
+      clock.mockReturnValue(now + 60 * 86400000);
+      managed.write(tripId, owner, { config, expectedRevision: disabled.revision, enabled: false, expiresInDays: 90 });
+      clock.mockReturnValue(now + 90 * 86400000);
+      await lifecycle.flush();
+      expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+    } finally { clock.mockRestore(); }
+  });
+  it('queues overdue feedback before an owner reopens an expired link', () => {
+    const link = publish();
+    db.run('UPDATE plugin_share_links SET expires_at = ? WHERE id = ?', new Date(Date.now() - 91 * 86400000).toISOString(), link.shareId);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const managed = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
+    managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: true, expiresInDays: 10 });
     expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+    expect(() => managed.bootstrap(link.token)).toThrow();
   });
   it('revokes erased guest credentials server-side while preserving another guest session', async () => {
     const link = publish();
