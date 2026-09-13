@@ -15,6 +15,15 @@ Google Places remains disabled until the spending guard is deployed, policies ar
 A configured budget value alone must not be described as a guaranteed Google billing cap.
 This documentation change does not change production flags, credentials, quotas, or trip-sharing settings.
 
+## Operational evidence, 14 September 2026
+
+Production now has a 500-cent application budget configured, with Google Places still disabled.
+The deployed application uses the `info` log level. Its file logger rotates at a 10 MB threshold and retains five files, including the current file.
+This is size-based rotation, not a fixed deletion period. The container uses Docker's `json-file` driver without per-container rotation options.
+The built-in automatic-backup setting is absent, which selects the disabled default. Release rollback backups are separate from this setting.
+Age-based deletion for infrastructure logs and release backups remains unverified. Do not apply the approved 90-day feedback period to those records.
+These observations support operator review; they do not approve the policies or establish a new retention schedule.
+
 Google's [Places API policies](https://developers.google.com/maps/documentation/places/web-service/policies) require public Terms and Privacy notices incorporating the relevant Google terms and privacy policy.
 For EEA billing addresses, review the [Google Maps Platform EEA Terms](https://cloud.google.com/maps-platform/terms/eea).
 
