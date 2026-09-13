@@ -271,9 +271,13 @@ export class PluginSharesService {
    * is sent as an includedRegionCodes restriction: configured geography is only
    * a ranking hint, and the guest cannot supply a rectangle. */
   publicCity(scope: PublicSharePrincipal, cityId: string) {
+    const city = this.publicCities(scope).find(candidate => candidate.id === cityId);
+    return city ? { bounds: city.bounds } : null;
+  }
+
+  publicCities(scope: PublicSharePrincipal) {
     const row = this.validatePrincipal(scope);
     const config = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
-    const city = config.cities.find(candidate => candidate.id === cityId);
-    return city ? { bounds: city.bounds } : null;
+    return config.cities;
   }
 }

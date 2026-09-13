@@ -37,6 +37,7 @@ const autocompleteBody = z.strictObject({
   ])).max(20).optional(),
 });
 const detailsBody = z.strictObject({
+  location: z.strictObject({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).optional(),
   id: text(256), displayName: googleText.extend({ languageCode: text(35).optional() }), formattedAddress: text(500).optional(), googleMapsUri: z.string().url().max(2000).optional(),
   addressComponents: z.array(z.strictObject({ longText: text(200).optional(), shortText: text(20).optional(), languageCode: text(35).optional(), types: z.array(text(80)).max(20) })).max(100).optional(),
   photos: z.array(z.strictObject({ name: text(500), widthPx: z.number().int().positive().optional(), heightPx: z.number().int().positive().optional(), authorAttributions: z.array(z.strictObject({ displayName: text(200), uri: z.string().url().max(2000), photoUri: z.string().url().max(2000).optional() })).max(20).optional() })).max(20).optional(),
@@ -212,7 +213,7 @@ export class GooglePlacesProvider {
       this.reserve(principal, 'details', 100, 1000);
       const url = `${UPSTREAM}/v1/places/${encodeURIComponent(prediction.placeId)}?languageCode=en&sessionToken=${encodeURIComponent(prediction.sessionToken)}`;
       let raw: z.infer<typeof detailsBody>;
-      try { raw = detailsBody.parse(await this.json(url, { method: 'GET', headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,googleMapsUri,photos' } })); }
+      try { raw = detailsBody.parse(await this.json(url, { method: 'GET', headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location,googleMapsUri,photos' } })); }
       finally {
         for (const [handle, value] of this.handles) if (value.kind === 'prediction' && value.sessionToken === prediction.sessionToken) this.handles.delete(handle);
         for (const [key, value] of this.searchSessions) if (value.token === prediction.sessionToken) this.searchSessions.delete(key);
@@ -222,6 +223,12 @@ export class GooglePlacesProvider {
       const localityComponent = raw.addressComponents?.find(item => item.types.includes('locality') || item.types.includes('postal_town') || item.types.includes('administrative_area_level_2'));
       const countryCode = countryComponent?.shortText?.toUpperCase();
       if (!countryCode || !/^[A-Z]{2}$/.test(countryCode)) throw new ServiceUnavailableException('Google place has no usable country');
+      const location = raw.location;
+      const matchingCities = location ? this.shares.publicCities(principal).filter(city =>
+        city.countryCodes.includes(countryCode) && location.latitude >= city.bounds.south &&
+        location.latitude <= city.bounds.north && location.longitude >= city.bounds.west &&
+        location.longitude <= city.bounds.east) : [];
+      const cityId = matchingCities.length === 1 ? matchingCities[0].id : 'elsewhere';
       const photo = raw.photos?.[0];
       const authors = (photo?.authorAttributions ?? []).flatMap(author => {
         const uri = safeHttpsUrl(author.uri);
@@ -232,7 +239,7 @@ export class GooglePlacesProvider {
         if (!/^places\/[^/]+\/photos\/[^/]+$/.test(photo.name)) throw new ServiceUnavailableException('Google place photo reference is invalid');
         photoHandle = this.addHandle({ ...principal, kind: 'photo', expiresAt: Date.now() + HANDLE_TTL_MS, photoName: photo.name, authors });
       }
-      const selection = { googlePlaceId: raw.id, cityId: prediction.cityId, title: raw.displayName.text, locality: localityComponent?.longText ?? raw.formattedAddress ?? '', countryCode, ...(photoHandle ? { photoHandle } : {}) };
+      const selection = { googlePlaceId: raw.id, cityId, title: raw.displayName.text, locality: localityComponent?.longText ?? raw.formattedAddress ?? '', countryCode, ...(photoHandle ? { photoHandle } : {}) };
       const selectionId = this.addHandle({ ...principal, kind: 'selection', expiresAt: Date.now() + HANDLE_TTL_MS, ...selection });
       return { version: 1, kind: 'places.resolve', data: advicePlacesResolveResultSchema.parse({ selectionId, place: selection }) };
     } finally { release(); }
