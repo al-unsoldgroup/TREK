@@ -1,7 +1,7 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { adviceProjectionSchema, type AdvicePlace, type AdviceShareConfig } from '@trek/shared';
+import { adviceOwnerCandidatesSchema, adviceProjectionSchema, type AdvicePlace, type AdviceShareConfig } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
 
 interface Day { id: number; date: string | null; day_number: number }
@@ -11,6 +11,34 @@ interface Place { id: number; google_place_id: string | null }
 @Injectable()
 export class PluginShareProjectionService {
   constructor(private readonly db: DatabaseService) {}
+
+  candidates(tripId: number) {
+    const days = this.db.all<{ id: number; date: string }>(`SELECT id, date FROM days
+      WHERE trip_id = ? AND date IS NOT NULL ORDER BY day_number, id`, tripId)
+      .filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day.date));
+    const places = this.db.all<{ placeId: number; publicTitle: string; lat: number | null; lng: number | null }>(`
+      SELECT p.id AS placeId, p.name AS publicTitle, p.lat, p.lng FROM places p
+      WHERE p.trip_id = ?
+      AND NOT EXISTS (SELECT 1 FROM reservations r WHERE r.trip_id = p.trip_id AND r.place_id = p.id
+        AND r.type NOT IN ('restaurant','event','tour','activity'))
+      AND NOT EXISTS (SELECT 1 FROM day_accommodations a WHERE a.trip_id = p.trip_id AND a.place_id = p.id)
+      ORDER BY p.name, p.id`, tripId);
+    const assignments = this.db.all<{ assignmentId: number; dayId: number; placeId: number; excluded: number }>(`
+      SELECT a.id AS assignmentId, a.day_id AS dayId, a.place_id AS placeId,
+        EXISTS (SELECT 1 FROM reservations r WHERE r.trip_id = d.trip_id AND r.assignment_id = a.id
+          AND r.type NOT IN ('restaurant','event','tour','activity')) AS excluded
+      FROM day_assignments a JOIN days d ON d.id = a.day_id JOIN places p ON p.id = a.place_id
+      WHERE d.trip_id = ? AND p.trip_id = ? ORDER BY d.day_number, a.order_index, a.id`, tripId, tripId);
+    const scheduled = new Set(assignments.map(a => a.placeId));
+    const byId = new Map(places.map(place => [place.placeId, place]));
+    const eligibleDays = new Set(days.map(day => day.id));
+    const schedule = assignments.flatMap(a => {
+      const place = byId.get(a.placeId);
+      return place && !a.excluded && eligibleDays.has(a.dayId)
+        ? [{ ...place, assignmentId: a.assignmentId, dayId: a.dayId }] : [];
+    });
+    return adviceOwnerCandidatesSchema.parse({ days, schedule, shortlist: places.filter(place => !scheduled.has(place.placeId)) });
+  }
 
   build(tripId: number, config: AdviceShareConfig, validate = false): z.infer<typeof adviceProjectionSchema> {
     const days = this.db.all<Day>('SELECT id, date, day_number FROM days WHERE trip_id = ? ORDER BY day_number, id', tripId);

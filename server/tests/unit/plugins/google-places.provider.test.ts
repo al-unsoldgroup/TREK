@@ -24,7 +24,11 @@ function dbFixture(usage = new Map<string, number>()) {
   };
 }
 function sharesFixture(validate = vi.fn()) {
-  return { validatePrincipal: validate, publicCity: vi.fn(() => ({ bounds: { south: 40, west: -4, north: 41, east: -3 } })), snapshot: vi.fn(() => ({ shortlists: [] })) };
+  const cities = [
+    { id: 'madrid', label: 'Madrid', countryCodes: ['ES'], bounds: { south: 40, west: -4, north: 41, east: -3 } },
+    { id: 'paris', label: 'Paris', countryCodes: ['FR'], bounds: { south: 48, west: 2, north: 49, east: 3 } },
+  ];
+  return { validatePrincipal: validate, publicCities: vi.fn(() => cities), publicCity: vi.fn(() => ({ bounds: cities[0].bounds })), snapshot: vi.fn(() => ({ shortlists: [] })) };
 }
 function provider(fetcher: GooglePlacesFetch, db = dbFixture(), shares = sharesFixture()) {
   return new GooglePlacesProvider(db as never, shares as never, fetcher);
@@ -35,6 +39,25 @@ afterEach(() => {
 });
 
 describe('GooglePlacesProvider', () => {
+  it.each([
+    ['madrid', { latitude: 40.4, longitude: -3.7 }, 'ES', 'madrid'],
+    ['madrid', { latitude: 48.85, longitude: 2.35 }, 'FR', 'paris'],
+    ['madrid', { latitude: 51.5, longitude: -0.1 }, 'GB', 'elsewhere'],
+    ['madrid', { latitude: 40.4, longitude: -3.7 }, 'FR', 'elsewhere'],
+    ['madrid', undefined, 'ES', 'elsewhere'],
+    ['elsewhere', { latitude: 48.85, longitude: 2.35 }, 'FR', 'paris'],
+  ])('assigns a %s search result at %j in %s to %s using verified geography', async (origin, location, country, expectedCity) => {
+    Object.assign(process.env, baseEnv);
+    const places = provider(async url => String(url).includes('autocomplete')
+      ? response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] })
+      : response({ id: 'ChIJplace', displayName: { text: 'Place' }, location,
+        addressComponents: [{ shortText: country, types: ['country'] }, { longText: 'Actual locality', types: ['locality'] }] }));
+    const autocomplete = await places.autocomplete(principal, { version: 1, kind: 'places.autocomplete', searchId: actionId, cityId: origin, category: 'see', input: 'Place', locale: 'en' });
+    const resolved = await places.resolveAction(principal, { version: 1, kind: 'places.resolve', searchId: actionId, predictionId: autocomplete.data.suggestions[0].predictionId });
+    expect(resolved.data.place).toMatchObject({ cityId: expectedCity, countryCode: country, locality: 'Actual locality' });
+    expect(await places.resolveSelection(principal, resolved.data.selectionId)).toMatchObject({ cityId: expectedCity });
+  });
+
   it('sends a soft geometry bias and never a hard country restriction', async () => {
     Object.assign(process.env, baseEnv);
     const calls: Array<{ url: string; init?: RequestInit }> = [];

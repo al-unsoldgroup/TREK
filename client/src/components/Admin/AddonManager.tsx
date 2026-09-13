@@ -387,7 +387,7 @@ function LlmParsingConfig({ addon }: { addon: Addon }) {
     setSaving(true)
     try {
       // Send the masked sentinel unchanged so the server keeps the stored key.
-      await adminApi.updateAddon(addon.id, { config: { provider, model: model.trim(), baseUrl: provider === 'anthropic' || provider === 'cloudflare' ? '' : baseUrl.trim(), apiKey, multimodal: cfg.multimodal === true, gatewayAccountId: gatewayAccountId.trim(), gatewayId: gatewayId.trim(), gatewayToken } })
+      await adminApi.updateAddon(addon.id, { config: { provider, model: model.trim(), baseUrl: provider === 'anthropic' || provider === 'cloudflare' ? '' : baseUrl.trim(), apiKey, multimodal: cfg.multimodal === true, ...(provider === 'cloudflare' ? { gatewayAccountId: gatewayAccountId.trim(), gatewayId: gatewayId.trim(), gatewayToken } : {}) } })
       toast.success('Saved')
     } catch {
       toast.error('Failed to save')

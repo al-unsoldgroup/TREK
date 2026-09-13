@@ -11,6 +11,12 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 // remote run reports every failure instead of only the first one.
 const build = ['run', 'build', '--workspace=shared'];
 const commands = [
+  ['run', 'test', '--workspace=server', '--', 'tests/e2e/admin.e2e.test.ts'],
+  ['--prefix', 'plugins/trip-advice', 'test'],
+  ['run', 'test', '--workspace=server', '--', 'tests/unit/db/migrate-encryption-parity.test.ts', 'tests/unit/nest/managed-keys.test.ts', 'tests/unit/plugins/plugin-share-lifecycle.test.ts'],
+  ['run', 'test', '--workspace=client', '--', 'src/api/publicShare.test.ts', 'src/components/Plugins/PublicPluginFrame.test.tsx'],
+  ['--prefix', 'plugin-sdk', 'run', 'test:standalone'],
+  ['run', 'test', '--workspace=server', '--', 'tests/integration/plugin-shares.test.ts'],
   ['run', 'typecheck', '--workspaces', '--if-present'],
   ['run', 'typecheck:tests', '--workspace=server'],
   ['--prefix', 'plugin-sdk', 'run', 'typecheck'],
@@ -25,7 +31,8 @@ const commands = [
   ['run', 'test', '--workspace=server', '--',
     'tests/unit/nest/llm-parse/clients.test.ts', 'tests/unit/nest/llm-parse/llm-client.factory.test.ts',
     'tests/unit/nest/llm-parse/llm-config.resolver.test.ts', 'tests/unit/nest/llm-parse/llm-parse.service.test.ts',
-    'tests/unit/services/llmConfig.test.ts', 'tests/unit/nest/settings.service.test.ts'],
+    'tests/unit/services/llmConfig.test.ts', 'tests/unit/nest/settings.service.test.ts',
+    'tests/unit/plugins/google-places.provider.test.ts'],
   ['--prefix', 'plugin-sdk', 'test', '--', 'test/public-share.test.ts', 'test/sdk.test.ts', 'test/permissions-parity.test.ts', 'test/manifest-roundtrip.test.ts'],
   ['run', 'test:ws', '--workspace=server'],
   ['run', 'test:integration', '--workspace=server', '--', '--exclude=tests/integration/plugins/trip-advice-runtime.test.ts'],
@@ -40,12 +47,13 @@ const commands = [
 // interrupted by something unrelated can be finished without replaying the ones
 // already green. Matching is on a whole argument, not a substring, because
 // `--exclude=<path>` and `<path>` would otherwise select each other.
-const only = process.argv.slice(2).find((a) => a.startsWith('--only='))?.slice('--only='.length);
-const selected = only
-  ? commands.filter((args) => args.includes(only) ||
-    (only === 'tests/integration/plugins/trip-advice-runtime.test.ts' && args.includes('test:integration:advice-runtime')))
-  : commands;
-if (only && !selected.length) throw new Error(`--only=${only} matched no check`);
+const only = process.argv.slice(2).filter((a) => a.startsWith('--only=')).map(a => a.slice('--only='.length));
+const matches = (args, selector) => args.includes(selector) ||
+  (selector === 'tests/integration/plugins/trip-advice-runtime.test.ts' && args.includes('test:integration:advice-runtime'));
+for (const selector of only) {
+  if (!commands.some(args => matches(args, selector))) throw new Error(`--only=${selector} matched no check`);
+}
+const selected = only.length ? commands.filter(args => only.some(selector => matches(args, selector))) : commands;
 
 const run = (args) => {
   console.log(`advice verification: npm ${args.join(' ')}`);

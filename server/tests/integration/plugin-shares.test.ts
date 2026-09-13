@@ -113,6 +113,21 @@ afterAll(async () => { await app.close(); testDb.close(); vi.unstubAllEnvs(); })
 const publish = () => shares.write(tripId, owner, { config, expectedRevision: 0, enabled: true, expiresInDays: 10 });
 
 describe('advice authority and public HTTP', () => {
+  it('returns owner-only setup candidates before a share exists without leaking private fields', () => {
+    const otherOwner = createUser(testDb).user as User;
+    const otherTrip = createTrip(testDb, otherOwner.id).id;
+    createPlace(testDb, otherTrip, { name: 'OTHER-TRIP-CANARY' });
+    const result = shares.ownerCandidates(tripId, owner.id);
+    expect(result.days).toContainEqual({ id: dayId, date: '2026-10-09' });
+    expect(result.schedule).toEqual([expect.objectContaining({ assignmentId, dayId, placeId: scheduledPlaceId })]);
+    expect(result.shortlist).toEqual([expect.objectContaining({ placeId: shortlistPlaceId })]);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE-CANARY');
+    expect(JSON.stringify(result)).not.toContain('OTHER-TRIP-CANARY');
+    expect(shares.getOwner(tripId, owner)).toBeNull();
+    expect(() => shares.ownerCandidates(tripId, otherOwner.id)).toThrow('Trip not found');
+    permission.mockReturnValue(false);
+    expect(() => shares.ownerCandidates(tripId, owner.id)).toThrow('No permission');
+  });
   it('satisfies route and body ratchets for the assembled controllers', () => {
     const ids = ['SharedController.read', 'SharedController.placePhotoBytes', 'PluginSharePublicController.session', 'PluginSharePublicController.action', 'PluginSharePublicController.photo'];
     expect(PUBLIC_ROUTE_ALLOW_LIST).toEqual(expect.arrayContaining(ids));

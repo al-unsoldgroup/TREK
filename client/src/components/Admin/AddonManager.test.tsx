@@ -570,6 +570,25 @@ describe('AddonManager', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Selected' })).toBeDisabled());
   });
 
+  it('keeps Cloudflare gateway settings and masked credentials when saving', async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      addonsRoute([llmAddon({ provider: 'cloudflare', model: 'deepseek-chat', gatewayAccountId: ' account ', gatewayId: ' gateway ', gatewayToken: '••••••••' })]),
+      http.put('/api/admin/addons/llm_parsing', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    render(<><ToastContainer /><AddonManager /></>);
+    await screen.findByLabelText('Gateway ID');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText('Saved');
+    expect(bodies[0]).toMatchObject({ config: {
+      provider: 'cloudflare', baseUrl: '', gatewayAccountId: 'account', gatewayId: 'gateway', gatewayToken: '••••••••',
+    } });
+  });
+
   it('FE-ADMIN-ADDON-025: a failing pull surfaces the server error and saving reports both outcomes', async () => {
     const user = userEvent.setup();
     const bodies: unknown[] = [];

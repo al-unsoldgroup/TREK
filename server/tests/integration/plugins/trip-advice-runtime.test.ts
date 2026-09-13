@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,6 +21,17 @@ const projection = {
 
 @PluginController()
 class PublicProjectionRpc {
+  @PluginMethod('publicShare.owner.getCandidates', { permission: 'share:publish' })
+  ownerCandidates(_params: Record<string, unknown>, ctx: PluginRpcContext) {
+    if (ctx.publicShare || ctx.actingUserId !== 42) throw new Error('authenticated owner required');
+    return { days: [{ id: 1, date: '2026-10-09' }], schedule: [], shortlist: [] };
+  }
+  @PluginMethod('publicShare.owner.getConfig', { permission: 'share:publish' })
+  ownerConfig(_params: Record<string, unknown>, ctx: PluginRpcContext) {
+    if (ctx.publicShare || ctx.actingUserId !== 42) throw new Error('authenticated owner required');
+    return null;
+  }
+
   @PluginMethod('publicShare.snapshot', { permission: 'share:guest' })
   snapshot(_params: Record<string, unknown>, ctx: PluginRpcContext) {
     if (!ctx.publicShare) throw new Error('public principal required');
@@ -34,10 +46,7 @@ class PublicProjectionRpc {
 function addonRoot(): string | undefined {
   const candidates = [
     process.env.TREK_TRIP_ADVICE_ROOT,
-    path.resolve(process.cwd(), '../trip-advice'),
-    '/Users/astemarie/code/trip-advice',
-    '/root/code/trip-advice',
-    '/root/trip-advice',
+    path.resolve(__dirname, '../../../../plugins/trip-advice'),
   ].filter((value): value is string => Boolean(value));
   return candidates.find(root => fs.existsSync(path.join(root, 'server/index.js')) &&
     fs.existsSync(path.join(root, 'server/lib/advice-service.js')));
@@ -101,7 +110,7 @@ describe('standalone trip-advice through the real child runtime', () => {
       ]));
     };
     supervisor = new PluginSupervisor(createRpcHost);
-    await supervisor.activate('trip-advice', new Set(['db:own', 'share:guest']));
+    await supervisor.activate('trip-advice', new Set(['db:own', 'share:guest', 'share:publish']));
 
     const result = await supervisor.invoke('trip-advice', 'invoke.publicShare', {
       version: 1, scope: { shareId: principal.shareId, guestId: principal.guestId, epoch: principal.epoch },
@@ -115,5 +124,16 @@ describe('standalone trip-advice through the real child runtime', () => {
       action: { version: 1, kind: 'suggestion.create', requestId: '11111111-1111-4111-8111-111111111111', selectionId: 'runtime-selection', category: 'see' },
     }, { publicShare: principal });
     expect(suggestion).toMatchObject({ kind: 'suggestion.create', data: { state: 'pending', cityId: 'elsewhere', category: 'see' } });
+
+    // First-time setup must load before any share exists. A fixture that always
+    // preconfigures a share misses the real owner's entry path.
+    const ownerResult = await supervisor.invoke('trip-advice', 'invoke.route', {
+      routeId: 0,
+      req: { method: 'GET', path: '/owner', query: { tripId: '1' }, headers: {}, user: { id: 42 } },
+    }, { actingUserId: 42 });
+    expect(ownerResult).toMatchObject({ status: 200 });
+    expect(JSON.parse(z.object({ body: z.string() }).parse(ownerResult).body)).toMatchObject({
+      config: null, candidates: { days: [{ id: 1, date: '2026-10-09' }], schedule: [], shortlist: [] }, inbox: { suggestions: [], comments: [] },
+    });
   });
 });

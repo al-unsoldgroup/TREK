@@ -437,6 +437,7 @@ export function createMockHost(opts: MockHostOptions = {}): MockHost {
         },
         owner: {
           async getConfig() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
+          async getCandidates() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
           async preview() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
           async configure() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },
           async importSuggestion() { throw new Error('RESOURCE_FORBIDDEN: authenticated owner invocation required'); },

@@ -22,8 +22,7 @@ permissions:
 #     must stop the scan — a missing lcov file would make every line of that
 #     package report as uncovered, and the dashboard would show a collapse
 #     that did not happen. (The preflight gates stop it transitively.)
-#   - Fork PRs don't receive secrets, so the two jobs that need them skip
-#     themselves: s3-contract (MINIO_LICENSE_KEY) and scan (SONAR_TOKEN).
+#   - Fork PRs don't receive secrets, so scan (SONAR_TOKEN) skips itself.
 #     Everything else runs on fork PRs so outside contributors still get the
 #     full test signal.
 #
@@ -44,6 +43,7 @@ on:
       - 'client/**'
       - 'shared/**'
       - 'plugin-sdk/**'
+      - 'plugins/trip-advice/**'
       # npm workspaces hoist every dependency into the single root lockfile,
       # so a dependency bump touches none of the four directories above — and
       # a native binding like better-sqlite3 is exactly what needs the suite.
@@ -51,6 +51,7 @@ on:
       - 'package-lock.json'
       - 'sonar-project.properties'
       - '.github/workflows/test.yml'
+      - '.github/docker/minio-ci.Dockerfile'
       # Docs inside the workspaces (CLAUDE.md, READMEs, PATTERN.md) affect
       # neither the tests nor the scan — no test reads checked-in markdown
       # and SonarCloud has no markdown analyzer. Negations must stay last.
@@ -62,6 +63,7 @@ on:
       - 'client/**'
       - 'shared/**'
       - 'plugin-sdk/**'
+      - 'plugins/trip-advice/**'
       # npm workspaces hoist every dependency into the single root lockfile,
       # so a dependency bump touches none of the four directories above — and
       # a native binding like better-sqlite3 is exactly what needs the suite.
@@ -69,6 +71,7 @@ on:
       - 'package-lock.json'
       - 'sonar-project.properties'
       - '.github/workflows/test.yml'
+      - '.github/docker/minio-ci.Dockerfile'
       # Docs inside the workspaces (CLAUDE.md, READMEs, PATTERN.md) affect
       # neither the tests nor the scan — no test reads checked-in markdown
       # and SonarCloud has no markdown analyzer. Negations must stay last.
@@ -109,6 +112,9 @@ jobs:
       # translation, or if the CLI has no hint for it.
       - name: Check the generated plugin facts are in sync
         run: cd server && npm run check:plugin-facts
+
+      - name: Check the generated public-share types are in sync
+        run: cd server && npm run check:plugin-share
 
   i18n-parity:
     name: i18n Key Parity
@@ -221,15 +227,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build standalone SDK exports
+        run: npm run build
+
   s3-contract:
     name: S3 Driver Contract (MinIO)
     runs-on: ubuntu-latest
     needs: [plugin-facts, i18n-parity, server-quality, client-quality, plugin-sdk-quality]
-    # Fork PRs don't get repo secrets, so MINIO_LICENSE_KEY would be empty and
-    # the AIStor container would fail to boot. Pushes and manual dispatches do
-    # have secrets, so only fork PRs are filtered out. (The implicit success()
-    # on this expression also keeps the job skipped when a preflight fails.)
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - uses: actions/checkout@v6
@@ -255,22 +259,19 @@ jobs:
       - name: Build shared
         run: npm run build --workspace=shared
 
-      - name: Write MinIO license
-        run: printf '%s' "${{ secrets.MINIO_LICENSE_KEY }}" > minio-licence.key
+      - name: Build the pinned community MinIO test fixture
+        run: docker build -f .github/docker/minio-ci.Dockerfile -t trek-minio-ci .github/docker
 
       - name: Start MinIO
-        # `services:` can't pass the `server /data --license ...` command to
-        # the AIStor image, so it starts via docker run. 127.0.0.1 endpoint is
-        # load-bearing: aws-lite picks path-style only for IP/localhost hosts,
-        # which is all stock MinIO/AIStor speaks.
+        # Loopback only, disposable data, no production credentials.
+        # aws-lite selects path-style addressing for this IP endpoint.
         run: |
           docker run -d --name minio -p 127.0.0.1:9000:9000 \
-            -v "$PWD/minio-licence.key:/minio.license:ro" \
             -e MINIO_ROOT_USER=trekci -e MINIO_ROOT_PASSWORD=trekci-secret \
-            quay.io/minio/aistor/minio:RELEASE.2026-08-07T18-34-35Z server /data --license /minio.license
+            trek-minio-ci server /data
 
       - name: Wait for MinIO
-        # curl was removed from the AIStor image — poll from the runner instead.
+        # Poll from the runner rather than depending on tools in the fixture.
         # 60 x 2s gives a wider margin on cold runners than the 30 x 1s the
         # pre-6fbff835 job used.
         run: |
@@ -292,6 +293,10 @@ jobs:
           TREK_TEST_S3_ACCESS_KEY_ID: trekci
           TREK_TEST_S3_SECRET_ACCESS_KEY: trekci-secret
         run: cd server && npx vitest run tests/unit/nest/storage/s3.driver.contract.test.ts
+
+      - name: Stop the disposable S3 fixture
+        if: ${{ always() }}
+        run: docker stop minio || true
 
   server-coverage:
     name: Server Coverage
@@ -323,6 +328,9 @@ jobs:
 
       - name: Run tests with coverage
         run: cd server && npm run test:coverage
+
+      - name: Test the standalone Trip Advice plugin
+        run: npm --prefix plugins/trip-advice test
 
       - name: Upload coverage
         uses: actions/upload-artifact@v6
@@ -425,8 +433,9 @@ jobs:
   scan:
     name: Scan
     runs-on: ubuntu-latest
-    # Fork PRs don't receive SONAR_TOKEN — skip the scan rather than fail it.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # This scan uploads to the upstream liketrek Sonar project. Fork repositories
+    # must not upload to that account. External PRs do not receive its token.
+    if: github.repository == 'liketrek/TREK' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     # Coverage jobs failing must stop the scan: a missing lcov file would make
     # every line of that package report as uncovered, and the dashboard would
     # show a collapse that did not happen. The preflight gates already stop it

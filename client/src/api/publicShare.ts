@@ -27,7 +27,7 @@ export type PublicShareEntry =
   | { kind: 'plugin-share'; bootstrap: AdviceBootstrap }
 
 function tokenPath(token: string): string {
-  if (typeof token !== 'string' || token.length === 0 || token.length > 200 || /[\u0000-\u001f/]/.test(token)) {
+  if (typeof token !== 'string' || token.length === 0 || token.length > 200 || Array.from(token).some(char => char.charCodeAt(0) < 32 || char === '/')) {
     throw new Error('Invalid public share token.')
   }
   return `/api/shared/${encodeURIComponent(token)}`

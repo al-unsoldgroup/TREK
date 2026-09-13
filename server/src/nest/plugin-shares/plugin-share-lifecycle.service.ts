@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 type LifecycleInvoker = (method: 'invoke.publicShare.purge' | 'invoke.publicShare.eraseGuest', input: Record<string, string>) => Promise<unknown>;
 
 /** Host-owned lifecycle delivery. The addon receives only its share-scoped ids. */
 @Injectable()
-export class PluginShareLifecycleService {
+export class PluginShareLifecycleService implements OnModuleDestroy {
+  private readonly logger = new Logger(PluginShareLifecycleService.name);
   private invoker: LifecycleInvoker | undefined;
   private flushing = false;
   private retryTimer: ReturnType<typeof setInterval> | undefined;
@@ -14,11 +15,21 @@ export class PluginShareLifecycleService {
 
   bind(invoker: LifecycleInvoker): void {
     this.invoker = invoker;
-    void this.flush();
+    this.flushInBackground();
     if (!this.retryTimer) {
-      this.retryTimer = setInterval(() => { void this.flush(); }, 30_000);
+      this.retryTimer = setInterval(() => { this.flushInBackground(); }, 30_000);
       this.retryTimer.unref?.();
     }
+  }
+
+  onModuleDestroy(): void {
+    if (this.retryTimer) clearInterval(this.retryTimer);
+    this.retryTimer = undefined;
+    this.invoker = undefined;
+  }
+
+  private flushInBackground(): void {
+    void this.flush().catch(() => this.logger.error('Unable to read the plugin-share cleanup queue; delivery will retry.'));
   }
 
   enqueuePurge(shareId: string): void {
