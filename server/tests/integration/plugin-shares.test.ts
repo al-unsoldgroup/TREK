@@ -134,6 +134,19 @@ describe('advice authority and public HTTP', () => {
     db.run('UPDATE trips SET title = ? WHERE id = ?', 'Renamed Japan trip', tripId);
     expect(shares.bootstrap(link.token).title).toBe('Renamed Japan trip');
   });
+  it('uses a native stay city for an unlocated day without exposing accommodation details', () => {
+    db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE id = ?', scheduledPlaceId);
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Museum, Hakone, Japan', shortlistPlaceId);
+    const checkout = createDay(testDb, tripId, { date: '2026-10-10' }).id;
+    const hotel = createPlace(testDb, tripId, { name: 'PRIVATE-CANARY Hotel' }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'PRIVATE-STREET, Hakone, Kanagawa, 250-0408 Japan', hotel);
+    db.run('INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, confirmation, notes) VALUES (?, ?, ?, ?, ?, ?)', tripId, hotel, dayId, checkout, 'PRIVATE-CONFIRMATION', 'PRIVATE-NOTES');
+    const preset = projection.preset(tripId);
+    const city = preset.cities.find(city => city.id === preset.stays[0]?.cityId);
+    expect(city?.label).toBe('Hakone');
+    expect(JSON.stringify(projection.build(tripId, preset))).not.toMatch(/PRIVATE-/);
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([shortlistPlaceId]);
+  });
   it('hides a whole city and new places there while leaving other cities included', () => {
     db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
     const kyoto = createPlace(testDb, tripId, { name: 'Kyoto temple', lat: 35.01, lng: 135.76 }).id;
@@ -158,6 +171,17 @@ describe('advice authority and public HTTP', () => {
     }
     expect(JSON.stringify(projection.candidates(tripId))).not.toContain('PRIVATE-');
     expect(projection.preset(tripId).schedule).toHaveLength(1);
+  });
+  it('keeps obvious untagged accommodation and transfer entries out of automatic and legacy projections', () => {
+    for (const name of ['Sample Hotel', 'Ryokan Stay (Hakone)', 'Tokyo Station — Baggage Lockers', 'Tokyo Station — Retrieve Bags & Board Train', 'International Airport']) {
+      const place = createPlace(testDb, tripId, { name }).id;
+      db.run('UPDATE places SET category_id = NULL WHERE id = ?', place);
+      const assignment = createDayAssignment(testDb, dayId, place).id;
+      config.schedule.push({ assignmentId: assignment, publicTitle: name, category: 'see' });
+    }
+    expect(projection.candidates(tripId).schedule).toHaveLength(1);
+    expect(projection.preset(tripId).schedule).toHaveLength(1);
+    expect(projection.build(tripId, config).stays[0]?.days[0]?.schedule).toHaveLength(1);
   });
   it('builds automatic cities and return stays from the trip with everything eligible included', () => {
     db.run('UPDATE trips SET title = ? WHERE id = ?', 'Japan trip', tripId);

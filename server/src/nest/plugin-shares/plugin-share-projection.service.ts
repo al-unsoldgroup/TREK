@@ -14,10 +14,13 @@ interface Place { id: number; google_place_id: string | null }
 export class PluginShareProjectionService {
   constructor(private readonly db: DatabaseService) {}
 
-  private categoryLogistics(tripId: number): number[] {
-    return this.db.all<{ id: number }>(`SELECT p.id FROM places p JOIN categories c ON c.id = p.category_id
-      WHERE p.trip_id = ? AND LOWER(TRIM(c.name)) IN
-      ('hotel', 'accommodation', 'transport', 'airport', 'flight', 'train station', 'bus station', 'parking', 'luggage storage')`, tripId).map(place => place.id);
+  private logisticsPlaces(tripId: number): number[] {
+    return this.db.all<{ id: number; name: string; category: string | null }>(`SELECT p.id, p.name, c.name AS category
+      FROM places p LEFT JOIN categories c ON c.id = p.category_id WHERE p.trip_id = ?`, tripId).filter(place => {
+      const category = place.category?.trim().toLowerCase() ?? '';
+      if (['hotel', 'accommodation', 'transport', 'airport', 'flight', 'train station', 'bus station', 'parking', 'luggage storage'].includes(category)) return true;
+      return /\b(?:hotels?|ryokan|baggage|luggage|retrieve bags|airport|aéroport)\b/iu.test(place.name);
+    }).map(place => place.id);
   }
 
   candidates(tripId: number) {
@@ -25,7 +28,7 @@ export class PluginShareProjectionService {
   }
 
   private nativeCandidates(tripId: number) {
-    const logistics = new Set(this.categoryLogistics(tripId));
+    const logistics = new Set(this.logisticsPlaces(tripId));
     const days = this.db.all<{ id: number; date: string }>(`SELECT id, date FROM days
       WHERE trip_id = ? AND date IS NOT NULL ORDER BY day_number, id`, tripId)
       .filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day.date));
@@ -96,6 +99,21 @@ export class PluginShareProjectionService {
       const chosen = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
       if (chosen) dayCities.set(day.id, chosen);
     }
+    const cityStays = this.db.all<{ startDate: string; endDate: string; address: string | null }>(`
+      SELECT s.date AS startDate, e.date AS endDate, p.address FROM day_accommodations a
+      JOIN places p ON p.id = a.place_id AND p.trip_id = a.trip_id
+      JOIN days s ON s.id = a.start_day_id AND s.trip_id = a.trip_id
+      JOIN days e ON e.id = a.end_day_id AND e.trip_id = a.trip_id WHERE a.trip_id = ?`, tripId).flatMap(stay => {
+      const country = adviceCountry(stay.address);
+      const parts = new Set(stay.address?.normalize('NFKC').split(',').map(part => part.trim().replace(/^〒?\s*\d{3}-\d{4}\s+/, '').toLocaleLowerCase('en')));
+      const matches = [...cities.values()].filter(city => country && city.countryCodes.includes(country) && parts.has(city.label.normalize('NFKC').toLocaleLowerCase('en')));
+      return matches.length === 1 ? [{ startDate: stay.startDate, endDate: stay.endDate, cityId: matches[0]!.id }] : [];
+    });
+    for (const day of days) {
+      if (dayCities.has(day.id)) continue;
+      const matches = new Set(cityStays.filter(stay => stay.startDate <= day.date && day.date < stay.endDate).map(stay => stay.cityId));
+      if (matches.size === 1) dayCities.set(day.id, [...matches][0]!);
+    }
     const fallback = 'city-unlocated';
     let previousCity: string | undefined;
     const stays: AdviceShareConfig['stays'] = [];
@@ -132,7 +150,7 @@ export class PluginShareProjectionService {
       WHERE trip_id = ? AND place_id IS NOT NULL AND type NOT IN ('restaurant','event','tour','activity')`, tripId).map(r => r.place_id));
     for (const stay of this.db.all<{ place_id: number }>(`SELECT place_id FROM day_accommodations
       WHERE trip_id = ? AND place_id IS NOT NULL`, tripId)) excluded.add(stay.place_id);
-    for (const id of this.categoryLogistics(tripId)) excluded.add(id);
+    for (const id of this.logisticsPlaces(tripId)) excluded.add(id);
     const excludedAssignments = new Set(this.db.all<{ assignment_id: number }>(`SELECT DISTINCT assignment_id FROM reservations
       WHERE trip_id = ? AND assignment_id IS NOT NULL AND type NOT IN ('restaurant','event','tour','activity')`, tripId).map(r => r.assignment_id));
     const selectedDays = new Set(config.stays.flatMap(s => s.dayIds));

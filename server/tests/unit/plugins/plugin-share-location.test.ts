@@ -5,6 +5,7 @@ describe('native advice city inference', () => {
   it('recognizes country-first addresses without treating street words as countries', () => {
     expect(adviceCountry('Japan, 〒104-0061 Tokyo, Chuo City, Ginza, 1-2-3')).toBe('JP');
     expect(adviceCountry('Place, Tokyo, Japan')).toBe('JP');
+    expect(adviceCountry('Street, Hakone, Kanagawa, 250-0408 Japan')).toBe('JP');
     expect(adviceCountry('Japan House, Main Street, London')).toBeNull();
     expect(adviceCountry('Cafe, Los Angeles, CA')).toBeNull();
   });

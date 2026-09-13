@@ -2,7 +2,7 @@ import { getCountryFromAddress } from '../atlas/atlas-geo';
 import { cityFromAddress } from '../atlas/city-from-address';
 
 export function adviceCountry(address: string | null | undefined): string | null {
-  const parts = address?.split(',').map(part => part.trim()).filter(Boolean) ?? [];
+  const parts = address?.normalize('NFKC').split(',').map(part => part.trim().replace(/^〒?\s*\d{3}-\d{4}\s+/, '')).filter(Boolean) ?? [];
   return getCountryFromAddress(parts.at(-1) ?? null, false) || getCountryFromAddress(parts[0] ?? null, false);
 }
 
