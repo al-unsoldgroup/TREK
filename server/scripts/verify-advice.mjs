@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 // remote run reports every failure instead of only the first one.
 const build = ['run', 'build', '--workspace=shared'];
 const commands = [
+  ['run', 'test', '--workspace=server', '--', 'tests/unit/plugins/public-share-rpc.test.ts'],
   ['run', 'test', '--workspace=server', '--', 'tests/e2e/admin.e2e.test.ts'],
   ['--prefix', 'plugins/trip-advice', 'test'],
   ['run', 'test', '--workspace=server', '--', 'tests/unit/db/migrate-encryption-parity.test.ts', 'tests/unit/nest/managed-keys.test.ts', 'tests/unit/plugins/plugin-share-lifecycle.test.ts'],

@@ -223,6 +223,13 @@ const PUBLIC_SHARE_TABLES = new Set([
 const PUBLIC_SQL_FORBIDDEN = /\b(?:ATTACH|DETACH|VACUUM|PRAGMA|RECURSIVE|LOAD_EXTENSION|CREATE|ALTER|DROP|REINDEX|ANALYZE)\b/i;
 const PUBLIC_SQL_COMMENT = /(?:--|\/\*)/;
 const PUBLIC_SQL_TRANSACTION = /^\s*(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|END)\b/i;
+// Only this reviewed upsert may update a conflict row. Its conflict key includes
+// both host-bound identities, and its update cannot change either identity.
+// Keep the real child-runtime vote test as the parity check with the addon.
+const PUBLIC_VOTE_UPSERT = `INSERT INTO advice_votes (share_id, guest_id, place_key, value, version, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (share_id, guest_id, place_key) DO UPDATE SET
+  value = excluded.value, version = advice_votes.version + 1, updated_at = excluded.updated_at
+  WHERE advice_votes.version = ? RETURNING place_key`.replace(/\s/g, '').toLowerCase();
 
 /**
  * Replace SQL string and identifier literals with spaces while preserving every
@@ -371,7 +378,10 @@ export class PublicSharePluginDataDb implements PluginDataDbAccess {
       throw new Error('public share SQL is not allowed');
     }
     const tables = [...structure.matchAll(/\b(?:FROM|JOIN|UPDATE|INTO)\s+([a-z_][a-z0-9_]*)/gi)].map(match => match[1]!.toLowerCase());
-    if (tables.some(table => !PUBLIC_SHARE_TABLES.has(table))) throw new Error('public share table is not allowed');
+    const reviewedVoteUpsert = structure.replace(/\s/g, '').toLowerCase() === PUBLIC_VOTE_UPSERT;
+    if (tables.some(table => !PUBLIC_SHARE_TABLES.has(table) && !(table === 'set' && reviewedVoteUpsert))) {
+      throw new Error('public share table is not allowed');
+    }
     if (tables.length === 0) throw new Error('public share table is required');
     const nextArgs = [...normalizeBindArgs(args)];
     for (const match of structure.matchAll(/\bshare_id\s*=\s*\?/gi)) {
