@@ -92,6 +92,7 @@
         if (message.version !== 1 || typeof message.nonce !== 'string' || message.nonce.length < 16 || message.nonce.length > 160) return;
         context = message;
         channelNonce = message.nonce;
+        applyTheme(message);
         while (contextWaiters.length) contextWaiters.shift()(message);
         return;
       }
@@ -198,7 +199,7 @@
     global.addEventListener('message', event => {
       if (event.source !== global.parent || !event.data || typeof event.data !== 'object') return;
       const message = event.data;
-      if (message.type === 'trek:context') { context = message; return; }
+      if (message.type === 'trek:context') { context = message; applyTheme(message); return; }
       const request = pending.get(message.requestId);
       if (!request) return;
       pending.delete(message.requestId);
@@ -223,6 +224,10 @@
   function applyTheme(context) {
     const theme = context?.theme;
     const root = document.documentElement;
+    for (const side of ['top', 'bottom', 'left', 'right']) {
+      const inset = context?.viewport?.insets?.[side];
+      root.style.setProperty(`--trek-inset-${side}`, `${Number.isFinite(inset) && inset >= 0 && inset <= 512 ? inset : 0}px`);
+    }
     if (typeof theme === 'string' && (theme === 'dark' || theme === 'light')) root.dataset.platformMode = theme;
     const allowed = { background: '--paper', surface: '--surface', text: '--ink', muted: '--muted', accent: '--accent', border: '--line' };
     if (theme && typeof theme === 'object') {
@@ -755,6 +760,6 @@
     bridge.context().then(value => { context = value; applyTheme(context); if (!tripId()) ownerError('TREK did not provide an owner trip context.'); else load(); }).catch(caught => ownerError(errorText(caught)));
   }
 
-  global.TrekAdviceController = Object.freeze({ ownerSelectionModel, ownerConfigFromControls, storedOwnerConfig, validVoteResult: Protocol.validVoteResult });
+  global.TrekAdviceController = Object.freeze({ ownerSelectionModel, ownerConfigFromControls, storedOwnerConfig, applyTheme, OwnerBridge, validVoteResult: Protocol.validVoteResult });
   global.addEventListener('DOMContentLoaded', () => { applyTheme(null); guest(); owner(); });
 })(window);
