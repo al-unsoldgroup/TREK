@@ -10,7 +10,8 @@ Before this notice takes effect, Unsold Group must confirm its applicable data-p
 
 ## Information processed
 
-Trip Advice processes the information a trip owner selects for sharing, such as a public title, cities, and selected places or schedule items.
+Trip Advice prepares a shared view from the trip title, cities, itinerary, and eligible saved places.
+The owner can hide exceptions before sharing. New eligible trip items appear automatically unless hidden.
 It also processes guest display names, suggestions, comments, selected place identifiers, and moderation decisions.
 Authenticated owner actions are associated with the owner's Trek account.
 
@@ -43,7 +44,11 @@ The operator must confirm hosting providers, processing locations, and any inter
 
 Session expiry does not by itself guarantee that all feedback, logs, backups, or accepted trip places have been erased.
 Trip Advice includes guest-feedback erasure and owner purge operations. Accepted places are separate trip records.
-Before publication, the operator must set and document retention periods for feedback, logs, backups, and accepted records, including deletion exceptions.
+Feedback remains available to the owner for 90 days after the advice link expires or is disabled, then automatic deletion is queued.
+The service checks for overdue feedback at startup and every minute. If the plugin is unavailable, deletion retries when it returns.
+Guest-requested erasure and explicit link deletion do not wait for this retention period.
+Saving an already disabled link does not extend the deadline.
+Before publication, the operator must document retention periods for logs, backups, and accepted records, including deletion exceptions.
 
 ## Your choices and rights
 
