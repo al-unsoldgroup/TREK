@@ -43,6 +43,11 @@ describe('publicShareApi', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([...Array.from({ length: 32 }, (_, code) => String.fromCharCode(code)), '/'])('rejects unsafe token character %# before fetching', async (char) => {
+    await expect(publicShareApi.getEntry(`prefix${char}suffix`)).rejects.toThrow('Invalid public share token.')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('FE-USG215-API-001: keeps legacy shared payloads on the legacy branch', async () => {
     fetchMock.mockResolvedValue(response({ trip: { title: 'Legacy' }, permissions: {} }))
 

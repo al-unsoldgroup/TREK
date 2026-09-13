@@ -110,6 +110,9 @@ jobs:
       - name: Check the generated plugin facts are in sync
         run: cd server && npm run check:plugin-facts
 
+      - name: Check the generated public-share types are in sync
+        run: cd server && npm run check:plugin-share
+
   i18n-parity:
     name: i18n Key Parity
     runs-on: ubuntu-latest
@@ -220,6 +223,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Build standalone SDK exports
+        run: npm run build
 
   s3-contract:
     name: S3 Driver Contract (MinIO)

@@ -194,8 +194,7 @@ export default function PublicPluginFrame({ token: shareToken, bootstrap }: Publ
     if (!sessionPromiseRef.current) {
       const controller = abortRef.current
       if (!controller) return Promise.reject(new Error('Public advice frame closed.'))
-      let tracked: Promise<PublicShareSession>
-      tracked = publicShareApi.createSession(shareToken, controller.signal)
+      const tracked: Promise<PublicShareSession> = publicShareApi.createSession(shareToken, controller.signal)
         .then((session) => {
           if (sessionTokenRef.current === shareToken) sessionRef.current = session
           if (sessionPromiseRef.current === tracked) sessionPromiseRef.current = null
