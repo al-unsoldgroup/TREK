@@ -5,7 +5,7 @@ Draft for operator approval. Not yet effective. Prepared 13 September 2026.
 ## Scope and responsibility
 
 This notice covers Trip Advice at https://trips.unsold.group, not all Trek features or other installations.
-Unsold Group operates this service. Contact [al@unsold.group](mailto:al@unsold.group) privately about this notice or your personal information.
+Unsold Group, established in the United States, operates this service. Contact [al@unsold.group](mailto:al@unsold.group) privately about this notice or your personal information.
 Before this notice takes effect, Unsold Group must confirm its applicable data-protection obligations.
 
 ## Information processed

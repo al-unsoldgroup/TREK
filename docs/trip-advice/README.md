@@ -6,6 +6,7 @@ These are review drafts, not approved legal notices. Do not configure production
 - [Privacy Policy](privacy.md)
 
 Al confirmed Unsold Group as the operator and al@unsold.group as the private contact on 13 September 2026.
+Al confirmed that Unsold Group is legally established in the United States on 14 September 2026.
 Before approval, confirm applicable legal bases and jurisdiction, hosting providers and transfer arrangements, and actual log, backup, and feedback retention.
 Replace draft language and unresolved disclosures with verified facts, then set an effective date.
 Obtain appropriate legal review for the operator's circumstances.

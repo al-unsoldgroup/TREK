@@ -6,7 +6,7 @@ Draft for operator approval. Not yet effective. Prepared 13 September 2026.
 
 These terms cover Trip Advice at https://trips.unsold.group, not other Trek installations.
 The service lets trip owners share selected trip information and receive suggestions.
-Unsold Group operates this service. Contact [al@unsold.group](mailto:al@unsold.group) privately with questions or complaints.
+Unsold Group, established in the United States, operates this service. Contact [al@unsold.group](mailto:al@unsold.group) privately with questions or complaints.
 
 ## Shared trips and contributions
 
