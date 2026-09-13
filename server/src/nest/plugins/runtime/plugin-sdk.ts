@@ -10,7 +10,7 @@
 
 /** Mirrors the published package's constant — bumped on any breaking API change. */
 export { PLUGIN_API_VERSION } from '../protocol/envelope';
-import type { AdviceNativeImportResult, AdviceOwnerConfig, AdviceProjection, AdvicePublicShareContext, AdviceResolvedSelection, AdviceShareInvocation } from '../protocol/public-share';
+import type { AdviceNativeImportResult, AdviceOwnerCandidates, AdviceOwnerConfig, AdviceProjection, AdvicePublicShareContext, AdviceResolvedSelection, AdviceShareInvocation } from '../protocol/public-share';
 
 export interface PluginContext {
   publicShare: AdvicePublicShareContext;
@@ -784,6 +784,7 @@ export function createPluginContext(
       resolveSelection: (input) => t.rpc('publicShare.resolveSelection', input) as Promise<AdviceResolvedSelection>,
       owner: {
         getConfig: (input) => t.rpc('publicShare.owner.getConfig', input) as Promise<AdviceOwnerConfig | null>,
+        getCandidates: (input) => t.rpc('publicShare.owner.getCandidates', input) as Promise<AdviceOwnerCandidates>,
         preview: (input) => t.rpc('publicShare.owner.preview', input) as Promise<AdviceProjection>,
         configure: (input) => t.rpc('publicShare.owner.configure', input) as Promise<AdviceOwnerConfig>,
         importSuggestion: (input) => t.rpc('publicShare.owner.importSuggestion', { ...input }) as Promise<AdviceNativeImportResult>,

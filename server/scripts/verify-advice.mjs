@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 // remote run reports every failure instead of only the first one.
 const build = ['run', 'build', '--workspace=shared'];
 const commands = [
+  ['run', 'test', '--workspace=server', '--', 'tests/integration/plugin-shares.test.ts'],
   ['run', 'typecheck', '--workspaces', '--if-present'],
   ['run', 'typecheck:tests', '--workspace=server'],
   ['--prefix', 'plugin-sdk', 'run', 'typecheck'],
@@ -25,7 +26,8 @@ const commands = [
   ['run', 'test', '--workspace=server', '--',
     'tests/unit/nest/llm-parse/clients.test.ts', 'tests/unit/nest/llm-parse/llm-client.factory.test.ts',
     'tests/unit/nest/llm-parse/llm-config.resolver.test.ts', 'tests/unit/nest/llm-parse/llm-parse.service.test.ts',
-    'tests/unit/services/llmConfig.test.ts', 'tests/unit/nest/settings.service.test.ts'],
+    'tests/unit/services/llmConfig.test.ts', 'tests/unit/nest/settings.service.test.ts',
+    'tests/unit/plugins/google-places.provider.test.ts'],
   ['--prefix', 'plugin-sdk', 'test', '--', 'test/public-share.test.ts', 'test/sdk.test.ts', 'test/permissions-parity.test.ts', 'test/manifest-roundtrip.test.ts'],
   ['run', 'test:ws', '--workspace=server'],
   ['run', 'test:integration', '--workspace=server', '--', '--exclude=tests/integration/plugins/trip-advice-runtime.test.ts'],

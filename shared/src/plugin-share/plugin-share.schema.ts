@@ -143,6 +143,15 @@ export const adviceOwnerConfigSchema = z.strictObject({
   expiresAt: isoDateTime, config: adviceShareConfigSchema,
 });
 
+const candidatePlace = z.strictObject({ placeId: id, publicTitle: title,
+  lat: z.number().min(-90).max(90).nullable(), lng: z.number().min(-180).max(180).nullable() });
+export const adviceOwnerCandidatesSchema = z.strictObject({
+  days: z.array(z.strictObject({ id, date: z.iso.date() })).max(500),
+  schedule: z.array(candidatePlace.extend({ assignmentId: id, dayId: id })).max(5000),
+  shortlist: z.array(candidatePlace).max(5000),
+});
+export type AdviceOwnerCandidates = z.infer<typeof adviceOwnerCandidatesSchema>;
+
 export type AdviceCategory = z.infer<typeof adviceCategorySchema>;
 export type AdviceShareConfig = z.infer<typeof adviceShareConfigSchema>;
 export type AdvicePlace = z.infer<typeof advicePlaceSchema>;
@@ -179,6 +188,7 @@ export type AdviceShareInvocation = z.infer<typeof adviceInvocationSchema>;
 
 export interface AdviceOwnerShareContext {
   getConfig(input: { tripId: number }): Promise<AdviceOwnerConfig | null>;
+  getCandidates(input: { tripId: number }): Promise<AdviceOwnerCandidates>;
   preview(input: { tripId: number; config: AdviceShareConfig }): Promise<AdviceProjection>;
   configure(input: { tripId: number; expectedRevision: number; config: AdviceShareConfig;
     enabled: boolean; expiresInDays: number; previewRevision?: string }): Promise<AdviceOwnerConfig>;

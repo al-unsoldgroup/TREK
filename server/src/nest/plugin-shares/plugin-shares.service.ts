@@ -110,6 +110,11 @@ export class PluginSharesService {
     return config;
   }
 
+  ownerCandidates(tripId: number, userId: number) {
+    this.requireManage(tripId, this.actor(userId));
+    return this.projection.candidates(tripId);
+  }
+
   ownerPreview(tripId: number, userId: number, config: unknown) {
     return this.preview(tripId, this.actor(userId), config);
   }

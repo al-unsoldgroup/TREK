@@ -45,6 +45,12 @@ export class PluginSharesRpc {
     return this.shares.ownerConfig(num(params.tripId, 'tripId'), this.owner(ctx));
   }
 
+  @PluginMethod('publicShare.owner.getCandidates', { permission: 'share:publish' })
+  ownerCandidates(params: Record<string, unknown>, ctx: PluginRpcContext) {
+    if (Object.keys(params).length !== 1 || !Object.hasOwn(params, 'tripId')) throw new BadParams('getCandidates takes tripId only');
+    return this.shares.ownerCandidates(num(params.tripId, 'tripId'), this.owner(ctx));
+  }
+
   @PluginMethod('publicShare.owner.preview', { permission: 'share:publish' })
   ownerPreview(params: Record<string, unknown>, ctx: PluginRpcContext) {
     const tripId = num(params.tripId, 'tripId');
