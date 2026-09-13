@@ -113,6 +113,21 @@ afterAll(async () => { await app.close(); testDb.close(); vi.unstubAllEnvs(); })
 const publish = () => shares.write(tripId, owner, { config, expectedRevision: 0, enabled: true, expiresInDays: 10 });
 
 describe('advice authority and public HTTP', () => {
+  it('groups country-first Japanese addresses with existing cities and ignores unknown day votes', () => {
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Japan, 〒104-0061 Tokyo, Chuo City, Ginza, 1-2-3', scheduledPlaceId);
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Place, Tokyo, Japan', shortlistPlaceId);
+    for (let index = 0; index < 2; index++) {
+      const unknown = createPlace(testDb, tripId).id;
+      db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE id = ?', unknown);
+      createDayAssignment(testDb, dayId, unknown);
+    }
+    const preset = projection.preset(tripId);
+    const tokyo = preset.cities.filter(city => city.label === 'Tokyo');
+    expect(tokyo).toHaveLength(1);
+    expect(tokyo[0]?.countryCodes).toEqual(['JP']);
+    expect(preset.cities.some(city => city.label === 'Ginza')).toBe(false);
+    expect(preset.stays[0]?.cityId).toBe(tokyo[0]?.id);
+  });
   it('refreshes the public bootstrap title from the native trip for automatic shares', () => {
     const preset = projection.preset(tripId);
     const link = shares.write(tripId, owner, { config: preset, expectedRevision: 0, enabled: true, expiresInDays: 10 });

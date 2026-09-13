@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { adviceOwnerCandidatesSchema, adviceProjectionSchema, adviceShareConfigSchema, type AdvicePlace, type AdviceShareConfig } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
-import { getCountryFromAddress, getCountryFromCoords } from '../atlas/atlas-geo';
-import { adviceLocality } from './plugin-share-location';
+import { getCountryFromCoords } from '../atlas/atlas-geo';
+import { adviceCountry, adviceLocality } from './plugin-share-location';
 
 interface Day { id: number; date: string | null; day_number: number }
 interface Assignment { id: number; place_id: number; day_id: number; assignment_time: string | null; order_index: number }
@@ -60,14 +60,17 @@ export class PluginShareProjectionService {
     const metadata = this.db.all<{ id: number; address: string | null; country_code: string | null; region_name: string | null; category: string | null }>(`SELECT p.id, p.address, r.country_code, r.region_name, c.name AS category FROM places p LEFT JOIN place_regions r ON r.place_id = p.id LEFT JOIN categories c ON c.id = p.category_id WHERE p.trip_id = ?`, tripId);
     const byId = new Map(metadata.map(row => [row.id, row]));
     const cities = new Map<string, AdviceShareConfig['cities'][number]>();
+    const unlocatedCities = new Set<string>();
     const placeCities = new Map<number, string>();
     const categories = new Map<number, 'see' | 'eat'>();
     for (const place of [...native.schedule, ...native.shortlist]) {
       const detail = byId.get(place.placeId);
       const located = place.lat !== null && place.lng !== null;
-      const countryCode = detail?.country_code || (located ? getCountryFromCoords(place.lat!, place.lng!) : null) || getCountryFromAddress(detail?.address ?? null, false);
-      const locality = adviceLocality(detail?.address, countryCode, detail?.region_name ?? null) || 'Location not specified';
+      const countryCode = detail?.country_code || (located ? getCountryFromCoords(place.lat!, place.lng!) : null) || adviceCountry(detail?.address);
+      const knownLocality = adviceLocality(detail?.address, countryCode, detail?.region_name ?? null);
+      const locality = knownLocality || 'Location not specified';
       const cityId = `city-${createHash('sha256').update(`${countryCode ?? ''}/${locality.toLocaleLowerCase('en')}`).digest('hex').slice(0, 16)}`;
+      if (!knownLocality) unlocatedCities.add(cityId);
       let city = cities.get(cityId);
       if (!city) {
         city = { id: cityId, label: locality.slice(0, 100), countryCodes: countryCode ? [countryCode] : [], bounds: null };
@@ -87,6 +90,7 @@ export class PluginShareProjectionService {
       const counts = new Map<string, number>();
       for (const row of native.schedule.filter(row => row.dayId === day.id)) {
         const cityId = placeCities.get(row.placeId)!;
+        if (unlocatedCities.has(cityId)) continue;
         counts.set(cityId, (counts.get(cityId) ?? 0) + 1);
       }
       const chosen = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
