@@ -1,9 +1,11 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
+import Sqlite from 'better-sqlite3';
 import { GooglePlacesProvider, type GooglePlacesFetch } from '../../../src/nest/plugin-shares/google-places.provider';
 import type { PublicSharePrincipal } from '../../../src/nest/plugins/protocol/envelope';
 
 const principal: PublicSharePrincipal = { kind: 'publicShare', pluginId: 'trip-advice', shareId: 'share-a', epoch: 2, sessionId: 'session-a', guestId: 'guest-a' };
 const actionId = '11111111-1111-4111-8111-111111111111';
+const searchAction = { version: 1, kind: 'places.autocomplete', searchId: actionId, cityId: 'elsewhere', category: 'see', input: 'Place', locale: 'en' } as const;
 const baseEnv = {
   TREK_PLUGINS_ENABLED: 'true', TREK_PUBLIC_ADVICE_ENABLED: 'true', TREK_PUBLIC_ADVICE_GOOGLE_ENABLED: 'true',
   TREK_PUBLIC_ADVICE_GOOGLE_TERMS_URL: 'https://example.test/terms', TREK_PUBLIC_ADVICE_GOOGLE_PRIVACY_URL: 'https://example.test/privacy',
@@ -35,7 +37,92 @@ function provider(fetcher: GooglePlacesFetch, db = dbFixture(), shares = sharesF
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const key of Object.keys(baseEnv)) delete process.env[key];
+});
+
+describe('Google Places monthly spending reservations', () => {
+  function fixture() {
+    Object.assign(process.env, baseEnv, { TREK_PUBLIC_ADVICE_GOOGLE_BUDGET_CENTS: '500' });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-13T12:00:00Z'));
+    const sql = new Sqlite(':memory:');
+    sql.exec(`CREATE TABLE plugin_share_usage (
+      scope_id TEXT NOT NULL, operation TEXT NOT NULL, usage_day TEXT NOT NULL,
+      attempts INTEGER NOT NULL CHECK(attempts >= 0), PRIMARY KEY(scope_id, operation, usage_day)
+    )`);
+    const db = {
+      get: (query: string, ...args: unknown[]) => sql.prepare(query).get(...args),
+      run: (query: string, ...args: unknown[]) => sql.prepare(query).run(...args),
+      transaction: (fn: () => unknown) => sql.transaction(fn)(),
+    };
+    const make = (fetcher: GooglePlacesFetch) => new GooglePlacesProvider(db as never, sharesFixture() as never, fetcher);
+    const seed = (day: string, attempts: number, operation = 'autocomplete') =>
+      db.run('INSERT INTO plugin_share_usage VALUES (?, ?, ?, ?)', '__instance__', operation, day, attempts);
+    return { sql, make, seed };
+  }
+
+  it('shares the US$5 cap across days, shares and provider restarts, reserving before fetch', async () => {
+    const { sql, make, seed } = fixture();
+    try {
+      seed('2026-09-01', 499);
+      const fetcher = vi.fn<GooglePlacesFetch>(async () => response({ suggestions: [] }));
+      await make(fetcher).autocomplete(principal, searchAction);
+      await expect(make(fetcher).autocomplete({ ...principal, shareId: 'share-b' }, searchAction)).rejects.toMatchObject({ status: 429 });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(sql.prepare('SELECT SUM(attempts) AS total FROM plugin_share_usage WHERE scope_id = ?').get('__instance__')).toEqual({ total: 500 });
+    } finally { sql.close(); }
+  });
+
+  it('counts uncertain upstream failures and resets only at the next UTC month', async () => {
+    const { sql, make, seed } = fixture();
+    try {
+      seed('2026-09-01', 499);
+      const fetcher = vi.fn<GooglePlacesFetch>(async () => { throw new Error('upstream timeout'); });
+      await expect(make(fetcher).autocomplete(principal, searchAction)).rejects.toThrow('upstream timeout');
+      vi.setSystemTime(new Date('2026-09-30T23:59:59Z'));
+      await expect(make(fetcher).autocomplete(principal, searchAction)).rejects.toMatchObject({ status: 429 });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(new Date('2026-10-01T00:00:00Z'));
+      await expect(make(fetcher).autocomplete(principal, searchAction)).rejects.toThrow('upstream timeout');
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally { sql.close(); }
+  });
+
+  it('does not let concurrent requests reserve the same final cent', async () => {
+    const { sql, make, seed } = fixture();
+    try {
+      seed('2026-09-01', 499);
+      let release!: (value: Response) => void;
+      const pending = new Promise<Response>(resolve => { release = resolve; });
+      const fetcher = vi.fn<GooglePlacesFetch>(() => pending);
+      const first = make(fetcher).autocomplete(principal, searchAction);
+      await expect(make(fetcher).autocomplete({ ...principal, sessionId: 'session-b' }, searchAction)).rejects.toMatchObject({ status: 429 });
+      release(response({ suggestions: [] }));
+      await first;
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally { sql.close(); }
+  });
+
+  it('combines autocomplete, details and photo charges in the same cap', async () => {
+    const { sql, make, seed } = fixture();
+    try {
+      seed('2026-09-01', 496);
+      const fetcher = vi.fn<GooglePlacesFetch>(async url => {
+        if (String(url).includes('autocomplete')) return response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] });
+        if (String(url).includes('/media')) return response({ photoUri: 'https://lh3.googleusercontent.com/photo' });
+        if (String(url).includes('googleusercontent')) return new Response(new Uint8Array([255, 216, 255, 217]), { headers: { 'content-type': 'image/jpeg' } });
+        return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1' }] });
+      });
+      const places = make(fetcher);
+      const found = await places.autocomplete(principal, searchAction);
+      const resolved = await places.resolveAction(principal, { version: 1, kind: 'places.resolve', searchId: actionId, predictionId: found.data.suggestions[0].predictionId });
+      expect(await places.photo(principal, resolved.data.place.photoHandle!)).toMatchObject({ state: 'available' });
+      await expect(places.photo(principal, resolved.data.place.photoHandle!)).rejects.toMatchObject({ status: 429 });
+      await expect(places.autocomplete(principal, searchAction)).rejects.toMatchObject({ status: 429 });
+      expect(fetcher).toHaveBeenCalledTimes(4);
+    } finally { sql.close(); }
+  });
 });
 
 describe('GooglePlacesProvider', () => {
