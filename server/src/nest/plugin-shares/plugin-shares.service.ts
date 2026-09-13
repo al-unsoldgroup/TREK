@@ -85,7 +85,7 @@ export class PluginSharesService {
       if ((row?.revision ?? 0) !== body.expectedRevision) throw new ConflictException('Advice configuration changed');
       const expires = new Date(Date.now() + body.expiresInDays * 86400000).toISOString();
       if (row) {
-        this.lifecycle?.enqueuePurge(row.id);
+        if (!body.enabled) this.lifecycle?.enqueuePurge(row.id);
         this.db.run('UPDATE plugin_share_links SET config_json = ?, enabled = ?, expires_at = ?, revision = revision + 1, epoch = epoch + 1 WHERE id = ?', JSON.stringify(body.config), Number(body.enabled), expires, row.id);
         this.db.run('DELETE FROM plugin_share_sessions WHERE share_id = ?', row.id);
       } else {
@@ -94,7 +94,7 @@ export class PluginSharesService {
       }
       return this.getOwner(tripId, user)!;
     });
-    void this.lifecycle?.flush();
+    this.lifecycle?.flushInBackground();
     return result;
   }
   preview(tripId: number, user: User, config: unknown) {
@@ -177,12 +177,12 @@ export class PluginSharesService {
       const row = this.db.get<Link>('SELECT * FROM plugin_share_links WHERE trip_id = ?', tripId);
       if (!row) this.unavailable();
       if (row.revision !== revision) throw new ConflictException('Advice configuration changed');
-      this.lifecycle?.enqueuePurge(row.id);
+      if (!rotate) this.lifecycle?.enqueuePurge(row.id);
       this.db.run('UPDATE plugin_share_links SET token = ?, enabled = ?, epoch = epoch + 1, revision = revision + 1 WHERE id = ?', rotate ? this.newToken() : row.token, rotate ? row.enabled : 0, row.id);
       this.db.run('DELETE FROM plugin_share_sessions WHERE share_id = ?', row.id);
       return this.getOwner(tripId, user)!;
     });
-    void this.lifecycle?.flush();
+    this.lifecycle?.flushInBackground();
     return result;
   }
   private newToken() {

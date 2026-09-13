@@ -195,6 +195,27 @@ describe('advice authority and public HTTP', () => {
     db.run('UPDATE plugin_share_links SET enabled = 1, expires_at = ?', '2000-01-01T00:00:00.000Z');
     expect(() => shares.bootstrap(rotated.token)).toThrow();
   });
+  it.each(['configuration', 'rotation'] as const)('preserves feedback on %s changes while revoking guest authority', change => {
+    const link = publish();
+    const guest = shares.session(link.token, undefined, 'preserve-feedback');
+    const principal = shares.authorize(link.token, guest.credential, guest.csrfToken);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const managed = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
+    const updated = change === 'rotation'
+      ? managed.revoke(tripId, owner, link.revision, true)
+      : managed.write(tripId, owner, { config: { ...config, publicTitle: 'Updated public title' }, expectedRevision: link.revision, enabled: true, expiresInDays: 10 });
+    expect(updated.revision).toBe(link.revision + 1);
+    expect(() => managed.validatePrincipal(principal)).toThrow();
+    expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([]);
+  });
+  it.each(['disable', 'delete'] as const)('still queues cleanup for explicit %s', change => {
+    const link = publish();
+    const lifecycle = new PluginShareLifecycleService(db);
+    const managed = new PluginSharesService(db, permissions, projection, limiter, lifecycle);
+    if (change === 'delete') managed.revoke(tripId, owner, link.revision, false);
+    else managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 10 });
+    expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+  });
   it('revokes erased guest credentials server-side while preserving another guest session', async () => {
     const link = publish();
     const erased = shares.session(link.token, undefined, 'erase-ip');
