@@ -191,8 +191,8 @@ describe('GooglePlacesProvider', () => {
     const places = provider(async (url) => {
       calls.push(String(url));
       if (calls.length === 1) return response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] });
-      if (calls.length === 2) return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', authorAttributions: [{ displayName: 'Author', uri: 'https://example.test/author' }] }] });
-      if (calls.length === 3) return response({ photoUri: 'https://lh3.googleusercontent.com/photo' });
+      if (calls.length === 2) return response({ id: 'ChIJplace', displayName: { text: 'Place' }, addressComponents: [{ shortText: 'ES', types: ['country'] }], photos: [{ name: 'places/ChIJplace/photos/photo-1', googleMapsUri: 'https://www.google.com/maps/photo', flagContentUri: 'https://www.google.com/maps/report', authorAttributions: [{ displayName: 'Author', uri: 'https://example.test/author' }] }] });
+      if (calls.length === 3) return response({ name: 'places/ChIJplace/photos/photo-1/media', photoUri: 'https://lh3.googleusercontent.com/photo' });
       return new Response(new Uint8Array([255, 216, 255, 217]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
     });
     const autocomplete = await places.autocomplete(principal, { version: 1, kind: 'places.autocomplete', searchId: actionId, cityId: 'elsewhere', category: 'see', input: 'Place', locale: 'en' });
