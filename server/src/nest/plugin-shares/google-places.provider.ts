@@ -45,9 +45,9 @@ const detailsBody = z.strictObject({
   location: z.strictObject({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).optional(),
   id: text(256), displayName: googleText.extend({ languageCode: text(35).optional() }), formattedAddress: text(500).optional(), googleMapsUri: z.string().url().max(2000).optional(),
   addressComponents: z.array(z.strictObject({ longText: text(200).optional(), shortText: text(20).optional(), languageCode: text(35).optional(), types: z.array(text(80)).max(20) })).max(100).optional(),
-  photos: z.array(z.strictObject({ name: text(500), widthPx: z.number().int().positive().optional(), heightPx: z.number().int().positive().optional(), authorAttributions: z.array(z.strictObject({ displayName: text(200), uri: z.string().url().max(2000), photoUri: z.string().url().max(2000).optional() })).max(20).optional() })).max(20).optional(),
+  photos: z.array(z.strictObject({ name: text(500), widthPx: z.number().int().positive().optional(), heightPx: z.number().int().positive().optional(), googleMapsUri: z.string().url().max(2000).optional(), flagContentUri: z.string().url().max(2000).optional(), authorAttributions: z.array(z.strictObject({ displayName: text(200), uri: z.string().url().max(2000), photoUri: z.string().url().max(2000).optional() })).max(20).optional() })).max(20).optional(),
 });
-const mediaBody = z.strictObject({ photoUri: z.string().url().max(4096) });
+const mediaBody = z.strictObject({ name: text(512).optional(), photoUri: z.string().url().max(4096) });
 
 type City = { bounds: { south: number; west: number; north: number; east: number } };
 type HandleBase = { shareId: string; sessionId: string; guestId: string; epoch: number; expiresAt: number };
