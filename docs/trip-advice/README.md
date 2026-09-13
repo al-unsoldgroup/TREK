@@ -5,11 +5,13 @@ These are review drafts, not approved legal notices. Do not configure production
 - [Terms of Use](terms.md)
 - [Privacy Policy](privacy.md)
 
-Before approval, confirm the operator's legal identity and private contact channel; applicable legal bases and jurisdiction; hosting providers and transfer arrangements; and actual log, backup, and feedback retention.
+Al confirmed Unsold Group as the operator and al@unsold.group as the private contact on 13 September 2026.
+Before approval, confirm applicable legal bases and jurisdiction, hosting providers and transfer arrangements, and actual log, backup, and feedback retention.
 Replace draft language and unresolved disclosures with verified facts, then set an effective date.
 Obtain appropriate legal review for the operator's circumstances.
 
-Google Places remains disabled until the policies are approved and publicly reachable, the applicable Google billing-account agreement is checked, and Al approves a spending budget.
+Al approved a US$5 monthly Google Places budget on 13 September 2026.
+Google Places remains disabled until the spending guard is deployed, policies are approved and publicly reachable, and the applicable Google billing-account agreement is checked.
 A configured budget value alone must not be described as a guaranteed Google billing cap.
 This documentation change does not change production flags, credentials, quotas, or trip-sharing settings.
 

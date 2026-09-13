@@ -5,7 +5,8 @@ Draft for operator approval. Not yet effective. Prepared 13 September 2026.
 ## Scope and responsibility
 
 This notice covers Trip Advice at https://trips.unsold.group, not all Trek features or other installations.
-Before this notice takes effect, the operator must confirm its legal identity, contact details, and applicable data-protection obligations.
+Unsold Group operates this service. Contact [al@unsold.group](mailto:al@unsold.group) privately about this notice or your personal information.
+Before this notice takes effect, Unsold Group must confirm its applicable data-protection obligations.
 
 ## Information processed
 
@@ -50,7 +51,8 @@ You can stop using a shared link and clear its browser cookies; clearing cookies
 Use the service's deletion controls where available, or contact the operator privately for help.
 Depending on applicable law, you may have rights to access, correct, delete, restrict, or object to processing, and to data portability.
 You may also have a right to complain to a data-protection authority.
-The operator must provide a private request channel and identify applicable legal bases before publication.
+Send requests privately to [al@unsold.group](mailto:al@unsold.group).
+The operator must identify applicable legal bases before publication.
 
 ## Updates
 
