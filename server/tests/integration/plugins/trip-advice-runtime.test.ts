@@ -16,7 +16,10 @@ import type { PublicSharePrincipal } from '../../../src/nest/plugins/protocol/en
 
 const settings: Pick<PluginUserSettingsService, 'readOne'> = { readOne: () => undefined };
 const projection = {
-  version: 1 as const, revision: 'runtime-test', title: 'Runtime test', cities: [], stays: [], shortlists: [],
+  version: 1 as const, revision: 'runtime-test', title: 'Runtime test', cities: [], stays: [],
+  shortlists: [{ cityId: 'elsewhere', see: [{ key: 'p:1', title: 'Runtime shortlist place', category: 'see',
+    cityId: 'elsewhere', locality: 'Runtime city', countryCode: 'ES', googlePlaceId: 'ChIJshortlist-place',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Runtime' }], eat: [] }],
 };
 
 @PluginController()
@@ -135,5 +138,32 @@ describe('standalone trip-advice through the real child runtime', () => {
     expect(JSON.parse(z.object({ body: z.string() }).parse(ownerResult).body)).toMatchObject({
       config: null, candidates: { days: [{ id: 1, date: '2026-10-09' }], schedule: [], shortlist: [] }, inbox: { suggestions: [], comments: [] },
     });
+
+    const invoke = (action: Record<string, unknown>, guest = principal) => {
+      if (!supervisor) throw new Error('plugin runtime is not active');
+      return supervisor.invoke('trip-advice', 'invoke.publicShare', {
+        version: 1, scope: { shareId: guest.shareId, guestId: guest.guestId, epoch: guest.epoch }, action,
+      }, { publicShare: guest });
+    };
+    const upvote = { version: 1, kind: 'vote.set', requestId: randomUUID(), placeKey: 'p:1', value: 1, expectedVersion: 0 };
+    const firstVote = await invoke(upvote);
+    expect(firstVote).toMatchObject({ kind: 'vote.set', data: { mine: 1, positive: 1, negative: 0, version: 1 } });
+    expect(await invoke(upvote)).toEqual(firstVote);
+    expect(await invoke({ ...upvote, requestId: randomUUID(), value: -1, expectedVersion: 1 }))
+      .toMatchObject({ data: { mine: -1, positive: 0, negative: 1, version: 2 } });
+    expect(await invoke({ ...upvote, requestId: randomUUID(), value: 0, expectedVersion: 2 }))
+      .toMatchObject({ data: { mine: 0, positive: 0, negative: 0, version: 3 } });
+    await invoke({ version: 1, kind: 'comment.create', requestId: randomUUID(), text: 'Keep the morning flexible', displayName: 'Runtime guest' });
+
+    await supervisor.shutdownAll();
+    supervisor = new PluginSupervisor(createRpcHost);
+    await supervisor.activate('trip-advice', new Set(['db:own', 'share:guest', 'share:publish']));
+    expect(await invoke({ version: 1, kind: 'read' })).toMatchObject({
+      votes: [{ placeKey: 'p:1', mine: 0, positive: 0, negative: 0, version: 3 }],
+      myComments: [{ text: 'Keep the morning flexible', displayName: 'Runtime guest' }],
+      myPendingSuggestions: [{ title: 'Runtime place', state: 'pending' }],
+    });
+    expect(await invoke({ version: 1, kind: 'read' }, { ...principal, guestId: randomUUID(), sessionId: randomUUID() }))
+      .toMatchObject({ myComments: [], myPendingSuggestions: [] });
   });
 });

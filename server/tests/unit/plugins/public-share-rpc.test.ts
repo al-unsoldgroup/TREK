@@ -97,6 +97,25 @@ describe('public invocation confinement', () => {
       [scope.shareId, 'foreign-guest', scope.guestId],
     )).toThrow('public share INSERT must bind its guest');
   });
+  it('permits only the reviewed vote upsert with host-bound identities', () => {
+    const backing = { query: vi.fn(() => []), exec: vi.fn(() => ({ changes: 1 })), migrate: vi.fn(), tx: vi.fn(() => ({ results: [] })) };
+    const db = new PublicSharePluginDataDb(backing as never, scope.shareId, scope.guestId);
+    const sql = `INSERT INTO advice_votes (share_id, guest_id, place_key, value, version, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (share_id, guest_id, place_key) DO UPDATE SET
+      value = excluded.value, version = advice_votes.version + 1, updated_at = excluded.updated_at
+      WHERE advice_votes.version = ? RETURNING place_key`;
+    const args = [scope.shareId, scope.guestId, 'p:1', 1, 1, 1, 0];
+    expect(() => db.exec(sql, args)).not.toThrow();
+    expect(() => db.exec(sql, ['foreign-share', ...args.slice(1)])).toThrow('public share INSERT must bind its share');
+    expect(() => db.exec(sql, [scope.shareId, 'foreign-guest', ...args.slice(2)])).toThrow('public share INSERT must bind its guest');
+    for (const changed of [
+      sql.replace('value = excluded.value', 'share_id = excluded.value'),
+      sql.replace('value = excluded.value', 'guest_id = excluded.value'),
+      sql.replace('ON CONFLICT (share_id, guest_id, place_key)', 'ON CONFLICT (place_key)'),
+      sql.replace('value = excluded.value', 'value = (SELECT value FROM advice_votes LIMIT 1)'),
+    ]) expect(() => db.exec(changed, args)).toThrow('public share table is not allowed');
+    expect(backing.exec).toHaveBeenCalledTimes(1);
+  });
   it('enforces the share scope against a real SQLite database', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trek-public-share-'));
     const previous = process.env.TREK_PLUGINS_DATA_DIR;
