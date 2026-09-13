@@ -70,6 +70,7 @@ beforeEach(() => {
     http.get('/api/trips/1/share-link', () =>
       HttpResponse.json({ token: null })
     ),
+    http.get('/api/trips/1/share-link/plugins/trip-advice', () => HttpResponse.json(null)),
     http.get('/api/auth/users', () =>
       HttpResponse.json({ users: [memberUser] })
     ),
@@ -253,6 +254,32 @@ describe('TripMembersModal', () => {
 
     expect(await screen.findByText('Trip Advice · Public Link')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+  });
+
+  it('shows and copies the enabled advice link in native owner controls', async () => {
+    asShareOwner();
+    seedStore(usePluginStore, { loaded: true, plugins: [{ id: 'trip-advice', name: 'Trip Advice', type: 'trip-page' }] });
+    const token = `ta_${'a'.repeat(32)}`;
+    server.use(http.get('/api/trips/1/share-link/plugins/trip-advice', () => HttpResponse.json({ token, enabled: true, revision: 2, expiresAt: '2099-01-01T00:00:00Z' })));
+    const writeText = mockClipboard();
+    render(<TripMembersModal {...defaultProps} />);
+    const input = await screen.findByRole('textbox', { name: 'Trip Advice · Public Link' });
+    expect(input).toHaveValue(`${window.location.origin}/shared/${token}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Trip Advice · Copy' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/shared/${token}`));
+  });
+
+  it.each([
+    { enabled: false, expiresAt: '2099-01-01T00:00:00Z' },
+    { enabled: true, expiresAt: '2000-01-01T00:00:00Z' },
+  ])('does not offer an inactive advice URL: %j', async (state) => {
+    asShareOwner();
+    seedStore(usePluginStore, { loaded: true, plugins: [{ id: 'trip-advice', name: 'Trip Advice', type: 'trip-page' }] });
+    const read = vi.fn(() => HttpResponse.json({ token: `ta_${'a'.repeat(32)}`, revision: 2, ...state }));
+    server.use(http.get('/api/trips/1/share-link/plugins/trip-advice', read));
+    render(<TripMembersModal {...defaultProps} />);
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    expect(screen.queryByRole('textbox', { name: 'Trip Advice · Public Link' })).not.toBeInTheDocument();
   });
 
   it('FE-COMP-MEMBERS-018: create share link shows URL after clicking create', async () => {
