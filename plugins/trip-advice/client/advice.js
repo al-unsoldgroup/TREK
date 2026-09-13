@@ -589,7 +589,7 @@
       (projection.stays || []).forEach(stay => {
         const card = el('section', undefined, 'stay-card'); card.id = `stay-${stay.id.replace(/[^a-z0-9_-]/gi, '-')}`; card.tabIndex = -1; card.setAttribute('role', 'region'); card.setAttribute('aria-label', `${Model.cityLabel(projection, stay.cityId)} stay`);
         const header = el('header', undefined, 'stay-header'); header.append(el('h2', Model.cityLabel(projection, stay.cityId)), el('span', stay.days?.length ? `${stay.days.length} day${stay.days.length === 1 ? '' : 's'}` : 'Ideas beyond the settled route', 'muted small')); card.append(header);
-        if (!stay.days?.length) card.append(el('p', 'No settled dates here. Suggestions stay separate from the plan.', 'empty')); 
+        if (!stay.days?.length) card.append(el('p', 'No settled dates here. Suggestions stay separate from the plan.', 'empty'));
         (stay.days || []).forEach(day => {
           const dayBlock = el('section', undefined, day.date === state.selectedDate ? 'day selected' : 'day'); dayBlock.id = `day-${day.key.replace(/[^a-z0-9_-]/gi, '-')}`; dayBlock.tabIndex = -1; dayBlock.setAttribute('aria-label', `${Model.cityLabel(projection, stay.cityId)}, ${formatDate(day.date, locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
           dayBlock.append(el('h3', formatDate(day.date, locale, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }), 'day-title'));
