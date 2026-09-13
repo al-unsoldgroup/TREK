@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { adviceOwnerCandidatesSchema, adviceProjectionSchema, adviceShareConfigSchema, type AdvicePlace, type AdviceShareConfig } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
-import { getCountryFromAddress, getCountryFromCoords } from '../atlas/atlas-geo';
-import { adviceLocality } from './plugin-share-location';
+import { getCountryFromCoords } from '../atlas/atlas-geo';
+import { adviceCountry, adviceLocality } from './plugin-share-location';
 
 interface Day { id: number; date: string | null; day_number: number }
 interface Assignment { id: number; place_id: number; day_id: number; assignment_time: string | null; order_index: number }
@@ -14,10 +14,13 @@ interface Place { id: number; google_place_id: string | null }
 export class PluginShareProjectionService {
   constructor(private readonly db: DatabaseService) {}
 
-  private categoryLogistics(tripId: number): number[] {
-    return this.db.all<{ id: number }>(`SELECT p.id FROM places p JOIN categories c ON c.id = p.category_id
-      WHERE p.trip_id = ? AND LOWER(TRIM(c.name)) IN
-      ('hotel', 'accommodation', 'transport', 'airport', 'flight', 'train station', 'bus station', 'parking', 'luggage storage')`, tripId).map(place => place.id);
+  private logisticsPlaces(tripId: number): number[] {
+    return this.db.all<{ id: number; name: string; category: string | null }>(`SELECT p.id, p.name, c.name AS category
+      FROM places p LEFT JOIN categories c ON c.id = p.category_id WHERE p.trip_id = ?`, tripId).filter(place => {
+      const category = place.category?.trim().toLowerCase() ?? '';
+      if (['hotel', 'accommodation', 'transport', 'airport', 'flight', 'train station', 'bus station', 'parking', 'luggage storage'].includes(category)) return true;
+      return /\b(?:hotels?|ryokan|baggage|luggage|retrieve bags|airport|aéroport)\b/iu.test(place.name);
+    }).map(place => place.id);
   }
 
   candidates(tripId: number) {
@@ -25,7 +28,7 @@ export class PluginShareProjectionService {
   }
 
   private nativeCandidates(tripId: number) {
-    const logistics = new Set(this.categoryLogistics(tripId));
+    const logistics = new Set(this.logisticsPlaces(tripId));
     const days = this.db.all<{ id: number; date: string }>(`SELECT id, date FROM days
       WHERE trip_id = ? AND date IS NOT NULL ORDER BY day_number, id`, tripId)
       .filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day.date));
@@ -54,20 +57,36 @@ export class PluginShareProjectionService {
   }
 
   preset(tripId: number, hidden: NonNullable<AdviceShareConfig['hidden']> = { cityIds: [], dayIds: [], placeIds: [], assignmentIds: [] }): AdviceShareConfig {
+    return this.nativePreset(tripId, hidden).config;
+  }
+
+  private nativePreset(tripId: number, hidden: NonNullable<AdviceShareConfig['hidden']> = { cityIds: [], dayIds: [], placeIds: [], assignmentIds: [] }) {
     const native = this.nativeCandidates(tripId);
     const trip = this.db.get<{ title: string }>('SELECT title FROM trips WHERE id = ?', tripId);
     if (!trip) throw new UnprocessableEntityException('Trip is unavailable');
     const metadata = this.db.all<{ id: number; address: string | null; country_code: string | null; region_name: string | null; category: string | null }>(`SELECT p.id, p.address, r.country_code, r.region_name, c.name AS category FROM places p LEFT JOIN place_regions r ON r.place_id = p.id LEFT JOIN categories c ON c.id = p.category_id WHERE p.trip_id = ?`, tripId);
     const byId = new Map(metadata.map(row => [row.id, row]));
     const cities = new Map<string, AdviceShareConfig['cities'][number]>();
+    const unlocatedCities = new Set<string>();
     const placeCities = new Map<number, string>();
     const categories = new Map<number, 'see' | 'eat'>();
-    for (const place of [...native.schedule, ...native.shortlist]) {
+    const locatedPlaces = [...native.schedule, ...native.shortlist].map(place => {
       const detail = byId.get(place.placeId);
       const located = place.lat !== null && place.lng !== null;
-      const countryCode = detail?.country_code || (located ? getCountryFromCoords(place.lat!, place.lng!) : null) || getCountryFromAddress(detail?.address ?? null, false);
-      const locality = adviceLocality(detail?.address, countryCode, detail?.region_name ?? null) || 'Location not specified';
+      const country = detail?.country_code || (located ? getCountryFromCoords(place.lat!, place.lng!) : null) || adviceCountry(detail?.address);
+      return { place, detail, located, country };
+    });
+    const countryEvidence = [...metadata, ...locatedPlaces.flatMap(({ country, detail }) => {
+      if (!country) return [];
+      const locality = adviceLocality(detail?.address, country, detail?.region_name ?? null);
+      return locality ? [{ country_code: country, region_name: locality }] : [];
+    })];
+    for (const { place, detail, located, country } of locatedPlaces) {
+      const countryCode = country || adviceCountry(detail?.address, countryEvidence);
+      const knownLocality = adviceLocality(detail?.address, countryCode, detail?.region_name ?? null);
+      const locality = knownLocality || 'Location not specified';
       const cityId = `city-${createHash('sha256').update(`${countryCode ?? ''}/${locality.toLocaleLowerCase('en')}`).digest('hex').slice(0, 16)}`;
+      if (!knownLocality) unlocatedCities.add(cityId);
       let city = cities.get(cityId);
       if (!city) {
         city = { id: cityId, label: locality.slice(0, 100), countryCodes: countryCode ? [countryCode] : [], bounds: null };
@@ -87,10 +106,26 @@ export class PluginShareProjectionService {
       const counts = new Map<string, number>();
       for (const row of native.schedule.filter(row => row.dayId === day.id)) {
         const cityId = placeCities.get(row.placeId)!;
+        if (unlocatedCities.has(cityId)) continue;
         counts.set(cityId, (counts.get(cityId) ?? 0) + 1);
       }
       const chosen = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
       if (chosen) dayCities.set(day.id, chosen);
+    }
+    const cityStays = this.db.all<{ startDate: string; endDate: string; address: string | null }>(`
+      SELECT s.date AS startDate, e.date AS endDate, p.address FROM day_accommodations a
+      JOIN places p ON p.id = a.place_id AND p.trip_id = a.trip_id
+      JOIN days s ON s.id = a.start_day_id AND s.trip_id = a.trip_id
+      JOIN days e ON e.id = a.end_day_id AND e.trip_id = a.trip_id WHERE a.trip_id = ?`, tripId).flatMap(stay => {
+      const country = adviceCountry(stay.address, countryEvidence);
+      const parts = new Set(stay.address?.normalize('NFKC').split(',').map(part => part.trim().replace(/^〒?\s*\d{3}-\d{4}\s+/, '').toLocaleLowerCase('en')));
+      const matches = [...cities.values()].filter(city => country && city.countryCodes.includes(country) && parts.has(city.label.normalize('NFKC').toLocaleLowerCase('en')));
+      return matches.length === 1 ? [{ startDate: stay.startDate, endDate: stay.endDate, cityId: matches[0]!.id }] : [];
+    });
+    for (const day of days) {
+      if (dayCities.has(day.id)) continue;
+      const matches = new Set(cityStays.filter(stay => stay.startDate <= day.date && day.date < stay.endDate).map(stay => stay.cityId));
+      if (matches.size === 1) dayCities.set(day.id, [...matches][0]!);
     }
     const fallback = 'city-unlocated';
     let previousCity: string | undefined;
@@ -107,18 +142,20 @@ export class PluginShareProjectionService {
       previousDate = day.date;
     }
     const includedDays = new Set(stays.flatMap(stay => stay.dayIds));
-    return adviceShareConfigSchema.parse({ version: 1, source: 'trip', hidden, publicTitle: trip.title.slice(0, 200),
-      cities: [...cities.values()].filter(city => !hidden.cityIds.includes(city.id)), stays,
+    const config = adviceShareConfigSchema.parse({ version: 1, source: 'trip', hidden, publicTitle: trip.title.slice(0, 200),
+      cities: [...cities.values()].filter(city => !unlocatedCities.has(city.id) && !hidden.cityIds.includes(city.id)), stays,
       schedule: native.schedule.filter(row => includedDays.has(row.dayId) && !hidden.placeIds.includes(row.placeId) && !hidden.assignmentIds.includes(row.assignmentId) && !hidden.cityIds.includes(placeCities.get(row.placeId)!)).map(row => ({ assignmentId: row.assignmentId, publicTitle: row.publicTitle, category: categories.get(row.placeId)! })),
       shortlist: native.shortlist.filter(row => !hidden.placeIds.includes(row.placeId) && !hidden.cityIds.includes(placeCities.get(row.placeId)!)).map(row => {
         const city = cities.get(placeCities.get(row.placeId)!)!;
-        return { placeId: row.placeId, publicTitle: row.publicTitle, category: categories.get(row.placeId)!, cityId: city.id, locality: city.label, countryCode: city.countryCodes[0] ?? null };
+        return { placeId: row.placeId, publicTitle: row.publicTitle, category: categories.get(row.placeId)!, cityId: unlocatedCities.has(city.id) ? 'elsewhere' : city.id, locality: city.label, countryCode: city.countryCodes[0] ?? null };
       }),
     });
+    return { config, placeCities };
   }
 
   build(tripId: number, config: AdviceShareConfig, validate = false): z.infer<typeof adviceProjectionSchema> {
-    if (config.source === 'trip') config = this.preset(tripId, config.hidden);
+    const native = config.source === 'trip' ? this.nativePreset(tripId, config.hidden) : null;
+    if (native) config = native.config;
     const days = this.db.all<Day>('SELECT id, date, day_number FROM days WHERE trip_id = ? ORDER BY day_number, id', tripId);
     const places = this.db.all<Place>('SELECT id, google_place_id FROM places WHERE trip_id = ?', tripId);
     const assignments = this.db.all<Assignment>(`SELECT a.id, a.place_id, a.day_id, a.assignment_time, a.order_index
@@ -128,7 +165,7 @@ export class PluginShareProjectionService {
       WHERE trip_id = ? AND place_id IS NOT NULL AND type NOT IN ('restaurant','event','tour','activity')`, tripId).map(r => r.place_id));
     for (const stay of this.db.all<{ place_id: number }>(`SELECT place_id FROM day_accommodations
       WHERE trip_id = ? AND place_id IS NOT NULL`, tripId)) excluded.add(stay.place_id);
-    for (const id of this.categoryLogistics(tripId)) excluded.add(id);
+    for (const id of this.logisticsPlaces(tripId)) excluded.add(id);
     const excludedAssignments = new Set(this.db.all<{ assignment_id: number }>(`SELECT DISTINCT assignment_id FROM reservations
       WHERE trip_id = ? AND assignment_id IS NOT NULL AND type NOT IN ('restaurant','event','tour','activity')`, tripId).map(r => r.assignment_id));
     const selectedDays = new Set(config.stays.flatMap(s => s.dayIds));
@@ -142,7 +179,8 @@ export class PluginShareProjectionService {
 
     const summary = (p: Place, text: string, category: 'see' | 'eat', cityId: string, locality: string, countryCode: string | null): AdvicePlace => {
       const maps = new URL('https://www.google.com/maps/search/');
-      maps.searchParams.set('api', '1'); maps.searchParams.set('query', [text, locality, countryCode].filter(Boolean).join(' '));
+      const queryLocality = ['Location not specified', 'Trip days'].includes(locality) ? null : locality;
+      maps.searchParams.set('api', '1'); maps.searchParams.set('query', [text, queryLocality, countryCode].filter(Boolean).join(' '));
       if (p.google_place_id) maps.searchParams.set('query_place_id', p.google_place_id);
       return { key: `p:${p.id}`, title: text, category, cityId, locality, countryCode, googlePlaceId: p.google_place_id, mapsUrl: maps.href };
     };
@@ -153,13 +191,14 @@ export class PluginShareProjectionService {
           schedule: assignments.filter(a => a.day_id === day.id && selectedAssignments.has(a.id) && !excluded.has(a.place_id) && !excludedAssignments.has(a.id)).map(a => {
             const selection = selectedAssignments.get(a.id)!;
             const p = places.find(p => p.id === a.place_id)!;
+            const placeCity = config.cities.find(c => c.id === native?.placeCities.get(p.id)) ?? city;
             const booked = !!this.db.get(`SELECT 1 FROM reservations r WHERE r.trip_id = ?
               AND COALESCE(r.ingest_state, 'live') <> 'staged' AND r.status = 'confirmed'
               AND r.type IN ('restaurant','event','tour','activity')
               AND (r.assignment_id = ? OR (r.assignment_id IS NULL AND r.place_id = ? AND r.day_id = ?
                 AND (SELECT COUNT(*) FROM day_assignments x WHERE x.place_id = ? AND x.day_id = ?) = 1)) LIMIT 1`,
             tripId, a.id, p.id, day.id, p.id, day.id);
-            return { key: `a:${a.id}`, place: summary(p, selection.publicTitle, selection.category, city.id, city.label, city.countryCodes[0] ?? null),
+            return { key: `a:${a.id}`, place: summary(p, selection.publicTitle, selection.category, placeCity.id, placeCity.label, placeCity.countryCodes[0] ?? null),
               time: a.assignment_time && /^\d{2}:\d{2}$/.test(a.assignment_time) ? a.assignment_time : null, booked };
           }),
         })),

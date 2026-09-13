@@ -1,6 +1,16 @@
 import { getCountryFromAddress } from '../atlas/atlas-geo';
 import { cityFromAddress } from '../atlas/city-from-address';
 
+export function adviceCountry(address: string | null | undefined, regions: ReadonlyArray<{ country_code: string | null; region_name: string | null }> = []): string | null {
+  const parts = address?.normalize('NFKC').split(',').map(part => part.trim().replace(/^〒?\s*\d{3}-\d{4}\s+/, '')).filter(Boolean) ?? [];
+  const explicit = getCountryFromAddress(parts.at(-1) ?? null, false) || getCountryFromAddress(parts[0] ?? null, false);
+  if (explicit) return explicit;
+  const normalize = (part: string) => part.normalize('NFKC').replace(/〒?\s*\d{3}-\d{4}/g, '').replace(/ Prefecture$/i, '').trim().toLocaleLowerCase('en');
+  const labels = new Set(parts.map(normalize));
+  const matches = new Set(regions.filter(region => region.country_code && region.region_name && labels.has(normalize(region.region_name))).map(region => region.country_code));
+  return matches.size === 1 ? [...matches][0]! : null;
+}
+
 export function adviceLocality(address: string | null | undefined, country: string | null, region: string | null): string | null {
   const knownCountry = (part: string) => getCountryFromAddress(part, false) !== null;
   if (country !== 'JP') return cityFromAddress(address, knownCountry) || region;
