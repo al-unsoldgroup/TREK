@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -44,10 +44,16 @@ mkdirSync(outDir, { recursive: true });
 const out = join(outDir, `${manifest.id}-${manifest.version}.zip`);
 rmSync(out, { force: true });
 const stage = mkdtempSync(join(tmpdir(), `${manifest.id}-`));
+const clientAssets = new Set(RUNTIME_FILES.filter(file => file.startsWith('client/') && /\.(js|css)$/.test(file)).map(file => basename(file)));
 for (const file of RUNTIME_FILES) {
   const target = join(stage, file);
   mkdirSync(resolve(target, '..'), { recursive: true });
   copyFileSync(join(dir, file), target);
+  if (file.endsWith('.html')) {
+    const html = readFileSync(target, 'utf8').replace(/\b(src|href)=(["'])([^"']+)\2/g, (match, attr, quote, value) =>
+      clientAssets.has(value) ? `${attr}=${quote}${value}?v=${encodeURIComponent(manifest.version)}${quote}` : match);
+    writeFileSync(target, html);
+  }
 }
 execFileSync('python3', ['-c', `
 from pathlib import Path
