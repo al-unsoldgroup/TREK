@@ -26,6 +26,11 @@ const MAX_SEARCH_SESSIONS = 1000;
 const MAX_INFLIGHT_PER_SESSION = 4;
 const MAX_INFLIGHT = 64;
 const FETCH_TIMEOUT_MS = 5000;
+// Conservative whole USD cents per attempt, without free-tier/session discounts.
+// Google global list checked 2026-09-13: $2.83/$17/$7 per 1,000 requests.
+// https://developers.google.com/maps/billing-and-pricing/pricing
+// Keep these ceilings at least as high as every price charged this UTC month.
+const ATTEMPT_CENTS = { autocomplete: 1, details: 2, photo: 1 } as const;
 const PHOTO_HOSTS = new Set(['lh3.googleusercontent.com', 'lh4.googleusercontent.com', 'lh5.googleusercontent.com', 'lh6.googleusercontent.com']);
 
 const text = (max: number) => z.string().min(1).max(max);
@@ -156,10 +161,19 @@ export class GooglePlacesProvider {
     return body;
   }
 
-  private reserve(principal: PublicSharePrincipal, operation: string, shareMax: number, instanceMax: number): void {
+  private reserve(principal: PublicSharePrincipal, operation: keyof typeof ATTEMPT_CENTS, shareMax: number, instanceMax: number): void {
     const day = new Date().toISOString().slice(0, 10);
+    const month = `${day.slice(0, 7)}-01`;
+    const budgetCents = readEnv().plugins.googlePlaces.budgetCents;
     this.db.transaction(() => {
-      this.db.run("DELETE FROM plugin_share_usage WHERE usage_day < date(?, '-2 day')", day);
+      // Retain the entire month, including failed attempts and deleted shares.
+      // The instance rows survive provider restarts and are shared by all links.
+      this.db.run('DELETE FROM plugin_share_usage WHERE usage_day < ?', month);
+      const spent = this.db.get<{ cents: number }>(`SELECT COALESCE(SUM(attempts * CASE operation
+        WHEN 'autocomplete' THEN ? WHEN 'details' THEN ? WHEN 'photo' THEN ? ELSE ? END), 0) AS cents
+        FROM plugin_share_usage WHERE scope_id = '__instance__' AND usage_day >= ?`,
+      ATTEMPT_CENTS.autocomplete, ATTEMPT_CENTS.details, ATTEMPT_CENTS.photo, budgetCents + 1, month)?.cents ?? 0;
+      if (spent + ATTEMPT_CENTS[operation] > budgetCents) throw new HttpException('Monthly Google Places budget reached', 429);
       const rows = [principal.shareId, '__instance__'].map(scopeId => this.db.get<{ attempts: number }>(
         'SELECT attempts FROM plugin_share_usage WHERE scope_id = ? AND operation = ? AND usage_day = ?', scopeId, operation, day));
       if ((rows[0]?.attempts ?? 0) >= shareMax || (rows[1]?.attempts ?? 0) >= instanceMax) throw new HttpException('Advice provider quota reached', 429);
