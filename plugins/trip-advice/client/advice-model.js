@@ -38,7 +38,18 @@
   }
 
   function cityLabel(projection, cityId) {
+    if (cityId === 'elsewhere') return 'Elsewhere';
     return projection?.cities?.find(city => city.id === cityId)?.label || cityId || 'Destination';
+  }
+
+  function cardStays(projection) {
+    const stays = [...(projection?.stays || [])];
+    const included = new Set(stays.map(stay => stay.cityId));
+    const cities = [...(projection?.cities || []).map(city => city.id), 'elsewhere'];
+    for (const cityId of cities) {
+      if (!included.has(cityId)) stays.push({ id: `ideas-${cityId}`, cityId, shortlistCityId: cityId, days: [] });
+    }
+    return stays;
   }
 
   function placeIndex(projection) {
@@ -52,7 +63,7 @@
   }
 
   function initial(projection) {
-    const categories = {};
+    const categories = { elsewhere: 'see' };
     (projection?.cities || []).forEach(city => { categories[city.id] = 'see'; });
     return {
       selectedDate: firstDate(projection),
@@ -148,7 +159,7 @@
         return uniqueDates(projection).some(entry => entry.date === action.date)
           ? { ...state, selectedDate: action.date, selectedCityId: uniqueDates(projection).find(entry => entry.date === action.date).cityId, error: '' } : state;
       case 'city':
-        return (projection?.cities || []).some(city => city.id === action.cityId)
+        return action.cityId === 'elsewhere' || (projection?.cities || []).some(city => city.id === action.cityId)
           ? { ...state, selectedCityId: action.cityId, error: '' } : state;
       case 'category':
         return category(action.category) && own(state.categories, action.cityId)
@@ -158,7 +169,7 @@
       case 'vote.result':
         return withVote({ ...state, busy: { ...state.busy, [`vote:${action.placeKey}`]: false }, message: action.message || '', error: '' }, action.placeKey, action.vote);
       case 'feedback':
-        return applyFeedback(state, action.data, action.appendComments === true);
+        return applyFeedback({ ...state, categories: { ...initial(projection).categories, ...state.categories } }, action.data, action.appendComments === true);
       case 'display-name':
         return { ...state, displayName: text(action.value).slice(0, 60) };
       case 'comment.pending':
@@ -224,7 +235,7 @@
   }
 
   global.TrekAdviceModel = Object.freeze({
-    CATEGORIES, MAX_COMMENT, MAX_REASON, dateEntries, uniqueDates, firstDate, cityLabel,
+    CATEGORIES, MAX_COMMENT, MAX_REASON, dateEntries, uniqueDates, firstDate, cityLabel, cardStays,
     placeIndex, initial, voteFor, apply, applyFeedback, existingPlace, normalizePending,
     shortlistFor, safeMapsUrl, mapsUrl
   });

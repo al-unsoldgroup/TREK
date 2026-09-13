@@ -34,6 +34,7 @@ export class PluginShareLifecycleService implements OnModuleDestroy {
 
   enqueuePurge(shareId: string): void {
     this.db.run("INSERT OR IGNORE INTO plugin_share_lifecycle_outbox(method, share_id, guest_id) VALUES ('purge', ?, '')", shareId);
+    this.db.run('UPDATE plugin_share_links SET feedback_purge_queued = 1 WHERE id = ?', shareId);
   }
 
   enqueueEraseGuest(shareId: string, guestId: string): void {
@@ -44,10 +45,20 @@ export class PluginShareLifecycleService implements OnModuleDestroy {
     return !!this.db.get("SELECT 1 FROM plugin_share_lifecycle_outbox WHERE method = 'purge' AND share_id = ?", shareId);
   }
 
+  enqueueDue(shareId: string | null = null): void {
+    this.db.transaction(() => {
+      const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+      const due = this.db.all<{ id: string }>('SELECT id FROM plugin_share_links WHERE feedback_purge_queued = 0 AND COALESCE(retention_started_at, expires_at) <= ? AND (? IS NULL OR id = ?) ORDER BY COALESCE(retention_started_at, expires_at), id LIMIT 32', cutoff, shareId, shareId);
+      for (const row of due) this.enqueuePurge(row.id);
+    });
+  }
+
   async flush(): Promise<void> {
-    if (!this.invoker || this.flushing) return;
+    if (this.flushing) return;
     this.flushing = true;
     try {
+      this.enqueueDue();
+      if (!this.invoker) return;
       const rows = this.db.all<{ id: number; method: 'purge' | 'erase_guest'; share_id: string; guest_id: string }>(
         'SELECT id, method, share_id, guest_id FROM plugin_share_lifecycle_outbox ORDER BY id LIMIT 32',
       );

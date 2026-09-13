@@ -17,12 +17,14 @@ const bounds = z.strictObject({
 }).refine(b => b.south < b.north && b.west < b.east, 'Invalid or antimeridian bounds');
 export const adviceShareConfigSchema = z.strictObject({
   version: z.literal(1), publicTitle: title,
+  source: z.literal('trip').optional(),
+  hidden: z.strictObject({ cityIds: z.array(key).max(200), dayIds: z.array(id).max(500), placeIds: z.array(id).max(5000), assignmentIds: z.array(id).max(5000) }).optional(),
   cities: z.array(z.strictObject({ id: key.refine(v => v !== 'elsewhere'), label,
-    countryCodes: z.array(country).min(1).max(10), bounds })).min(1).max(40),
+    countryCodes: z.array(country).max(10), bounds: bounds.nullable() })).max(40),
   stays: z.array(z.strictObject({ id: key, cityId: key, dayIds: z.array(id).min(1).max(120) })).max(120),
   schedule: z.array(z.strictObject({ assignmentId: id, publicTitle: title, category })).max(500),
   shortlist: z.array(z.strictObject({ placeId: id, cityId: key, category,
-    publicTitle: title, locality: label, countryCode: country })).max(200),
+    publicTitle: title, locality: label, countryCode: country.nullable() })).max(200),
 }).superRefine((c, ctx) => {
   const unique = (values: Array<string | number>, field: string) => {
     if (new Set(values).size !== values.length) ctx.addIssue({ code: 'custom', message: `Duplicate ${field}` });
@@ -37,7 +39,7 @@ export const adviceShareConfigSchema = z.strictObject({
   }
 });
 export const advicePlaceSchema = z.strictObject({ key: z.string().regex(/^p:[1-9][0-9]*$/), title, category,
-  cityId: key, locality: label, countryCode: country, googlePlaceId: z.string().max(300).nullable(),
+  cityId: key, locality: label, countryCode: country.nullable(), googlePlaceId: z.string().max(300).nullable(),
   mapsUrl: z.url().max(3000).refine(v => {
     const u = new URL(v);
     return u.protocol === 'https:' && u.host === 'www.google.com' && u.pathname === '/maps/search/' && !u.username && !u.password;
@@ -46,7 +48,7 @@ export const advicePlaceSchema = z.strictObject({ key: z.string().regex(/^p:[1-9
 const place = advicePlaceSchema;
 export const adviceProjectionSchema = z.strictObject({
   version: z.literal(1), revision: z.string().regex(/^[a-f0-9]{64}$/), title,
-  cities: z.array(z.strictObject({ id: key, label, countryCodes: z.array(country).min(1).max(10) })).max(40),
+  cities: z.array(z.strictObject({ id: key, label, countryCodes: z.array(country).max(10) })).max(40),
   stays: z.array(z.strictObject({ id: key, cityId: key, shortlistCityId: key,
     days: z.array(z.strictObject({ key: z.string().regex(/^d:[1-9][0-9]*$/), date: z.iso.date(),
       schedule: z.array(z.strictObject({ key: z.string().regex(/^a:[1-9][0-9]*$/), place,
@@ -149,6 +151,7 @@ export const adviceOwnerConfigSchema = z.strictObject({
 const candidatePlace = z.strictObject({ placeId: id, publicTitle: title,
   lat: z.number().min(-90).max(90).nullable(), lng: z.number().min(-180).max(180).nullable() });
 export const adviceOwnerCandidatesSchema = z.strictObject({
+  preset: adviceShareConfigSchema.optional(),
   days: z.array(z.strictObject({ id, date: z.iso.date() })).max(500),
   schedule: z.array(candidatePlace.extend({ assignmentId: id, dayId: id })).max(5000),
   shortlist: z.array(candidatePlace).max(5000),

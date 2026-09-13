@@ -13,7 +13,7 @@
   function validPlace(value) {
     if (!exact(value, ['key', 'title', 'category', 'cityId', 'locality', 'countryCode', 'googlePlaceId', 'mapsUrl', 'photoHandle', 'photo'])) return false;
     return string(value.key, MAX.id) && string(value.title, MAX.title) && category(value.category) &&
-      string(value.cityId, MAX.id) && string(value.locality, MAX.label) && string(value.countryCode, 3) &&
+      string(value.cityId, MAX.id) && string(value.locality, MAX.label) && (value.countryCode === null || string(value.countryCode, 3)) &&
       (value.googlePlaceId === null || string(value.googlePlaceId, MAX.id)) && string(value.mapsUrl, 1000) &&
       (!has(value, 'photoHandle') || string(value.photoHandle, MAX.id)) &&
       (!has(value, 'photo') || (object(value.photo) && ((exact(value.photo, ['handle']) && string(value.photo.handle, MAX.id)) || (exact(value.photo, ['state', 'handle']) && value.photo.state === 'loadable' && string(value.photo.handle, MAX.id)) || (exact(value.photo, ['state']) && value.photo.state === 'unavailable'))));

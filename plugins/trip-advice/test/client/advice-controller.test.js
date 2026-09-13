@@ -46,6 +46,8 @@ function removalDocument() {
     querySelector() { return null; },
     querySelectorAll() { return []; },
     focus() { document.activeElement = this; },
+    scrollIntoView() {},
+    showModal() { this.open = true; },
     click() { if (!this.disabled) return this.listeners.click?.(); },
   }) };
   return document;
@@ -87,7 +89,10 @@ function guestHarness(action) {
     .map(([, id]) => [id, document.createElement('div')]));
   document.getElementById = id => ids.get(id) || null;
   const root = ids.get('app');
-  root.querySelector = selector => ids.get(selector.match(/^\[id="([^"]+)"\]$/)?.[1]) || null;
+  root.querySelector = selector => {
+    const id = selector.match(/^\[id="([^"]+)"\]$/)?.[1];
+    return ids.get(id) || [...ids.values()].flatMap(node => node.all()).find(node => node.id === id) || null;
+  };
   const projection = {
     version: 1, revision: '1', title: 'Synthetic advice',
     cities: [{ id: 'city-a', label: 'Test city', countryCodes: ['JP'] }],
@@ -104,6 +109,30 @@ function guestHarness(action) {
   return { document, ids, feedback, calls, control, closed: () => closed };
 }
 const settleGuest = () => new Promise(resolve => setImmediate(resolve));
+
+test('guest renders shortlist-only destinations and Elsewhere with working local tabs', async () => {
+  const page = guestHarness((action, feedback) => {
+    feedback.projection.cities = [{ id: 'city-a', label: 'Test city', countryCodes: ['JP'] }, { id: 'city-b', label: 'Other city', countryCodes: ['JP'] }];
+    const place = (key, cityId) => ({ key, title: key, category: 'eat', cityId, locality: 'Actual town', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=food' });
+    feedback.projection.shortlists = [{ cityId: 'city-b', see: [], eat: [place('p:2', 'city-b')] }, { cityId: 'elsewhere', see: [], eat: [place('p:3', 'elsewhere')] }];
+    return feedback;
+  });
+  await settleGuest();
+  const nodes = () => page.ids.get('stays').all();
+  assert.ok(nodes().some(node => node.tag === 'h2' && node.textContent === 'Other city'));
+  assert.ok(nodes().some(node => node.tag === 'h2' && node.textContent === 'Elsewhere'));
+  const tab = nodes().find(node => node.id === 'tab-elsewhere-eat');
+  await tab.click();
+  assert.equal(nodes().find(node => node.id === 'tab-elsewhere-eat').attributes['aria-selected'], 'true');
+  assert.ok(nodes().some(node => node.tag === 'a' && node.textContent === 'p:3'));
+  await page.control('Other city · Ideas').click();
+  assert.equal(page.document.activeElement.attributes['aria-label'], 'Other city stay');
+  await nodes().find(node => node.id === 'tab-city-b-eat').click();
+  assert.equal(nodes().find(node => node.id === 'tab-city-b-eat').attributes['aria-selected'], 'true');
+  const elsewhere = nodes().find(node => node.attributes['aria-label'] === 'Elsewhere stay');
+  await elsewhere.all().find(node => node.tag === 'button' && node.textContent === 'Suggest an idea').click();
+  assert.equal(page.ids.get('suggest-city').value, 'city-a');
+});
 
 test('rendered guest deletion sends only the selected comment and refreshes the inbox', async () => {
   const page = guestHarness((action, feedback) => {

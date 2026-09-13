@@ -12,7 +12,7 @@ import type { PublicSharePrincipal } from '../plugins/protocol/envelope';
 import type { User } from '../../types';
 import { PluginShareLifecycleService } from './plugin-share-lifecycle.service';
 
-interface Link { id: string; trip_id: number; token: string; enabled: number; epoch: number; revision: number; config_json: string; expires_at: string }
+interface Link { id: string; trip_id: number; token: string; enabled: number; epoch: number; revision: number; config_json: string; expires_at: string; retention_started_at: string | null }
 interface Session { id: string; share_id: string; epoch: number; guest_id: string; credential_hash: string; expires_at: string }
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const csrf = (s: string) => createHmac('sha256', s).update('trek-advice-csrf-v1').digest('base64url');
@@ -40,8 +40,6 @@ export class PluginSharesService {
     this.available();
     if (!row || !row.enabled || !Number.isFinite(Date.parse(row.expires_at))) this.unavailable();
     if (Date.parse(row.expires_at) <= Date.now()) {
-      this.lifecycle?.enqueuePurge(row.id);
-      void this.lifecycle?.flush();
       this.unavailable();
     }
     // An epoch-changing owner action must not expose a new guest session until
@@ -58,7 +56,10 @@ export class PluginSharesService {
   bootstrap(token: string) {
     const row = this.byToken(token);
     const config = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
-    return adviceBootstrapSchema.parse({ kind: 'plugin-share', version: 1, title: config.publicTitle,
+    const title = config.source === 'trip'
+      ? this.db.get<{ title: string }>('SELECT title FROM trips WHERE id = ?', row.trip_id)?.title.slice(0, 200)
+      : config.publicTitle;
+    return adviceBootstrapSchema.parse({ kind: 'plugin-share', version: 1, title,
       expiresAt: row.expires_at, plugin: { id: ADVICE_PLUGIN_ID, entry: 'guest.html', protocolVersion: 1 } });
   }
   requireManage(tripId: number, user: User) {
@@ -85,12 +86,13 @@ export class PluginSharesService {
       if ((row?.revision ?? 0) !== body.expectedRevision) throw new ConflictException('Advice configuration changed');
       const expires = new Date(Date.now() + body.expiresInDays * 86400000).toISOString();
       if (row) {
-        if (!body.enabled) this.lifecycle?.enqueuePurge(row.id);
-        this.db.run('UPDATE plugin_share_links SET config_json = ?, enabled = ?, expires_at = ?, revision = revision + 1, epoch = epoch + 1 WHERE id = ?', JSON.stringify(body.config), Number(body.enabled), expires, row.id);
+        this.lifecycle?.enqueueDue(row.id);
+        const retentionStart = body.enabled ? null : row.retention_started_at ?? new Date(Math.min(Date.now(), Date.parse(row.expires_at))).toISOString();
+        this.db.run('UPDATE plugin_share_links SET config_json = ?, enabled = ?, expires_at = ?, retention_started_at = ?, feedback_purge_queued = CASE WHEN ? THEN 0 ELSE feedback_purge_queued END, revision = revision + 1, epoch = epoch + 1 WHERE id = ?', JSON.stringify(body.config), Number(body.enabled), expires, retentionStart, Number(body.enabled), row.id);
         this.db.run('DELETE FROM plugin_share_sessions WHERE share_id = ?', row.id);
       } else {
-        this.db.run('INSERT INTO plugin_share_links (id, trip_id, token, created_by, config_json, enabled, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          randomUUID(), tripId, this.newToken(), user.id, JSON.stringify(body.config), Number(body.enabled), expires);
+        this.db.run('INSERT INTO plugin_share_links (id, trip_id, token, created_by, config_json, enabled, expires_at, retention_started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          randomUUID(), tripId, this.newToken(), user.id, JSON.stringify(body.config), Number(body.enabled), expires, body.enabled ? null : new Date(Date.now()).toISOString());
       }
       return this.getOwner(tripId, user)!;
     });
@@ -106,8 +108,7 @@ export class PluginSharesService {
     const owner = this.actor(userId);
     const result = this.getOwner(tripId, owner);
     if (!result) return null;
-    const { token: _token, ...config } = result;
-    return config;
+    return result;
   }
 
   ownerCandidates(tripId: number, userId: number) {
@@ -286,7 +287,8 @@ export class PluginSharesService {
 
   publicCities(scope: PublicSharePrincipal) {
     const row = this.validatePrincipal(scope);
-    const config = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
-    return config.cities;
+    const stored = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
+    const config = stored.source === 'trip' ? this.projection.preset(row.trip_id, stored.hidden) : stored;
+    return config.cities.flatMap(city => city.bounds && city.countryCodes.length ? [{ ...city, bounds: city.bounds }] : []);
   }
 }
