@@ -11,6 +11,12 @@ const store = new AdviceStore();
 const acceptInFlight = new Map();
 const acceptanceInFlight = new Map();
 
+function voteReply(data) {
+  const { placeKey, positive, negative, mine, version } = data;
+  const vote = { placeKey, positive, negative, mine, version };
+  return { ...response('vote.set', data), vote };
+}
+
 function stableUuid(seed) {
   const bytes = crypto.createHash('sha256').update(seed).digest().subarray(0, 16);
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -180,7 +186,7 @@ async function publicHandle(input, ctx) {
     const prior = await store.request(ctx, scope.shareId, scope.guestId, requestId);
     if (prior) {
       if (prior.payload_hash !== payloadHash) throw new AdviceError(409, 'request ID was already used for another payload', 'REQUEST_REUSE_CONFLICT');
-      return prior.result;
+      return action.kind === 'vote.set' ? voteReply(prior.result.data) : prior.result;
     }
   }
 
@@ -191,11 +197,10 @@ async function publicHandle(input, ctx) {
     const result = await store.applyVote(ctx, { ...scope, ...action, payloadHash });
     if (!result.applied) {
       const completed = result.request || await store.request(ctx, scope.shareId, scope.guestId, requestId);
-      if (completed && completed.payload_hash === payloadHash) return completed.result;
+      if (completed && completed.payload_hash === payloadHash) return voteReply(completed.result.data);
       throw new AdviceError(409, 'vote version is stale; refresh the advice snapshot', 'VOTE_VERSION_CONFLICT');
     }
-    const vote = result.request.result.data;
-    return { ...response(action.kind, vote), vote };
+    return voteReply(result.request.result.data);
   }
 
   if (action.kind === 'comment.create') {

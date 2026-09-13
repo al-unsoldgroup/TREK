@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { adviceFeedbackWriteSchema } from '@trek/shared';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -147,8 +148,11 @@ describe('standalone trip-advice through the real child runtime', () => {
     };
     const upvote = { version: 1, kind: 'vote.set', requestId: randomUUID(), placeKey: 'p:1', value: 1, expectedVersion: 0 };
     const firstVote = await invoke(upvote);
+    expect(adviceFeedbackWriteSchema.parse(firstVote)).toEqual(firstVote);
     expect(firstVote).toMatchObject({ kind: 'vote.set', data: { mine: 1, positive: 1, negative: 0, version: 1 } });
-    expect(await invoke(upvote)).toEqual(firstVote);
+    const retriedVote = await invoke(upvote);
+    expect(adviceFeedbackWriteSchema.parse(retriedVote)).toEqual(retriedVote);
+    expect(retriedVote).toEqual(firstVote);
     expect(await invoke({ ...upvote, requestId: randomUUID(), value: -1, expectedVersion: 1 }))
       .toMatchObject({ data: { mine: -1, positive: 0, negative: 1, version: 2 } });
     expect(await invoke({ ...upvote, requestId: randomUUID(), value: 0, expectedVersion: 2 }))
