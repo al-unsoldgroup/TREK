@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-function loadController() {
-  const listeners = new Map();
+function loadController(options = {}) {
+  const listeners = options.listeners || new Map();
   const window = {
     parent: null,
     crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111' },
@@ -16,8 +16,8 @@ function loadController() {
     setTimeout,
     URL,
   };
-  window.parent = window;
-  const context = vm.createContext({ window, URL, Blob, navigator: { language: 'en' }, console });
+  window.parent = options.parent || window;
+  const context = vm.createContext({ window, document: options.document, URL, Blob, navigator: { language: 'en' }, console });
   for (const file of ['client/advice-model.js', 'client/advice-protocol.js', 'client/advice.js']) {
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
@@ -83,4 +83,35 @@ test('vote controller accepts only canonical mine values', () => {
   const result = { placeKey: 'p:1', value: 0, version: 3, positive: 2, negative: 1, mine: 0 };
   assert.equal(controller.validVoteResult(result), true);
   assert.equal(controller.validVoteResult({ ...result, mine: 2 }), false);
+});
+
+test('host insets clear floating navigation and reset for desktop', () => {
+  const styles = new Map();
+  const root = { dataset: {}, style: { setProperty: (key, value) => styles.set(key, value) } };
+  const controller = loadController({ document: { documentElement: root } });
+  controller.applyTheme({ theme: 'dark', viewport: { insets: { top: 70, bottom: 106, left: 0, right: 0 } } });
+  assert.equal(root.dataset.platformMode, 'dark');
+  assert.equal(styles.get('--trek-inset-top'), '70px');
+  assert.equal(styles.get('--trek-inset-bottom'), '106px');
+  controller.applyTheme({ theme: 'light', viewport: { insets: { top: -1, bottom: Infinity, left: '20', right: 10000 } } });
+  for (const side of ['top', 'bottom', 'left', 'right']) assert.equal(styles.get(`--trek-inset-${side}`), '0px');
+  assert.equal(root.dataset.platformMode, 'light');
+});
+
+test('owner bridge reapplies trusted context updates without reloading the editor', () => {
+  const styles = new Map();
+  const root = { dataset: {}, style: { setProperty: (key, value) => styles.set(key, value) } };
+  const listeners = new Map();
+  const parent = { postMessage() {} };
+  const controller = loadController({ document: { documentElement: root }, parent, listeners });
+  controller.OwnerBridge();
+  const receive = listeners.get('message');
+  receive({ source: {}, data: { type: 'trek:context', theme: 'dark' } });
+  assert.equal(root.dataset.platformMode, undefined);
+  receive({ source: parent, data: { type: 'trek:context', theme: 'dark', viewport: { insets: { top: 70 } } } });
+  assert.equal(root.dataset.platformMode, 'dark');
+  assert.equal(styles.get('--trek-inset-top'), '70px');
+  receive({ source: parent, data: { type: 'trek:context', theme: 'light', viewport: { insets: { top: 0 } } } });
+  assert.equal(root.dataset.platformMode, 'light');
+  assert.equal(styles.get('--trek-inset-top'), '0px');
 });
