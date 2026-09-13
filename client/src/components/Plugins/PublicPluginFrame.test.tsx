@@ -53,7 +53,7 @@ function fromFrame(iframe: HTMLIFrameElement, data: unknown) {
 beforeEach(() => {
   publicApi.createSession.mockResolvedValue({ csrfToken: 'host-only-csrf', expiresAt: bootstrap.expiresAt })
   publicApi.action.mockResolvedValue(feedback)
-  publicApi.photo.mockResolvedValue({ state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/', authors: [], googleAttribution: '© Google' })
+  publicApi.photo.mockResolvedValue({ state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/', authors: [], googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo' })
   vi.spyOn(window, 'open').mockImplementation(() => null)
 })
 
@@ -119,6 +119,7 @@ describe('PublicPluginFrame', () => {
     expect(publicApi.action).not.toHaveBeenCalled()
     await waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ type: 'trek:public:result', id: 'public-1' })))
     expect(publicApi.photo).toHaveBeenCalledWith('ta_public', 'photo-handle', 'host-only-csrf', expect.any(AbortSignal))
+    expect(posted).toContainEqual(expect.objectContaining({ type: 'trek:public:result', id: 'public-1', result: expect.objectContaining({ googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo' }) }))
     expect(window.open).toHaveBeenCalledWith('https://evil.example/photo', '_blank', 'noopener,noreferrer')
   })
 

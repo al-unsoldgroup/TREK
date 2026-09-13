@@ -288,11 +288,23 @@
     const handle = place.photoHandle || place.photo?.handle;
     if (typeof handle !== 'string' || !bridge) { fallback.textContent = 'Photo unavailable'; return wrap; }
     bridge.photoAsset(handle).then(asset => {
-      if (!Protocol.validPhoto(asset.result) || asset.result.state !== 'available' || !asset.url || !wrap.isConnected) return;
+      if (!wrap.isConnected) return;
+      if (!asset || !Protocol.validPhoto(asset.result) || asset.result.state !== 'available' || !asset.url) {
+        fallback.textContent = 'Photo unavailable';
+        return;
+      }
       image.src = asset.url;
       image.hidden = false;
       fallback.hidden = true;
-      attribution.replaceChildren(el('span', asset.result.googleAttribution));
+      const branding = el('span', asset.result.googleAttribution, 'google-attribution');
+      branding.setAttribute('translate', 'no');
+      const source = el('a', 'View full photo');
+      source.href = asset.result.googleMapsUri;
+      source.target = '_blank';
+      source.rel = 'noopener noreferrer';
+      source.setAttribute('aria-label', `View the full ${place.title} photo and attribution on Google Maps, opens in a new tab`);
+      if (bridge.openAttribution) source.addEventListener('click', event => { event.preventDefault(); bridge.openAttribution(asset.result.googleMapsUri); });
+      attribution.replaceChildren(branding, source);
       asset.result.authors.forEach(author => {
         const link = el('a', author.displayName);
         link.href = author.uri;
@@ -839,6 +851,6 @@
     bridge.context().then(value => { context = value; applyTheme(context); if (!tripId()) ownerError('TREK did not provide an owner trip context.'); else load(); }).catch(caught => ownerError(errorText(caught)));
   }
 
-  global.TrekAdviceController = Object.freeze({ ownerSelectionModel, ownerConfigFromControls, storedOwnerConfig, applyTheme, OwnerBridge, removalControl, renderGuest, validVoteResult: Protocol.validVoteResult });
+  global.TrekAdviceController = Object.freeze({ ownerSelectionModel, ownerConfigFromControls, storedOwnerConfig, applyTheme, OwnerBridge, removalControl, renderGuest, photoPreview, validVoteResult: Protocol.validVoteResult });
   global.addEventListener('DOMContentLoaded', () => { applyTheme(null); guest(); owner(); });
 })(window);

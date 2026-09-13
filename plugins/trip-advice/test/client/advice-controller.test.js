@@ -36,7 +36,7 @@ const candidateRows = {
 
 function removalDocument() {
   const document = { createElement: tag => ({
-    tag, children: [], listeners: {}, attributes: {}, disabled: false, value: '', dataset: {},
+    tag, children: [], listeners: {}, attributes: {}, disabled: false, value: '', dataset: {}, isConnected: true,
     append(...nodes) { this.children.push(...nodes); },
     replaceChildren(...nodes) { this.children = nodes; },
     addEventListener(name, handler) { this.listeners[name] = handler; },
@@ -50,6 +50,36 @@ function removalDocument() {
   }) };
   return document;
 }
+
+test('photo preview links the individual source and labels Google Maps without translation', async () => {
+  const document = removalDocument();
+  document.createTextNode = text => Object.assign(document.createElement('#text'), { textContent: text });
+  const opened = [];
+  const result = { state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/2Q==', googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo', authors: [{ displayName: 'Photographer', uri: 'https://example.test/author' }] };
+  const bridge = { photoAsset: async () => ({ result, url: 'blob:synthetic' }), openAttribution: uri => opened.push(uri) };
+  const preview = loadController({ document }).photoPreview({ title: 'Garden', photoHandle: 'photo-1' }, bridge);
+  await settleGuest();
+  const source = preview.all().find(node => node.tag === 'a' && node.href === result.googleMapsUri);
+  assert.ok(source, 'Individual source photo link is missing');
+  source.listeners.click({ preventDefault() {} });
+  assert.deepEqual(opened, [result.googleMapsUri]);
+  assert.equal(source.target, '_blank');
+  assert.equal(source.rel, 'noopener noreferrer');
+  const branding = preview.all().find(node => node.textContent === 'Google Maps');
+  assert.equal(branding.attributes.translate, 'no');
+  assert.equal(branding.className, 'google-attribution');
+  assert.ok(preview.all().some(node => node.textContent === 'Photographer'));
+});
+
+test('photo preview does not display bytes without a safe source link', async () => {
+  const document = removalDocument();
+  const bridge = { photoAsset: async () => ({ result: { state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/2Q==', googleAttribution: 'Google Maps', authors: [] }, url: 'blob:synthetic' }) };
+  const preview = loadController({ document }).photoPreview({ title: 'Garden', photoHandle: 'photo-1' }, bridge);
+  await settleGuest();
+  assert.equal(preview.all().find(node => node.tag === 'img').hidden, true);
+  assert.ok(preview.all().some(node => node.textContent === 'Photo unavailable'));
+  assert.ok(!preview.all().some(node => node.tag === 'a'));
+});
 
 function guestHarness(action) {
   const document = removalDocument();

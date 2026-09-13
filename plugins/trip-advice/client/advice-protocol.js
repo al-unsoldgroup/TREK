@@ -80,12 +80,12 @@
   }
 
   function validPhoto(value) {
-    if (!exact(value, ['state', 'mimeType', 'bytesBase64', 'authors', 'googleAttribution'])) return false;
-    if (value.state === 'unavailable') return value.mimeType === null && value.bytesBase64 === null && Array.isArray(value.authors) && value.authors.length === 0 && value.googleAttribution === null;
+    if (!exact(value, ['state', 'mimeType', 'bytesBase64', 'authors', 'googleAttribution', 'googleMapsUri'])) return false;
+    if (value.state === 'unavailable') return value.mimeType === null && value.bytesBase64 === null && Array.isArray(value.authors) && value.authors.length === 0 && value.googleAttribution === null && !has(value, 'googleMapsUri');
     return value.state === 'available' && typeof value.mimeType === 'string' && /^image\/(jpeg|png|webp)$/i.test(value.mimeType) &&
       typeof value.bytesBase64 === 'string' && value.bytesBase64.length <= 750000 && Array.isArray(value.authors) &&
       value.authors.every(author => object(author) && exact(author, ['displayName', 'uri']) && string(author.displayName, 200) && httpsUri(author.uri)) &&
-      typeof value.googleAttribution === 'string' && value.googleAttribution.length <= 200;
+      value.googleAttribution === 'Google Maps' && httpsUri(value.googleMapsUri);
   }
 
   function httpsUri(value) {

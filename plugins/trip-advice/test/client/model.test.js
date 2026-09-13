@@ -12,6 +12,13 @@ for (const file of ['client/advice-model.js', 'client/advice-protocol.js']) {
 
 const M = context.TrekAdviceModel;
 const P = context.TrekAdviceProtocol;
+test('available photos require a safe individual Google Maps source link', () => {
+  const photo = { state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/2Q==', authors: [], googleAttribution: 'Google Maps' };
+  assert.equal(P.validPhoto({ ...photo, googleMapsUri: 'https://www.google.com/maps/photo' }), true);
+  assert.equal(P.validPhoto(photo), false);
+  assert.equal(P.validPhoto({ ...photo, googleMapsUri: 'javascript:alert(1)' }), false);
+  assert.equal(P.validPhoto({ ...photo, googleMapsUri: 'https://user:password@www.google.com/maps/photo' }), false);
+});
 const place = (key, cityId, category = 'see') => ({
   key, title: key + ' place', category, cityId, locality: cityId, countryCode: 'XX', googlePlaceId: null,
   mapsUrl: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(key + ' place ' + cityId + ' XX')

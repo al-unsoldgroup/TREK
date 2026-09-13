@@ -60,7 +60,7 @@ export type AdviceResolvedSelection = { googlePlaceId: string; cityId: string; t
 
 export type AdvicePhotoAuthor = { displayName: string; uri: string; };
 
-export type AdvicePhotoResult = { state: "available" | "unavailable"; mimeType: string | null; bytesBase64: string | null; authors: { displayName: string; uri: string; }[]; googleAttribution: string | null; };
+export type AdvicePhotoResult = { state: "available" | "unavailable"; mimeType: string | null; bytesBase64: string | null; authors: { displayName: string; uri: string; }[]; googleAttribution: string | null; googleMapsUri?: string | undefined; };
 
 export type AdviceNativeImport = { tripId: number; externalKey: string; expectedPayloadHash: string | null; place: { name: string; googlePlaceId: string; categoryId: number; address?: string | undefined; }; existingPlaceId?: number | undefined; };
 
