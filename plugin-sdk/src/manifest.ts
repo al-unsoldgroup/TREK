@@ -69,7 +69,7 @@ export interface ManifestCapabilities {
   settingsUi?: boolean;
   widget?: { title?: string; defaultSize?: string; slot?: 'sidebar' | 'hero' | 'place-detail' | 'day-detail' | 'reservation-detail' };
   tripPage?: { replaces?: string[]; position?: number };
-  publicShare?: { version: 1; entry: 'guest.html' };
+  publicShare?: { version: 1; entry: 'guest.html' } | { version: 2; surface: 'native' };
   notificationChannel?: { title?: string; events?: string[] };
   routeProfiles?: Array<{ id: string; label: string; icon?: string }>;
   /** MCP tools published via the mcpToolProvider hook. Requires `mcp:tools`. */
@@ -266,10 +266,10 @@ export function validateManifest(raw: unknown): ValidationResult {
   } | undefined;
   if (capabilities?.publicShare !== undefined) {
     const p = capabilities.publicShare;
-    if (!p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some(k => k !== 'version' && k !== 'entry') ||
-        (p as Record<string, unknown>).version !== 1 || (p as Record<string, unknown>).entry !== 'guest.html') {
-      errors.push('publicShare must be {version:1,entry:"guest.html"}');
-    }
+    const capability = p && typeof p === 'object' && !Array.isArray(p) ? p as Record<string, unknown> : null;
+    const legacy = capability?.version === 1 && capability.entry === 'guest.html' && Object.keys(capability).every(k => k === 'version' || k === 'entry');
+    const native = capability?.version === 2 && capability.surface === 'native' && Object.keys(capability).every(k => k === 'version' || k === 'surface');
+    if (!legacy && !native) errors.push('Invalid publicShare capability');
     if (m.id !== 'trip-advice' || !permissions.includes('share:guest')) errors.push('publicShare requires trip-advice and share:guest');
   }
   if (capabilities?.settingsUi !== undefined && typeof capabilities.settingsUi !== 'boolean') {

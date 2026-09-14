@@ -36,14 +36,34 @@ const MIGRATIONS = [
       share_id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK (revision >= 0), updated_at INTEGER NOT NULL
     );
   `],
-  ['002_accept_import_result', 'ALTER TABLE advice_suggestions ADD COLUMN accepted_import_json TEXT;']
+  ['002_accept_import_result', 'ALTER TABLE advice_suggestions ADD COLUMN accepted_import_json TEXT;'],
+  ['003_suggestion_day', `ALTER TABLE advice_suggestions ADD COLUMN day_key TEXT;
+    ALTER TABLE advice_suggestions ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0;`],
+  ['004_comment_anchor', 'ALTER TABLE advice_comments ADD COLUMN anchor_json TEXT;']
 ];
 
 function rows(result, index) { return result?.results?.[index]?.rows || []; }
 function json(value) { return JSON.stringify(value); }
 
 class AdviceStore {
-  constructor(now = () => Date.now()) { this.now = now; }
+  constructor(now = () => Date.now()) { this.now = now; this.presentations = new Map(); }
+
+  rememberPresentation(shareId, guestId, id, presentation) {
+    for (const [key, value] of this.presentations) if (value.expiresAt <= this.now()) this.presentations.delete(key);
+    if (this.presentations.size >= 200) this.presentations.delete(this.presentations.keys().next().value);
+    this.presentations.set(`${shareId}/${id}`, { shareId, guestId, presentation, expiresAt: this.now() + 10 * 60 * 1000 });
+  }
+
+  presentation(shareId, guestId, id) {
+    const value = this.presentations.get(`${shareId}/${id}`);
+    if (!value || value.guestId !== guestId) return {};
+    if (value.expiresAt <= this.now()) { this.presentations.delete(`${shareId}/${id}`); return {}; }
+    return value.presentation;
+  }
+
+  forgetPresentations(shareId, guestId) {
+    for (const [key, value] of this.presentations) if (value.shareId === shareId && (guestId === undefined || value.guestId === guestId)) this.presentations.delete(key);
+  }
 
   async migrate(ctx) {
     for (const [id, sql] of MIGRATIONS) await ctx.db.migrate(id, sql);
@@ -120,9 +140,9 @@ class AdviceStore {
     const stamp = this.now();
     const result = await ctx.db.tx([
       {
-        sql: `INSERT OR IGNORE INTO advice_comments (id, share_id, guest_id, display_name, body, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-        args: [input.commentId, input.shareId, input.guestId, input.displayName || null, input.body, stamp]
+        sql: `INSERT OR IGNORE INTO advice_comments (id, share_id, guest_id, display_name, body, created_at, anchor_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        args: [input.commentId, input.shareId, input.guestId, input.displayName || null, input.body, stamp, input.anchor ? json(input.anchor) : null]
       },
       {
         sql: 'UPDATE advice_revisions SET revision = revision + 1, updated_at = ? WHERE share_id = ? AND changes() = 1',
@@ -142,7 +162,7 @@ class AdviceStore {
   async comments(ctx, shareId, guestId, owner = false, limit = 50, after = null) {
     const scope = owner ? 'share_id = ?' : 'share_id = ? AND guest_id = ?';
     const cursor = after ? ' AND (created_at > ? OR (created_at = ? AND id > ?))' : '';
-    const sql = `SELECT id, guest_id, display_name, body, created_at, deleted_at FROM advice_comments
+    const sql = `SELECT id, guest_id, display_name, body, created_at, deleted_at, anchor_json FROM advice_comments
       WHERE ${scope} AND deleted_at IS NULL${cursor} ORDER BY created_at, id LIMIT ?`;
     const args = owner ? [shareId] : [shareId, guestId];
     if (after) args.push(after.createdAt, after.createdAt, after.id);
@@ -157,11 +177,11 @@ class AdviceStore {
       {
         sql: `INSERT OR IGNORE INTO advice_suggestions
           (id, share_id, guest_id, google_place_id, city_id, category, title, locality, country_code, reason, display_name,
-           provider_detail_expires_at, state, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+           provider_detail_expires_at, state, created_at, updated_at, day_key)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
         args: [input.id, input.shareId, input.guestId, input.googlePlaceId, input.cityId, input.category,
           input.title, input.locality, input.countryCode, input.reason || null, input.displayName || null,
-          input.providerDetailExpiresAt, stamp, stamp]
+          input.providerDetailExpiresAt, stamp, stamp, input.dayKey || null]
       },
       {
         sql: 'UPDATE advice_revisions SET revision = revision + 1, updated_at = ? WHERE share_id = ? AND changes() = 1',
@@ -188,14 +208,14 @@ class AdviceStore {
 
   async suggestions(ctx, shareId, guestId, owner = false) {
     const sql = owner
-      ? 'SELECT id, guest_id, google_place_id, city_id, category, title, locality, country_code, reason, display_name, provider_detail_expires_at, state, accepted_place_id, reviewed_by, created_at, updated_at FROM advice_suggestions WHERE share_id = ? ORDER BY created_at, id'
-      : "SELECT id, google_place_id, city_id, category, title, locality, country_code, reason, display_name, provider_detail_expires_at, state, accepted_place_id, created_at FROM advice_suggestions WHERE share_id = ? AND guest_id = ? AND state IN ('pending', 'accepted') ORDER BY created_at, id";
+      ? 'SELECT id, guest_id, google_place_id, city_id, category, title, locality, country_code, reason, display_name, provider_detail_expires_at, state, accepted_place_id, reviewed_by, created_at, updated_at, day_key FROM advice_suggestions WHERE share_id = ? ORDER BY created_at, id'
+      : "SELECT id, google_place_id, city_id, category, title, locality, country_code, reason, display_name, provider_detail_expires_at, state, accepted_place_id, created_at, day_key FROM advice_suggestions WHERE share_id = ? AND guest_id = ? AND state IN ('pending', 'accepted') ORDER BY created_at, id";
     return owner ? ctx.db.query(sql, shareId) : ctx.db.query(sql, shareId, guestId);
   }
 
   async suggestion(ctx, shareId, id) {
     const found = await ctx.db.query(
-      'SELECT id, share_id, guest_id, google_place_id, city_id, category, title, locality, country_code, reason, display_name, provider_detail_expires_at, state, reviewed_payload_json, reviewed_payload_hash, accepted_place_id, accepted_import_json, reviewed_by FROM advice_suggestions WHERE share_id = ? AND id = ?',
+      'SELECT id, share_id, guest_id, google_place_id, city_id, category, title, locality, country_code, reason, display_name, provider_detail_expires_at, state, reviewed_payload_json, reviewed_payload_hash, accepted_place_id, accepted_import_json, reviewed_by, day_key, edit_version FROM advice_suggestions WHERE share_id = ? AND id = ?',
       shareId, id
     );
     return found[0] || null;
@@ -228,6 +248,38 @@ class AdviceStore {
     }, "json_object('version', 1, 'kind', 'suggestion.withdraw', 'data', json_object('suggestionId', ?, 'state', 'withdrawn'))", [input.suggestionId], false);
     assert(result.request, 'suggestion is not withdrawable', 409, 'SUGGESTION_STATE_CONFLICT');
     return result.request.result;
+  }
+
+  async updateSuggestion(ctx, input) {
+    await this.ensureRevision(ctx, input.shareId);
+    const stamp = this.now();
+    const mutation = {
+      sql: `UPDATE advice_suggestions SET google_place_id = ?, city_id = ?, category = ?, title = ?, locality = ?, country_code = ?,
+        reason = ?, display_name = ?, day_key = ?, provider_detail_expires_at = ?, updated_at = ?, edit_version = edit_version + 1
+        WHERE share_id = ? AND id = ? AND guest_id = ? AND state = 'pending' AND edit_version = ?`,
+      args: [input.googlePlaceId, input.cityId, input.category, input.title, input.locality, input.countryCode,
+        input.reason || null, input.displayName || null, input.dayKey || null, input.providerDetailExpiresAt,
+        stamp, input.shareId, input.suggestionId, input.guestId, input.expectedVersion]
+    };
+    try {
+      await ctx.db.tx([mutation, {
+        sql: 'UPDATE advice_revisions SET revision = revision + 1, updated_at = ? WHERE share_id = ? AND changes() = 1',
+        args: [stamp, input.shareId]
+      }, {
+        sql: `INSERT INTO advice_requests (share_id, guest_id, request_id, operation, payload_hash, result_json, created_at)
+          SELECT ?, ?, ?, 'suggestion.update', ?, ?, ? WHERE changes() = 1`,
+        args: [input.shareId, input.guestId, input.requestId, input.payloadHash,
+          json({ version: 1, kind: 'suggestion.update', data: { suggestionId: input.suggestionId, state: 'pending' } }), stamp]
+      }]);
+    } catch (error) {
+      const prior = await this.request(ctx, input.shareId, input.guestId, input.requestId);
+      if (!prior || prior.payload_hash !== input.payloadHash) throw error;
+      return prior.result;
+    }
+    const completed = await this.request(ctx, input.shareId, input.guestId, input.requestId);
+    assert(completed, 'suggestion is not editable', 409, 'SUGGESTION_STATE_CONFLICT');
+    assert(completed.payload_hash === input.payloadHash, 'request ID was already used for another payload', 409, 'REQUEST_REUSE_CONFLICT');
+    return completed.result;
   }
 
   async deleteCommentForGuest(ctx, input) {
@@ -299,6 +351,7 @@ class AdviceStore {
   }
 
   async eraseGuest(ctx, shareId, guestId) {
+    this.forgetPresentations(shareId, guestId);
     await ctx.db.tx([
       { sql: 'DELETE FROM advice_votes WHERE share_id = ? AND guest_id = ?', args: [shareId, guestId] },
       { sql: 'DELETE FROM advice_comments WHERE share_id = ? AND guest_id = ?', args: [shareId, guestId] },
@@ -309,6 +362,7 @@ class AdviceStore {
   }
 
   async eraseGuestAction(ctx, input) {
+    this.forgetPresentations(input.shareId, input.guestId);
     await this.ensureRevision(ctx, input.shareId);
     const result = await ctx.db.tx([
       { sql: 'DELETE FROM advice_votes WHERE share_id = ? AND guest_id = ?', args: [input.shareId, input.guestId] },
@@ -328,6 +382,7 @@ class AdviceStore {
   }
 
   async purge(ctx, shareId) {
+    this.forgetPresentations(shareId);
     await ctx.db.tx([
       { sql: 'DELETE FROM advice_votes WHERE share_id = ?', args: [shareId] },
       { sql: 'DELETE FROM advice_comments WHERE share_id = ?', args: [shareId] },

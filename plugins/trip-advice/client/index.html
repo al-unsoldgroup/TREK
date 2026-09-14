@@ -22,7 +22,7 @@
           <details><summary>Link options</summary><label class="field">Link lifetime in days<input id="expires" type="number" min="1" max="90" value="30"></label><button id="pause-button" type="button" class="button" hidden>Pause link</button></details>
           <div class="form-actions"><p id="publish-status" class="status" role="status" aria-live="polite"></p><button id="reload-button" type="button" class="button">Reload trip</button><button id="publish-button" type="button" class="button primary">Create advice link</button></div>
         </section>
-        <section class="owner-card" aria-labelledby="config-heading"><div class="section-heading"><h2 id="config-heading">Included from your trip</h2><p class="muted small">Private notes, booking details and accommodation stay private.</p></div><div id="config-editor"></div><div class="form-actions"><p id="preview-status" class="status" role="status" aria-live="polite"></p><button id="preview-button" type="button" class="button">Refresh preview</button></div></section>
+        <section class="owner-card" aria-labelledby="config-heading"><div class="section-heading"><h2 id="config-heading">Included from your trip</h2><p class="muted small">Day notes are included only if enabled below. Booking details and accommodation stay private.</p></div><div id="config-editor"></div><div class="form-actions"><p id="preview-status" class="status" role="status" aria-live="polite"></p><button id="preview-button" type="button" class="button">Refresh preview</button></div></section>
         <section class="owner-card" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">What friends will see</h2><p class="muted small">This preview is private until you enable the link.</p></div><div id="preview" class="preview-box"><p class="muted">Preparing your trip preview…</p></div></section>
         <section class="owner-card" aria-labelledby="inbox-heading"><div class="section-heading"><h2 id="inbox-heading">Advice inbox</h2><p class="muted small">Pending suggestions and comments are visible to share managers here.</p></div><div id="inbox"><p class="muted">Loading feedback…</p></div></section>
         <footer class="footer">Owner actions use TREK's authenticated plugin bridge. Guests receive no owner identity, trip member data, token, or Google credential.</footer>
@@ -34,6 +34,7 @@
   <script src="advice-owner.js"></script>
   <script src="advice-guest-template.js"></script>
   <script src="advice-preview.js"></script>
+  <script src="advice-map.js"></script>
   <script src="advice.js"></script>
 </body>
 </html>

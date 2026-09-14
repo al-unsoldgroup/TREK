@@ -780,9 +780,18 @@ export function createPluginContext(
   };
   return {
     publicShare: {
+      filterSuggestionKeys: (input) => t.rpc('publicShare.filterSuggestionKeys', input) as Promise<string[]>,
       snapshot: () => t.rpc('publicShare.snapshot', {}) as Promise<AdviceProjection>,
       resolveSelection: (input) => t.rpc('publicShare.resolveSelection', input) as Promise<AdviceResolvedSelection>,
       owner: {
+        getNative: (input) => t.rpc('publicShare.owner.getNative', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['getNative']>>,
+        configureNative: (input) => t.rpc('publicShare.owner.configureNative', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['configureNative']>>,
+        previewNative: (input) => t.rpc('publicShare.owner.previewNative', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['previewNative']>>,
+        nativeAction: (input) => t.rpc('publicShare.owner.nativeAction', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['nativeAction']>>,
+        resolveNativeSelection: (input) => t.rpc('publicShare.owner.resolveNativeSelection', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['resolveNativeSelection']>>,
+        nativePhoto: (input) => t.rpc('publicShare.owner.nativePhoto', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['nativePhoto']>>,
+        cityAutocomplete: (input) => t.rpc('publicShare.owner.cityAutocomplete', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['cityAutocomplete']>>,
+        cityResolve: (input) => t.rpc('publicShare.owner.cityResolve', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['cityResolve']>>,
         getConfig: (input) => t.rpc('publicShare.owner.getConfig', input) as Promise<AdviceOwnerConfig | null>,
         getCandidates: (input) => t.rpc('publicShare.owner.getCandidates', input) as Promise<AdviceOwnerCandidates>,
         preview: (input) => t.rpc('publicShare.owner.preview', input) as Promise<AdviceProjection>,

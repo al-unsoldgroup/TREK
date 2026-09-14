@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import Sqlite from 'better-sqlite3';
 import { GooglePlacesProvider, type GooglePlacesFetch } from '../../../src/nest/plugin-shares/google-places.provider';
+import { PluginSharePublicController } from '../../../src/nest/plugin-shares/plugin-shares.controller';
 import type { PublicSharePrincipal } from '../../../src/nest/plugins/protocol/envelope';
+import type { OwnerAdvicePrincipal } from '../../../src/nest/plugin-shares/plugin-shares.service';
 
 const principal: PublicSharePrincipal = { kind: 'publicShare', pluginId: 'trip-advice', shareId: 'share-a', epoch: 2, sessionId: 'session-a', guestId: 'guest-a' };
 const actionId = '11111111-1111-4111-8111-111111111111';
@@ -39,6 +41,97 @@ function provider(fetcher: GooglePlacesFetch, db = dbFixture(), shares = sharesF
 afterEach(() => {
   vi.useRealTimers();
   for (const key of Object.keys(baseEnv)) delete process.env[key];
+});
+
+describe('published place metadata', () => {
+  it('keeps authenticated owner search handles separate from guest and other owner authority', async () => {
+    Object.assign(process.env, baseEnv);
+    const owner: OwnerAdvicePrincipal = { kind: 'adviceOwner', pluginId: 'trip-advice', tripId: 1, userId: 7, shareId: 'private-share', sessionId: 'owner:1:7', guestId: 'owner:1:7', epoch: 1, preview: false };
+    const shares = { ...sharesFixture(), validateProviderPrincipal: vi.fn(), providerCities: () => [], providerSnapshot: () => ({ cities: [], stays: [], shortlists: [] }) };
+    const fetcher: GooglePlacesFetch = async url => String(url).includes('autocomplete')
+      ? response({ suggestions: [{ placePrediction: { placeId: 'google-owner', structuredFormat: { mainText: { text: 'Garden' } } } }] })
+      : response({ id: 'google-owner', displayName: { text: 'Garden' }, primaryTypeDisplayName: { text: 'Botanical garden' }, location: { latitude: 35.7, longitude: 139.7 }, addressComponents: [{ shortText: 'JP', types: ['country'] }] });
+    const service = new GooglePlacesProvider(dbFixture() as never, shares as never, fetcher);
+    const found = await service.autocomplete(owner, searchAction);
+    const action = { version: 1 as const, kind: 'places.resolve' as const, searchId: actionId, predictionId: found.data.suggestions[0]!.predictionId };
+    await expect(service.resolveAction({ ...owner, userId: 8, sessionId: 'owner:1:8', guestId: 'owner:1:8' }, action)).rejects.toMatchObject({ status: 422 });
+    await expect(service.resolveAction(principal, action)).rejects.toMatchObject({ status: 422 });
+    const selected = await service.resolveActionV2(owner, action);
+    expect(selected.data.place).toMatchObject({ lat: 35.7, lng: 139.7, primaryType: 'Botanical garden' });
+    expect(shares.validateProviderPrincipal).toHaveBeenCalled();
+  });
+  it('accepts non-prefix Google autocomplete match ranges', async () => {
+    Object.assign(process.env, baseEnv);
+    const service = provider(async () => response({ suggestions: [{ placePrediction: { placeId: 'google-one', structuredFormat: {
+      mainText: { text: 'Tokyo Art Museum', matches: [{ startOffset: 6, endOffset: 9 }] }
+    } } }] }));
+    const result = await service.autocomplete(principal, searchAction);
+    expect(result.data.suggestions[0]?.mainText).toBe('Tokyo Art Museum');
+  });
+
+  it('keeps the versioned provider action envelope at the public HTTP seam', async () => {
+    const shares = { requireOrigin: vi.fn(), credential: vi.fn(), authorize: vi.fn(() => principal), validatePrincipal: vi.fn() };
+    const runtime = { isActive: () => true, grantsOf: () => new Set(['share:guest']), invokePublicShare: vi.fn() };
+    const expected = { version: 1, kind: 'places.autocomplete', data: { suggestions: [] } };
+    const places = { autocomplete: vi.fn(async () => expected) };
+    const controller = new PluginSharePublicController(shares as never, runtime as never, places as never);
+    const result = await controller.action('private-token', searchAction, { get: () => undefined } as never, { set: vi.fn() } as never);
+    expect(result).toEqual(expected);
+    expect(runtime.invokePublicShare).not.toHaveBeenCalled();
+  });
+
+  it.each(['places.metadata', 'map.tile'] as const)('routes passive %s through the media budget only', async kind => {
+    const shares = { requireOrigin: vi.fn(), credential: vi.fn(), authorize: vi.fn(), authorizeMedia: vi.fn(() => principal), validatePrincipal: vi.fn() };
+    const runtime = { isActive: () => true, grantsOf: () => new Set(['share:guest']), invokePublicShare: vi.fn() };
+    const places = { metadata: vi.fn(async () => ({ version: 1, kind: 'places.metadata', data: { placeKey: 'p:1' } })) };
+    const maps = { tile: vi.fn(async () => ({ mimeType: 'image/png', bytesBase64: 'iVBORw0KGgo=' })) };
+    const controller = new PluginSharePublicController(shares as never, runtime as never, places as never, maps as never);
+    const action = kind === 'places.metadata'
+      ? { version: 1 as const, kind, placeKey: 'p:1' }
+      : { version: 1 as const, kind, dayKey: 'd:1', z: 2, x: 1, y: 1 };
+    const result = await controller.action('private-token', action, { get: () => undefined } as never, { set: vi.fn() } as never);
+    expect(result).toMatchObject({ version: 1, kind });
+    expect(shares.authorizeMedia).toHaveBeenCalledOnce();
+    expect(shares.authorize).not.toHaveBeenCalled();
+    expect(runtime.invokePublicShare).not.toHaveBeenCalled();
+  });
+
+  it('returns transient Google type and photo handles only for a published native place', async () => {
+    Object.assign(process.env, baseEnv);
+    const shares = sharesFixture();
+    const snapshot = { cities: [{ id: 'madrid', countryCodes: ['ES'] }], stays: [], shortlists: [{ see: [{ key: 'p:1', googlePlaceId: 'google-one' }], eat: [] }] };
+    const scopedShares = { ...shares, snapshot: vi.fn(() => snapshot) };
+    const fetcher = vi.fn<GooglePlacesFetch>(async () => response({ id: 'google-one', displayName: { text: 'Museum' }, primaryTypeDisplayName: { text: 'Art museum', languageCode: 'en' }, photos: [{ name: 'places/google-one/photos/one', googleMapsUri: 'https://maps.google.com/photo/one' }] }));
+    const service = new GooglePlacesProvider(dbFixture() as never, scopedShares as never, fetcher);
+    await expect(service.metadata(principal, { version: 1, kind: 'places.metadata', placeKey: 'p:99' })).rejects.toMatchObject({ status: 422 });
+    expect(fetcher).not.toHaveBeenCalled();
+    const result = await service.metadata(principal, { version: 1, kind: 'places.metadata', placeKey: 'p:1' });
+    expect(result.data).toMatchObject({ placeKey: 'p:1', placeType: 'Art museum', photoHandle: expect.any(String) });
+    expect(JSON.stringify(result)).not.toContain('places/google-one/photos');
+    await expect(service.photo({ ...principal, guestId: 'other-guest' }, result.data.photoHandle!)).rejects.toMatchObject({ status: 422 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the disabled provider gate for metadata', async () => {
+    Object.assign(process.env, baseEnv, { TREK_PUBLIC_ADVICE_GOOGLE_ENABLED: 'false' });
+    const shares = { ...sharesFixture(), snapshot: () => ({ stays: [], shortlists: [{ see: [{ key: 'p:1', googlePlaceId: 'google-one' }], eat: [] }] }) };
+    const fetcher = vi.fn<GooglePlacesFetch>();
+    const service = new GooglePlacesProvider(dbFixture() as never, shares as never, fetcher);
+    await expect(service.metadata(principal, { version: 1, kind: 'places.metadata', placeKey: 'p:1' })).rejects.toMatchObject({ status: 503 });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('allows a visible city without bounds but refuses a hidden city before billing', async () => {
+    Object.assign(process.env, baseEnv);
+    const shares = { ...sharesFixture(), publicCity: () => null, snapshot: () => ({ cities: [{ id: 'visible-city' }], stays: [], shortlists: [] }) };
+    const fetcher = vi.fn<GooglePlacesFetch>(async () => response({ suggestions: [] }));
+    const service = new GooglePlacesProvider(dbFixture() as never, shares as never, fetcher);
+    await service.autocomplete(principal, { ...searchAction, cityId: 'visible-city' });
+    const request = JSON.parse(String(fetcher.mock.calls[0]![1]!.body));
+    expect(request.locationBias).toBeUndefined();
+    await expect(service.autocomplete(principal, { ...searchAction, cityId: 'hidden-city' })).rejects.toMatchObject({ status: 422 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('Google Places monthly spending reservations', () => {

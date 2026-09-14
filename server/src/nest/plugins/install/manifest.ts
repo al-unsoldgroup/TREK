@@ -100,7 +100,7 @@ export interface McpToolCapability {
 }
 
 export interface PluginCapabilities {
-  publicShare?: { version: 1; entry: 'guest.html' };
+  publicShare?: { version: 1; entry: 'guest.html' } | { version: 2; surface: 'native' };
   widget?: WidgetCapability;
   tripPage?: TripPageCapability;
   notificationChannel?: NotificationChannelCapability;
@@ -345,11 +345,11 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
   const out: PluginCapabilities = {};
   if (c.publicShare !== undefined) {
     const p = c.publicShare;
-    if (!p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some(k => k !== 'version' && k !== 'entry') ||
-        (p as Record<string, unknown>).version !== 1 || (p as Record<string, unknown>).entry !== 'guest.html') {
-      throw new ManifestError('publicShare must be {version:1,entry:"guest.html"}');
-    }
-    out.publicShare = { version: 1, entry: 'guest.html' };
+    if (!p || typeof p !== 'object' || Array.isArray(p)) throw new ManifestError('Invalid publicShare capability');
+    const capability = p as Record<string, unknown>;
+    if (capability.version === 1 && capability.entry === 'guest.html' && Object.keys(capability).every(k => k === 'version' || k === 'entry')) out.publicShare = { version: 1, entry: 'guest.html' };
+    else if (capability.version === 2 && capability.surface === 'native' && Object.keys(capability).every(k => k === 'version' || k === 'surface')) out.publicShare = { version: 2, surface: 'native' };
+    else throw new ManifestError('Invalid publicShare capability');
   }
   if (c.widget && typeof c.widget === 'object') {
     const w = c.widget as Record<string, unknown>;

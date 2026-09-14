@@ -5,6 +5,7 @@ const { test } = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
 const plugin = require('../../server');
 const { store, publicHandle, acceptSuggestion, stableUuid } = require('../../server/lib/advice-service');
+const { validateAction } = require('../../server/lib/protocol');
 
 const SHARE_A = '11111111-1111-4111-8111-111111111111';
 const SHARE_B = '22222222-2222-4222-8222-222222222222';
@@ -66,7 +67,7 @@ function context(overrides = {}) {
   const db = overrides.db || new SqliteDb();
   return {
     db,
-    publicShare: { snapshot: async () => projection(), ...(overrides.publicShare || {}) },
+    publicShare: { snapshot: async () => projection(), filterSuggestionKeys: async ({ keys }) => keys, ...(overrides.publicShare || {}) },
     places: overrides.places,
     trips: overrides.trips,
     config: {}
@@ -82,6 +83,90 @@ async function ready(overrides) {
 async function readAction(ctx, shareId = SHARE_A, guestId = GUEST_A) {
   return publicHandle({ version: 1, scope: { shareId, guestId, epoch: 1 }, action: { version: 1, kind: 'read' } }, ctx);
 }
+
+test('quick recommendations retain a published day and only their guest can edit while pending', async () => {
+  const ctx = await ready({ publicShare: { resolveSelection: async () => ({ googlePlaceId: 'google-new', cityId: 'tokyo', title: 'New museum', locality: 'Tokyo', countryCode: 'JP' }) } });
+  const invoke = (action, guestId = GUEST_A) => publicHandle({ version: 1, scope: { shareId: SHARE_A, guestId, epoch: 1 }, action }, ctx);
+  const created = await invoke({ version: 1, kind: 'suggestion.create', requestId: id(), selectionId: 'selected', category: 'see', dayKey: 'day-1' });
+  const suggestionId = created.data.suggestionId;
+  assert.equal((await readAction(ctx)).myPendingSuggestions[0].dayKey, 'day-1');
+  const update = { version: 1, kind: 'suggestion.update', requestId: id(), suggestionId, category: 'eat', reason: 'Lunch nearby', displayName: 'Guest' };
+  await assert.rejects(invoke({ ...update, requestId: id() }, GUEST_B), /not editable/);
+  const result = await invoke(update);
+  assert.deepEqual(await invoke(update), result, 'same request is idempotent');
+  const pending = (await readAction(ctx)).myPendingSuggestions[0];
+  assert.equal(pending.category, 'eat');
+  assert.equal(pending.reason, 'Lunch nearby');
+  assert.equal(pending.dayKey, 'day-1');
+  await invoke({ ...update, version: 2, requestId: id(), dayKey: null });
+  assert.equal((await readAction(ctx)).myPendingSuggestions[0].dayKey, null);
+  const concurrent = { ...update, requestId: id(), reason: 'Edited together' };
+  const [one, two] = await Promise.all([invoke(concurrent), invoke(concurrent)]);
+  assert.deepEqual(one, two);
+  assert.equal(ctx.db.sqlite.prepare('SELECT edit_version FROM advice_suggestions WHERE id = ?').get(suggestionId).edit_version, 3, 'concurrent retries apply one edit');
+  ctx.db.exec("UPDATE advice_suggestions SET state = 'accepted' WHERE id = ?", suggestionId);
+  await assert.rejects(invoke({ ...update, requestId: id() }), /not editable/);
+});
+
+test('native passive provider actions pass strict plugin validation', () => {
+  assert.equal(validateAction({ version: 2, kind: 'places.metadata', placeKey: 'p:3' }).kind, 'places.metadata');
+  assert.equal(validateAction({ version: 2, kind: 'map.tile', dayKey: 'd:1', z: 8, x: 128, y: 128 }).kind, 'map.tile');
+  assert.throws(() => validateAction({ version: 1, kind: 'places.metadata', placeKey: 'p:3' }), /version 2/);
+  assert.throws(() => validateAction({ version: 2, kind: 'map.tile', dayKey: 'd:1', z: 8, x: 256, y: 128 }), /x is invalid/);
+});
+
+test('quick recommendation rejects unpublished day context without writing feedback', async () => {
+  const ctx = await ready({ publicShare: { resolveSelection: async () => ({ googlePlaceId: 'google-new', cityId: 'tokyo', title: 'New museum', locality: 'Tokyo', countryCode: 'JP' }) } });
+  await assert.rejects(publicHandle({ version: 1, scope: { shareId: SHARE_A, guestId: GUEST_A, epoch: 1 }, action: {
+    version: 1, kind: 'suggestion.create', requestId: id(), selectionId: 'selected', category: 'see', dayKey: 'private-day'
+  } }, ctx), /day is not in the published/);
+  assert.equal((await readAction(ctx)).myPendingSuggestions.length, 0);
+});
+
+test('map votes accept published scheduled places and reject excluded places', async () => {
+  const ctx = await ready();
+  const invoke = placeKey => publicHandle({ version: 1, scope: { shareId: SHARE_A, guestId: GUEST_A, epoch: 1 }, action: {
+    version: 1, kind: 'vote.set', requestId: id(), placeKey, value: 1, expectedVersion: 0
+  } }, ctx);
+  await invoke('p:3');
+  assert.equal((await readAction(ctx)).votes.find(vote => vote.placeKey === 'p:3').positive, 1);
+  await assert.rejects(invoke('p:999'), /not in the published/);
+});
+
+test('v2 comments persist only authorized anchors and omit an anchor once hidden', async () => {
+  let current = { ...projection(), version: 2 };
+  const ctx = await ready({ publicShare: { snapshot: async () => current } });
+  const invoke = action => publicHandle({ version: 1, scope: { shareId: SHARE_A, guestId: GUEST_A, epoch: 1 }, action }, ctx);
+  await assert.rejects(invoke({ version: 2, kind: 'comment.create', requestId: id(), text: 'Private target', anchor: { kind: 'place', key: 'p:999' } }), /not in the published/);
+  await assert.rejects(invoke({ version: 1, kind: 'comment.create', requestId: id(), text: 'V1 cannot add anchors', anchor: { kind: 'day', key: 'day-1' } }), /not allowed/);
+  const saved = await invoke({ version: 2, kind: 'comment.create', requestId: id(), text: 'Start here', anchor: { kind: 'day', key: 'day-1' } });
+  assert.equal(saved.version, 2);
+  assert.deepEqual((await invoke({ version: 2, kind: 'read' })).myComments[0].anchor, { kind: 'day', key: 'day-1' });
+  current = { ...current, stays: [] };
+  assert.equal((await invoke({ version: 2, kind: 'read' })).myComments[0].anchor, undefined);
+});
+
+test('native owner routes reject missing authenticated host authority before reading feedback', async () => {
+  const ctx = await ready({ publicShare: { owner: { getNative: async () => { throw new Error('RESOURCE_FORBIDDEN: Authenticated owner invocation required'); } } } });
+  const before = ctx.db.calls.length;
+  const result = await require('../../server/lib/advice-service').routeHandler({ path: '/owner/native', query: { tripId: '1' } }, ctx, 'native-read');
+  assert.equal(result.status, 403);
+  assert.equal(ctx.db.calls.length, before);
+});
+
+test('v2 suggestion presentation stays transient, scoped to its guest, and is erased immediately', async () => {
+  const ctx = await ready({ publicShare: { snapshot: async () => ({ ...projection(), version: 2 }),
+    resolveSelection: async () => ({ googlePlaceId: 'google-native', cityId: 'tokyo', title: 'Garden', locality: 'Tokyo', countryCode: 'JP', lat: 35.7, lng: 139.7, primaryType: 'Botanical garden', photoHandle: 'opaque-photo' }) } });
+  const invoke = (action, guestId = GUEST_A) => publicHandle({ version: 1, scope: { shareId: SHARE_A, guestId, epoch: 1 }, action }, ctx);
+  const result = await invoke({ version: 2, kind: 'suggestion.create', requestId: id(), selectionId: 'selection-native', category: 'see' });
+  const suggestion = (await invoke({ version: 2, kind: 'read' })).myPendingSuggestions[0];
+  assert.equal(suggestion.primaryType, 'Botanical garden');
+  assert.equal(suggestion.photoHandle, 'opaque-photo');
+  assert.equal(suggestion.lat, 35.7);
+  assert.deepEqual(store.presentation(SHARE_A, GUEST_B, result.data.suggestionId), {});
+  await invoke({ version: 2, kind: 'session.erase', requestId: id() });
+  assert.deepEqual(store.presentation(SHARE_A, GUEST_A, result.data.suggestionId), {});
+});
 
 test('first owner read returns an empty setup without creating a share', async () => {
   const ctx = await ready({ publicShare: { owner: { getConfig: async ({ tripId }) => {
@@ -144,7 +229,7 @@ test('owner setup includes only the host-authorized candidate response', async (
     getConfig: async () => null,
     getCandidates: async ({ tripId }) => { assert.equal(tripId, 3); return candidates; },
   } } });
-  const result = await plugin.routes[0].handler({ path: '/owner', query: { tripId: '3' } }, ctx);
+  const result = await plugin.routes.find(route => route.path === '/owner' && route.method === 'GET').handler({ path: '/owner', query: { tripId: '3' } }, ctx);
   assert.equal(result.status, 200);
   assert.deepEqual(JSON.parse(result.body).candidates, candidates);
 });
@@ -183,7 +268,7 @@ test('migrations are plugin-owned and every vote is a desired state with atomic 
   assert.equal(undoRetry.data.mine, 0);
   assert.equal(undo.data.positive, 0);
   await assert.rejects(
-    publicHandle({ version: 1, scope, action: { ...action, requestId: id(), placeKey: 'p:3' } }, ctx),
+    publicHandle({ version: 1, scope, action: { ...action, requestId: id(), placeKey: 'p:999' } }, ctx),
     error => error.code === 'PLACE_NOT_ELIGIBLE'
   );
   assert.match(ctx.db.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = 'advice_votes'").get().sql, /PRIMARY KEY \(share_id, guest_id, place_key\)/);

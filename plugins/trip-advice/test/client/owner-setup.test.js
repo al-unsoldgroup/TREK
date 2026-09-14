@@ -15,7 +15,11 @@ const candidates = {
 test('trip preset includes everything without manual city entry',()=>{
   const state=Setup.preparePreset(null,candidates);
   assert.deepEqual(state.hidden,{cityIds:[],dayIds:[],placeIds:[],assignmentIds:[]});
-  assert.deepEqual(Setup.readPreset(state),{...candidates.preset,hidden:state.hidden});
+  assert.deepEqual(Setup.readPreset(state),{...candidates.preset,hidden:state.hidden,displayNotes:false});
+});
+test('day notes require explicit opt-in and remain enabled when refreshing native candidates',()=>{
+  assert.equal(Setup.readPreset(Setup.preparePreset(null,candidates)).displayNotes,false);
+  assert.equal(Setup.readPreset(Setup.preparePreset({...candidates.preset,displayNotes:true},candidates)).displayNotes,true);
 });
 test('hiding and showing a city preserves independent day and place exceptions',()=>{
   const stored={source:'trip',hidden:{cityIds:[],dayIds:[1],placeIds:[21],assignmentIds:[]}};
@@ -56,14 +60,16 @@ test('editor has collapsed hide-only controls and preserves the focused checkbox
   const panel=new Element('div',doc);let changes=0;
   const editor=Setup.createEditor(panel,null,candidates,()=>changes++);
   const controls=()=>panel.all().filter(n=>n.tag==='input');
-  assert.equal(controls().length,5);
+  assert.equal(controls().length,6);
   assert.ok(controls().every(n=>n.type==='checkbox'&&!n.checked));
   assert.ok(!panel.all().some(n=>n.tag==='select'||n.tag==='button'));
   assert.ok(!panel.all().find(n=>n.tag==='details').open);
-  const check=controls()[0];check.checked=true;check.fire('change');
-  assert.equal(controls()[0],check);
+  const notes=controls()[0];notes.checked=true;notes.fire('change');
+  assert.equal(editor.read().displayNotes,true);
+  const check=controls()[1];check.checked=true;check.fire('change');
+  assert.equal(controls()[1],check);
   assert.deepEqual(editor.read().hidden.cityIds,[city.id]);
   check.checked=false;check.fire('change');
   assert.deepEqual(editor.read().hidden.cityIds,[]);
-  assert.equal(changes,2);
+  assert.equal(changes,3);
 });

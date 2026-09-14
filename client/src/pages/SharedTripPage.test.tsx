@@ -78,6 +78,28 @@ describe('SharedTripPage', () => {
     expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
   });
 
+  it('USG-227 renders a version 2 advice link natively without an iframe', async () => {
+    server.use(
+      http.get('/api/shared/native-advice-token', () => HttpResponse.json({
+        kind: 'plugin-share', version: 2,
+        plugin: { id: 'trip-advice', surface: 'native', protocolVersion: 2 },
+        title: 'Japan together', expiresAt: '2026-09-20T00:00:00.000Z',
+      })),
+      http.post('/api/shared/native-advice-token/plugins/trip-advice/session', () => HttpResponse.json({
+        csrfToken: 'csrf-token', expiresAt: '2026-09-20T00:00:00.000Z',
+      })),
+      http.post('/api/shared/native-advice-token/plugins/trip-advice/actions', () => HttpResponse.json({
+        projection: { version: 2, revision: 'a'.repeat(64), title: 'Japan together', cities: [], stays: [], shortlists: [] },
+        feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
+      })),
+    );
+
+    renderSharedTrip('native-advice-token');
+
+    expect(await screen.findByRole('heading', { name: 'Japan together' })).toBeInTheDocument();
+    expect(document.querySelector('iframe')).toBeNull();
+  });
+
   describe('FE-PAGE-SHARED-001: Renders without authentication', () => {
     it('renders loading spinner without any auth state', async () => {
       // Use a token that will delay or we just check initial state before response

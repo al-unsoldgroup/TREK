@@ -21,6 +21,8 @@ class ProjectionRpc {
   snapshot(_params: Record<string, unknown>, ctx: PluginRpcContext) { return { actor: ctx.actingUserId, scope: ctx.publicShare }; }
   @PluginMethod('publicShare.resolveSelection', { permission: 'share:guest' })
   resolveSelection() { throw new Error('selection unavailable'); }
+  @PluginMethod('publicShare.filterSuggestionKeys', { permission: 'share:guest' })
+  filterSuggestionKeys(params: { keys?: string[] }) { return params.keys ?? []; }
 }
 const call = (method: string) => ({ k: 'req' as const, id: 'r', method, params: { _inv: 'host-invocation' } });
 describe('public invocation confinement', () => {
@@ -28,7 +30,7 @@ describe('public invocation confinement', () => {
     const deps = { ...makeDeps(), validatePublicShare: vi.fn() };
     const host = new PluginRpcHost('trip-advice', new Set(KNOWN_PERMISSIONS), deps, createTestPluginRegistry([new ProjectionRpc()]));
     expect(await host.dispatch(call('publicShare.snapshot'), undefined, scope)).toMatchObject({ ok: true, result: { actor: undefined, scope } });
-    for (const method of [...KNOWN_METHODS, ...UNCONDITIONAL_METHODS].filter(m => !['publicShare.snapshot', 'publicShare.resolveSelection'].includes(m))) {
+    for (const method of [...KNOWN_METHODS, ...UNCONDITIONAL_METHODS].filter(m => !['publicShare.snapshot', 'publicShare.resolveSelection', 'publicShare.filterSuggestionKeys'].includes(m))) {
       expect(await host.dispatch(call(method), undefined, scope)).toMatchObject({ ok: false, error: { code: 'RESOURCE_FORBIDDEN' } });
     }
     expect(deps.data.exec).not.toHaveBeenCalled();

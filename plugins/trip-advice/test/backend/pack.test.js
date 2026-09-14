@@ -15,7 +15,7 @@ function fixture() {
   mkdirSync(join(dir, 'client'), { recursive: true });
   writeFileSync(join(dir, 'trek-plugin.json'), JSON.stringify({ id: 'trip-advice', version: '1.0.0' }));
   for (const file of ['server/index.js', 'server/lib/advice-service.js', 'server/lib/advice-store.js', 'server/lib/protocol.js']) writeFileSync(join(dir, file), 'runtime');
-  for (const file of ['client/guest.html', 'client/index.html', 'client/advice.js', 'client/advice-model.js', 'client/advice-protocol.js', 'client/advice-owner.js', 'client/advice-guest-template.js', 'client/advice-preview.js', 'client/advice.css']) writeFileSync(join(dir, file), 'runtime');
+  for (const file of ['client/guest.html', 'client/index.html', 'client/advice.js', 'client/advice-map.js', 'client/advice-model.js', 'client/advice-protocol.js', 'client/advice-owner.js', 'client/advice-guest-template.js', 'client/advice-preview.js', 'client/advice.css']) writeFileSync(join(dir, file), 'runtime');
   return dir;
 }
 

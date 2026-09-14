@@ -21,6 +21,8 @@ import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'reac
 import { getCategoryIcon } from '../components/shared/categoryIcons';
 import PublicLanguagePicker from '../components/shared/PublicLanguagePicker';
 import PublicPluginFrame from '../components/Plugins/PublicPluginFrame';
+import TripAdviceSurface from '../features/tripAdvice/TripAdviceSurface';
+import { useTripAdviceSession } from '../features/tripAdvice/useTripAdviceSession';
 import { OFM_POSITRON, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_MAX_ZOOM, attributionForTile } from '../constants/mapDefaults';
 import VectorBasemap from '../components/Map/VectorBasemap';
 import { useTranslation } from '../i18n';
@@ -35,6 +37,10 @@ import { resolveBasemap } from '../utils/tileUrl';
 import { useSharedTrip } from './sharedTrip/useSharedTrip';
 
 const TRANSPORT_ICONS = { flight: Plane, train: Train, bus: Bus, car: Car, cruise: Ship };
+
+function NativeTripAdviceGuest({ token }: { token: string }) {
+  return <TripAdviceSurface controller={useTripAdviceSession(token)} />;
+}
 
 // Injected into Leaflet's marker HTML, where CSS variables cannot reach - the same
 // reason MapView.tsx is exempt from theme:lint outright.
@@ -105,6 +111,7 @@ export default function SharedTripPage() {
   } = useSharedTrip();
 
   if (bootstrap && token) {
+    if (bootstrap.version === 2) return <NativeTripAdviceGuest token={token} />;
     return (
       <div className="h-screen w-full overflow-hidden bg-surface">
         <PublicPluginFrame token={token} bootstrap={bootstrap} />

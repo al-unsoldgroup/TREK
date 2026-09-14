@@ -5,8 +5,8 @@ const dir = resolve(process.argv[2] || '.');
 const manifest = JSON.parse(readFileSync(join(dir, 'trek-plugin.json'), 'utf8'));
 const checks = [
   ['manifest id', manifest.id === 'trip-advice'],
-  ['public-share entry', manifest.capabilities?.publicShare?.entry === 'guest.html'],
-  ['guest asset', existsSync(join(dir, 'client/guest.html'))],
+  ['native public-share surface', manifest.capabilities?.publicShare?.version === 2 && manifest.capabilities.publicShare.surface === 'native'],
+  ['v1 compatibility asset', existsSync(join(dir, 'client/guest.html'))],
   ['server entry', existsSync(join(dir, 'server/index.js'))],
   ['no provider egress', !manifest.egress?.length]
 ];

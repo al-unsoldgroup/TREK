@@ -40,17 +40,11 @@ function projectionPlaces(projection) {
   return out.filter(place => placeKey(place));
 }
 
-function shortlistPlaceKeys(projection) {
-  const keys = new Set();
-  for (const shortlist of projection.shortlists || []) {
-    for (const place of [...(shortlist.see || []), ...(shortlist.eat || [])]) {
-      if (placeKey(place)) keys.add(placeKey(place));
-    }
-  }
-  return keys;
+function votablePlaceKeys(projection) {
+  return new Set(projectionPlaces(projection).map(placeKey));
 }
 
-function publicPlace(row, categoryName) {
+function publicPlace(row, categoryName, presentation = {}) {
   const title = row.title || 'Suggested place';
   const locality = row.locality || '';
   const countryCode = row.country_code || '';
@@ -65,18 +59,28 @@ function publicPlace(row, categoryName) {
     mapsUrl: mapsUrl(title, locality, countryCode),
     state: row.state,
     reason: row.reason || null,
-    displayName: row.display_name || null
+    displayName: row.display_name || null,
+    dayKey: row.day_key || null,
+    ...presentation
   };
 }
 
-function clientComments(rows) {
+function clientComments(rows, projection) {
   return rows.map(row => ({
     id: row.id,
     displayName: row.display_name || null,
     text: row.body,
     createdAt: new Date(Number(row.created_at)).toISOString(),
-    deleted: row.deleted_at !== null
+    deleted: row.deleted_at !== null,
+    ...(projection?.version === 2 && row.anchor_json && anchorVisible(projection, JSON.parse(row.anchor_json)) ? { anchor: JSON.parse(row.anchor_json) } : {})
   }));
+}
+
+function anchorVisible(projection, anchor) {
+  if (!anchor || typeof anchor !== 'object') return false;
+  if (anchor.kind === 'city') return projection.cities.some(city => city.id === anchor.key);
+  if (anchor.kind === 'day') return projection.stays.some(stay => stay.days.some(day => day.key === anchor.key));
+  return anchor.kind === 'place' && projectionPlaces(projection).some(place => place.key === anchor.key);
 }
 
 function cleanExpiredSuggestion(row, now) {
@@ -137,7 +141,12 @@ function normalizeResolved(raw) {
   return {
     googlePlaceId: googlePlaceId.trim(), cityId: cityId.trim(), title: title.trim(),
     locality: typeof locality === 'string' ? locality.trim().slice(0, 100) : '', countryCode,
-    duplicate: raw.duplicate || null
+    duplicate: raw.duplicate || null,
+    presentation: {
+      ...(Number.isFinite(source.lat) && Number.isFinite(source.lng) && Math.abs(source.lat) <= 90 && Math.abs(source.lng) <= 180 ? { lat: source.lat, lng: source.lng } : {}),
+      ...(typeof source.primaryType === 'string' && source.primaryType.trim() && source.primaryType.length <= 200 ? { primaryType: source.primaryType } : {}),
+      ...(typeof source.photoHandle === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(source.photoHandle) ? { photoHandle: source.photoHandle } : {})
+    }
   };
 }
 
@@ -152,19 +161,32 @@ async function snapshot(ctx) {
   return ctx.publicShare.snapshot();
 }
 
+function validateDay(projection, dayKey) {
+  if (!dayKey) return;
+  const stay = (projection.stays || []).find(item => (item.days || []).some(day => day.key === dayKey));
+  assert(stay, 'day is not in the published schedule', 422, 'DAY_NOT_ELIGIBLE');
+}
+
 async function read(ctx, scope, commentsCursor) {
   const projection = await snapshot(ctx);
   await store.clearExpiredProviderDetails(ctx, scope.shareId);
-  const eligible = shortlistPlaceKeys(projection);
+  const eligible = votablePlaceKeys(projection);
   const votes = readAggregate(await store.votes(ctx, scope.shareId), eligible, scope.guestId);
-  const suggestions = (await store.suggestions(ctx, scope.shareId, scope.guestId)).map(row => publicPlace(cleanExpiredSuggestion(row, Date.now())));
+  let suggestions = (await store.suggestions(ctx, scope.shareId, scope.guestId)).map(row => publicPlace(cleanExpiredSuggestion(row, Date.now()), undefined,
+    projection.version === 2 ? store.presentation(scope.shareId, scope.guestId, row.id) : {}));
+  if (projection.version === 2 && suggestions.length) {
+    assert(typeof ctx.publicShare.filterSuggestionKeys === 'function', 'suggestion visibility is unavailable', 503);
+    const visible = new Set(await ctx.publicShare.filterSuggestionKeys({ keys: suggestions.map(item => item.key) }));
+    const days = new Set(projection.stays.flatMap(stay => stay.days.map(day => day.key)));
+    suggestions = suggestions.filter(item => visible.has(item.key) && (item.cityId === 'elsewhere' || projection.cities.some(city => city.id === item.cityId)) && (!item.dayKey || days.has(item.dayKey)));
+  }
   const comments = await store.comments(ctx, scope.shareId, scope.guestId, false, 50, decodeCommentsCursor(commentsCursor));
   const data = {
     projection,
     feedbackRevision: await store.revision(ctx, scope.shareId),
     votes,
     myPendingSuggestions: suggestions.filter(item => item.state === 'pending'),
-    myComments: clientComments(comments),
+    myComments: clientComments(comments, projection),
     nextCommentsCursor: comments.length === 50 ? encodeCommentsCursor(comments[comments.length - 1]) : null
   };
   /* This is the S3 read shape consumed by the packaged guest page. S1's
@@ -174,6 +196,11 @@ async function read(ctx, scope, commentsCursor) {
 }
 
 async function publicHandle(input, ctx) {
+  const result = await handleAction(input, ctx);
+  return input?.action?.version === 2 && result?.version === 1 ? { ...result, version: 2 } : result;
+}
+
+async function handleAction(input, ctx) {
   const scope = validateScope(input && input.scope);
   const action = validateAction(input && input.action);
   if (input && Object.keys(input).some(key => !['version', 'scope', 'action'].includes(key))) throw new AdviceError(422, 'invocation contains an unsupported field');
@@ -192,7 +219,7 @@ async function publicHandle(input, ctx) {
 
   if (action.kind === 'vote.set') {
     const projection = await snapshot(ctx);
-    const eligible = shortlistPlaceKeys(projection);
+    const eligible = votablePlaceKeys(projection);
     assert(eligible.has(action.placeKey), 'place is not in the published advice snapshot', 422, 'PLACE_NOT_ELIGIBLE');
     const result = await store.applyVote(ctx, { ...scope, ...action, payloadHash });
     if (!result.applied) {
@@ -204,10 +231,11 @@ async function publicHandle(input, ctx) {
   }
 
   if (action.kind === 'comment.create') {
+    if (action.anchor) assert(anchorVisible(await snapshot(ctx), action.anchor), 'comment anchor is not in the published projection', 422, 'ANCHOR_NOT_ELIGIBLE');
     const commentId = stableUuid(`${scope.shareId}/${scope.guestId}/${action.requestId}`);
     const result = await store.createComment(ctx, {
       ...scope, requestId, payloadHash, commentId, body: action.text,
-      displayName: action.displayName
+      displayName: action.displayName, anchor: action.anchor
     });
     if (!result.applied && !result.request) throw new AdviceError(409, 'comment could not be recorded', 'COMMENT_CONFLICT');
     return result.request.result;
@@ -223,6 +251,7 @@ async function publicHandle(input, ctx) {
   if (action.kind === 'suggestion.create') {
     const selection = await hostSelection(ctx, action.selectionId);
     const projection = await snapshot(ctx);
+    validateDay(projection, action.dayKey);
     const known = projectionPlaces(projection).find(place => place.googlePlaceId === selection.googlePlaceId);
     if (known || selection.duplicate) return { ...response(action.kind, {
       duplicate: selection.duplicate || { placeKey: known.key, cityId: known.cityId, category: known.category }
@@ -236,7 +265,7 @@ async function publicHandle(input, ctx) {
       ...scope, requestId, payloadHash, id, googlePlaceId: selection.googlePlaceId,
       cityId: selection.cityId, category: category(action.category), title: selection.title,
       locality: selection.locality, countryCode: selection.countryCode,
-      reason: action.reason, displayName: action.displayName,
+      reason: action.reason, displayName: action.displayName, dayKey: action.dayKey,
       providerDetailExpiresAt: Date.now() + 24 * 60 * 60 * 1000
     });
     if (!result.applied && !result.request) {
@@ -244,7 +273,33 @@ async function publicHandle(input, ctx) {
       if (duplicate) return { ...response(action.kind, { duplicate: { placeKey: `s:${duplicate.id}`, cityId: duplicate.city_id, category: duplicate.category } }), duplicate: { placeKey: `s:${duplicate.id}`, cityId: duplicate.city_id, category: duplicate.category } };
       throw new AdviceError(409, 'suggestion is already pending', 'SUGGESTION_DUPLICATE');
     }
+    if (action.version === 2) store.rememberPresentation(scope.shareId, scope.guestId, id, selection.presentation);
     return result.request.result;
+  }
+
+  if (action.kind === 'suggestion.update') {
+    const prior = await store.suggestion(ctx, scope.shareId, action.suggestionId);
+    assert(prior && prior.guest_id === scope.guestId && prior.state === 'pending', 'suggestion is not editable', 409, 'SUGGESTION_STATE_CONFLICT');
+    const selection = action.selectionId ? await hostSelection(ctx, action.selectionId) : {
+      googlePlaceId: prior.google_place_id, cityId: prior.city_id, title: prior.title,
+      locality: prior.locality, countryCode: prior.country_code
+    };
+    const projection = await snapshot(ctx);
+    const dayKey = action.dayKey === undefined ? prior.day_key : action.dayKey;
+    validateDay(projection, dayKey);
+    if (action.selectionId) {
+      const known = projectionPlaces(projection).find(place => place.googlePlaceId === selection.googlePlaceId);
+      const active = await store.findActiveSuggestion(ctx, scope.shareId, selection.googlePlaceId);
+      assert(!known && !selection.duplicate && (!active || active.id === prior.id), 'place already has a recommendation', 409, 'SUGGESTION_DUPLICATE');
+    }
+    const result = await store.updateSuggestion(ctx, {
+      ...scope, ...selection, requestId, payloadHash, operation: action.kind, suggestionId: action.suggestionId,
+      expectedVersion: prior.edit_version,
+      category: action.category, reason: action.reason, displayName: action.displayName, dayKey,
+      providerDetailExpiresAt: action.selectionId ? Date.now() + 24 * 60 * 60 * 1000 : prior.provider_detail_expires_at
+    });
+    if (action.version === 2 && action.selectionId) store.rememberPresentation(scope.shareId, scope.guestId, prior.id, selection.presentation);
+    return result;
   }
 
   if (action.kind === 'suggestion.withdraw') {
@@ -403,8 +458,31 @@ function responseFor(error) {
 
 async function routeHandler(req, ctx, operation) {
   try {
-    const tripId = Number(req.params?.tripId || req.query?.tripId || String(req.path).match(/\/owner\/(\d+)/)?.[1]);
+    const tripId = Number(req.params?.tripId || req.query?.tripId || req.body?.tripId || String(req.path).match(/\/owner\/(\d+)/)?.[1]);
     assert(Number.isInteger(tripId) && tripId > 0, 'tripId must be a positive integer');
+    if (operation.startsWith('native-') || operation.startsWith('city-')) {
+      const owner = ctx.publicShare?.owner;
+      assert(owner && typeof owner.getNative === 'function', 'native advice host is unavailable', 503);
+      let result;
+      if (operation === 'native-read') result = await nativeOwner(ctx, tripId);
+      else if (operation === 'native-configure') result = await nativeOwner(ctx, tripId, await owner.configureNative({ ...req.body, tripId }));
+      else if (operation === 'native-preview') result = await owner.previewNative({ tripId, config: req.body?.config });
+      else if (operation === 'native-photo') result = await owner.nativePhoto({ tripId, handle: req.body?.handle });
+      else if (operation === 'city-autocomplete') result = await owner.cityAutocomplete({ tripId, input: req.query?.input, sessionToken: req.query?.sessionToken });
+      else if (operation === 'city-resolve') {
+        const resolved = await owner.cityResolve({ ...req.body, tripId });
+        result = { city: resolved.city, owner: await nativeOwner(ctx, tripId, resolved.owner) };
+      } else if (operation === 'native-action') {
+        const action = validateAction(req.body);
+        assert(action.version === 2, 'native actions require version 2');
+        const authorized = await owner.nativeAction({ tripId, action });
+        result = authorized.providerResult || await publicHandle({ version: 1, action, scope: authorized.scope }, {
+          ...ctx, publicShare: { ...ctx.publicShare, snapshot: async () => authorized.projection, filterSuggestionKeys: async ({ keys }) => keys,
+            resolveSelection: input => owner.resolveNativeSelection({ tripId, ...input }) }
+        });
+      } else throw new AdviceError(404, 'route not found');
+      return { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(result) };
+    }
     if (operation === 'read') return { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(await ownerRead(ctx, tripId)) };
     if (operation === 'configure') return { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(await configure(ctx, tripId, req.body)) };
     if (operation === 'preview') return { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(await preview(ctx, tripId, req.body)) };
@@ -416,12 +494,28 @@ async function routeHandler(req, ctx, operation) {
     if (operation === 'purge') return { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(await ownerPurgeFeedback(ctx, tripId)) };
     throw new AdviceError(404, 'route not found');
   } catch (error) {
+    if (operation.startsWith('native-') || operation.startsWith('city-')) {
+      const message = error instanceof Error ? error.message : '';
+      if (['HOST_ERROR: Advice configuration changed', 'HOST_ERROR: Review the native advice upgrade before saving', 'HOST_ERROR: Save the native advice configuration first'].includes(message)) return responseFor(new AdviceError(409, message.slice(12), 'ADVICE_CONFLICT'));
+      if (message.startsWith('RESOURCE_FORBIDDEN:')) return responseFor(new AdviceError(403, 'Owner advice access denied', 'FORBIDDEN'));
+      if (message === 'HOST_ERROR: Advice request limit reached' || message === 'HOST_ERROR: Monthly Google Places budget reached') return responseFor(new AdviceError(429, message.slice(12), 'RATE_LIMITED'));
+      if (message.startsWith('BAD_PARAMS:')) return responseFor(new AdviceError(422, 'Invalid native advice request', 'VALIDATION_ERROR'));
+    }
     return responseFor(error);
   }
+}
+
+async function nativeOwner(ctx, tripId, supplied) {
+  const native = supplied || await ctx.publicShare.owner.getNative({ tripId });
+  const shareId = native.config?.shareId;
+  if (!shareId) return { ...native, inbox: { suggestions: [], comments: [] } };
+  const suggestions = (await store.suggestions(ctx, shareId, undefined, true)).slice(0, 200).map(row => publicPlace(cleanExpiredSuggestion(row, Date.now()), undefined, store.presentation(shareId, row.guest_id, row.id)));
+  const comments = clientComments(await store.comments(ctx, shareId, undefined, true, 200), native.projection);
+  return { ...native, inbox: { suggestions, comments } };
 }
 
 module.exports = {
   store, publicHandle, ownerRead, configure, preview, acceptSuggestion, rejectSuggestion,
   ownerDeleteComment, ownerPurgeFeedback, routeHandler, responseFor, stableUuid, projectionPlaces, normalizeResolved,
-  shortlistPlaceKeys
+  votablePlaceKeys
 };

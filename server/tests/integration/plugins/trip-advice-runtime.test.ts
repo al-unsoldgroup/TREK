@@ -132,7 +132,9 @@ describe('standalone trip-advice through the real child runtime', () => {
     // First-time setup must load before any share exists. A fixture that always
     // preconfigures a share misses the real owner's entry path.
     const ownerResult = await supervisor.invoke('trip-advice', 'invoke.route', {
-      routeId: 0,
+      // Route IDs follow the addon's declared route order. Native owner routes
+      // precede the retained v1 owner endpoint used by this compatibility test.
+      routeId: 7,
       req: { method: 'GET', path: '/owner', query: { tripId: '1' }, headers: {}, user: { id: 42 } },
     }, { actingUserId: 42 });
     expect(ownerResult).toMatchObject({ status: 200 });
@@ -146,6 +148,14 @@ describe('standalone trip-advice through the real child runtime', () => {
         version: 1, scope: { shareId: guest.shareId, guestId: guest.guestId, epoch: guest.epoch }, action,
       }, { publicShare: guest });
     };
+    const suggestionId = z.string().parse(adviceFeedbackWriteSchema.parse(suggestion).data.suggestionId);
+    const edit = { version: 1, kind: 'suggestion.update', requestId: randomUUID(), suggestionId,
+      category: 'eat', reason: 'Visit in the evening', displayName: 'Runtime guest' };
+    const edited = await invoke(edit);
+    expect(edited).toMatchObject({ kind: 'suggestion.update', data: { suggestionId, state: 'pending' } });
+    expect(await invoke(edit)).toEqual(edited);
+    await expect(invoke({ ...edit, requestId: randomUUID() }, { ...principal, guestId: randomUUID(), sessionId: randomUUID() }))
+      .rejects.toThrow();
     const upvote = { version: 1, kind: 'vote.set', requestId: randomUUID(), placeKey: 'p:1', value: 1, expectedVersion: 0 };
     const firstVote = await invoke(upvote);
     expect(adviceFeedbackWriteSchema.parse(firstVote)).toEqual(firstVote);
@@ -165,7 +175,7 @@ describe('standalone trip-advice through the real child runtime', () => {
     expect(await invoke({ version: 1, kind: 'read' })).toMatchObject({
       votes: [{ placeKey: 'p:1', mine: 0, positive: 0, negative: 0, version: 3 }],
       myComments: [{ text: 'Keep the morning flexible', displayName: 'Runtime guest' }],
-      myPendingSuggestions: [{ title: 'Runtime place', state: 'pending' }],
+      myPendingSuggestions: [{ title: 'Runtime place', state: 'pending', category: 'eat', reason: 'Visit in the evening' }],
     });
     expect(await invoke({ version: 1, kind: 'read' }, { ...principal, guestId: randomUUID(), sessionId: randomUUID() }))
       .toMatchObject({ myComments: [], myPendingSuggestions: [] });

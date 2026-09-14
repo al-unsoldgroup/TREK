@@ -26,6 +26,8 @@ import type { ExpensePrefill } from '../components/Budget/CostsPanel'
 import type { BookingExpenseRequest } from '../components/Planner/BookingCostsSection.types'
 import type { BudgetItem } from '../types'
 import PluginFrame from '../components/Plugins/PluginFrame'
+import TripAdviceSurface from '../features/tripAdvice/TripAdviceSurface'
+import { useTripAdviceOwner } from '../features/tripAdvice/useTripAdviceOwner'
 import ErrorBoundary from '../components/shared/ErrorBoundary'
 import { lazyWithRetry } from '../utils/lazyWithRetry'
 import { getDayBookendHotels } from '../utils/dayOrder'
@@ -93,6 +95,10 @@ function LazyPanel({ id, children }: { id: string; children: React.ReactNode }):
       </Suspense>
     </ErrorBoundary>
   )
+}
+
+function NativeTripAdviceOwner({ tripId }: { tripId: number }) {
+  return <TripAdviceSurface controller={useTripAdviceOwner(tripId)} />
 }
 
 function ListsContainer({ tripId, packingItems, todoItems }: { tripId: number; packingItems: PackingItem[]; todoItems: TodoItem[] }) {
@@ -840,8 +846,10 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
         )}
 
         {activeTab.startsWith('plugin:') && (
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 'var(--bottom-nav-h)', overflow: 'hidden' }}>
-            <PluginFrame pluginId={activeTab.slice('plugin:'.length)} tripId={String(tripId)} fill surface="trip-tab" className="w-full h-full" />
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 'var(--bottom-nav-h)', overflow: 'auto' }}>
+            {activeTab === 'plugin:trip-advice'
+              ? <NativeTripAdviceOwner tripId={tripId} />
+              : <PluginFrame pluginId={activeTab.slice('plugin:'.length)} tripId={String(tripId)} fill surface="trip-tab" className="w-full h-full" />}
           </div>
         )}
       </div>

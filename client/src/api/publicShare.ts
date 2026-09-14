@@ -4,11 +4,17 @@ import {
   adviceFeedbackReadSchema,
   adviceFeedbackWriteSchema,
   advicePhotoResultSchema,
+  adviceActionV2Schema,
+  adviceReadResultV2Schema,
+  adviceWriteResponseV2Schema,
   type AdviceAction,
+  type AdviceActionV2,
   type AdviceBootstrap,
   type AdviceReadAction,
   type AdviceReadResult,
   type AdviceWriteResponse,
+  type AdviceReadResultV2,
+  type AdviceWriteResponseV2,
 } from '@trek/shared'
 
 /**
@@ -33,6 +39,35 @@ function tokenPath(token: string): string {
   return `/api/shared/${encodeURIComponent(token)}`
 }
 
+async function publicError(response: Response, fallback: string): Promise<string> {
+  if (![409, 422, 429, 503].includes(response.status)) return fallback
+  const defaultMessage = response.status === 429 ? 'Too many requests. Wait a moment and try again.'
+    : response.status === 503 ? 'This service is temporarily unavailable. Try again shortly.'
+      : 'This selection changed or expired. Refresh the page and try again.'
+  const reader = response.body?.getReader()
+  if (!reader) return defaultMessage
+  try {
+    const chunks: Uint8Array[] = []
+    let size = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > 2048) return defaultMessage
+      chunks.push(value)
+    }
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+    const body: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    const message = body && typeof body === 'object' && 'error' in body ? body.error : undefined
+    if (message === 'Monthly Google Places budget reached') return 'Google Places has reached its monthly spending limit.'
+    if (message === 'Google Places is not configured') return 'Google Places search is not enabled for this trip yet.'
+    return defaultMessage
+  } catch { return defaultMessage }
+  finally { await reader.cancel().catch(() => undefined) }
+}
+
 async function json<T>(input: RequestInfo | URL, init: RequestInit, errorMessage: string): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
@@ -43,7 +78,7 @@ async function json<T>(input: RequestInfo | URL, init: RequestInit, errorMessage
     cache: 'no-store',
     headers,
   })
-  if (!response.ok) throw new Error(errorMessage)
+  if (!response.ok) throw new Error(await publicError(response, errorMessage))
   return response.json() as Promise<T>
 }
 
@@ -67,8 +102,16 @@ function readSession(value: unknown): PublicShareSession {
   return { csrfToken: record.csrfToken, expiresAt: record.expiresAt }
 }
 
-function parseAction(action: unknown): AdviceAction {
+function parseAction(action: unknown): AdviceAction | AdviceActionV2 {
   const parsed = adviceActionSchema.safeParse(action)
+  if (parsed.success) return parsed.data
+  const native = adviceActionV2Schema.safeParse(action)
+  if (native.success) return native.data
+  throw new Error('Public advice action is not available.')
+}
+
+function parseReadResultV2(value: unknown): AdviceReadResultV2 {
+  const parsed = adviceReadResultV2Schema.safeParse(value)
   if (!parsed.success) throw new Error('Public advice action is not available.')
   return parsed.data
 }
@@ -79,8 +122,8 @@ function parseReadResult(value: unknown): AdviceReadResult {
   return parsed.data
 }
 
-function parseWriteResult(value: unknown): AdviceWriteResponse {
-  const parsed = adviceFeedbackWriteSchema.safeParse(value)
+function parseWriteResult(value: unknown, version: 1 | 2): AdviceWriteResponse | AdviceWriteResponseV2 {
+  const parsed = version === 2 ? adviceWriteResponseV2Schema.safeParse(value) : adviceFeedbackWriteSchema.safeParse(value)
   if (!parsed.success) throw new Error('TREK returned an invalid advice action result.')
   return parsed.data
 }
@@ -109,7 +152,7 @@ export const publicShareApi = {
     return readSession(data)
   },
 
-  async action(token: string, csrfToken: string, action: unknown, signal?: AbortSignal): Promise<AdviceReadResult | AdviceWriteResponse> {
+  async action(token: string, csrfToken: string, action: unknown, signal?: AbortSignal): Promise<AdviceReadResult | AdviceReadResultV2 | AdviceWriteResponse | AdviceWriteResponseV2> {
     const parsedAction = parseAction(action)
     const data = await json<unknown>(`${tokenPath(token)}/plugins/trip-advice/actions`, {
       method: 'POST',
@@ -121,18 +164,36 @@ export const publicShareApi = {
       },
       body: JSON.stringify(parsedAction),
     }, 'Public advice is no longer available.')
-    return parsedAction.kind === 'read' ? parseReadResult(data) : parseWriteResult(data)
+    return parsedAction.kind === 'read'
+      ? parsedAction.version === 2 ? parseReadResultV2(data) : parseReadResult(data)
+      : parseWriteResult(data, parsedAction.version)
+  },
+
+  async actionV1(token: string, csrfToken: string, action: AdviceAction, signal?: AbortSignal): Promise<AdviceReadResult | AdviceWriteResponse> {
+    return action.kind === 'read' ? this.read(token, csrfToken, action, signal) : this.write(token, csrfToken, action, signal)
   },
 
   async read(token: string, csrfToken: string, action: AdviceReadAction = { version: 1, kind: 'read' }, signal?: AbortSignal): Promise<AdviceReadResult> {
     const result = await this.action(token, csrfToken, action, signal)
-    if (!('projection' in result)) throw new Error('TREK returned an invalid advice feedback envelope.')
+    if (!('projection' in result) || result.projection.version !== 1) throw new Error('TREK returned an invalid advice feedback envelope.')
     return result
   },
 
   async write(token: string, csrfToken: string, action: Exclude<AdviceAction, AdviceReadAction>, signal?: AbortSignal): Promise<AdviceWriteResponse> {
     const result = await this.action(token, csrfToken, action, signal)
-    if (!('data' in result)) throw new Error('TREK returned an invalid advice action result.')
+    if (!('data' in result) || result.version !== 1) throw new Error('TREK returned an invalid advice action result.')
+    return result
+  },
+
+  async readV2(token: string, csrfToken: string, signal?: AbortSignal): Promise<AdviceReadResultV2> {
+    const result = await this.action(token, csrfToken, { version: 2, kind: 'read' }, signal)
+    if (!('projection' in result) || result.projection.version !== 2) throw new Error('TREK returned an invalid native advice envelope.')
+    return result
+  },
+
+  async writeV2(token: string, csrfToken: string, action: Exclude<AdviceActionV2, { kind: 'read' }>, signal?: AbortSignal): Promise<AdviceWriteResponseV2> {
+    const result = await this.action(token, csrfToken, action, signal)
+    if (!('data' in result) || result.version !== 2) throw new Error('TREK returned an invalid native advice action result.')
     return result
   },
 

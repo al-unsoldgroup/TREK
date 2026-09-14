@@ -84,9 +84,34 @@ describe('publicShareApi', () => {
     expect(new Headers(actionInit.headers).get('X-Trek-Advice-CSRF')).toBe('csrf-secret')
   })
 
+  it('USG-227 validates a native bootstrap and version 2 feedback envelope', async () => {
+    const nativeBootstrap = { kind: 'plugin-share', version: 2, plugin: { id: 'trip-advice', surface: 'native', protocolVersion: 2 }, title: 'Japan together', expiresAt: bootstrap.expiresAt }
+    const nativeFeedback = { ...feedback, projection: { ...projection, version: 2, stays: [], shortlists: [] } }
+    fetchMock.mockResolvedValueOnce(response(nativeBootstrap)).mockResolvedValueOnce(response(nativeFeedback))
+
+    await expect(publicShareApi.getEntry('ta_public')).resolves.toEqual({ kind: 'plugin-share', bootstrap: nativeBootstrap })
+    await expect(publicShareApi.readV2('ta_public', 'csrf-secret')).resolves.toEqual(nativeFeedback)
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).body).toBe('{"version":2,"kind":"read"}')
+  })
+
   it('FE-USG215-API-004: refuses unsupported actions before network dispatch', async () => {
     await expect(publicShareApi.action('ta_public', 'csrf', { version: 1, kind: 'vote.set' })).rejects.toThrow('not available')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [429, 'Monthly Google Places budget reached', 'Google Places has reached its monthly spending limit.'],
+    [503, 'Google Places is not configured', 'Google Places search is not enabled for this trip yet.'],
+    [403, 'PRIVATE CONFIGURATION', 'Public advice is no longer available.'],
+    [503, 'PRIVATE CONFIGURATION', 'This service is temporarily unavailable. Try again shortly.'],
+  ])('shows a safe actionable error for HTTP %s', async (status, message, expected) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: message }), { status: Number(status) }))
+    await expect(publicShareApi.read('ta_public', 'csrf')).rejects.toThrow(String(expected))
+  })
+
+  it('does not expose oversized error bodies', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'x'.repeat(4096) }), { status: 503 }))
+    await expect(publicShareApi.read('ta_public', 'csrf')).rejects.toThrow('This service is temporarily unavailable.')
   })
 
   it('FE-USG215-API-005: validates and forwards a full write action union member', async () => {

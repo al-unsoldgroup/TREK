@@ -33,6 +33,13 @@ const plugin = {
   },
 
   routes: [
+    { method: 'GET', path: '/owner/native', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'native-read') },
+    { method: 'PUT', path: '/owner/native', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'native-configure') },
+    { method: 'POST', path: '/owner/native/preview', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'native-preview') },
+    { method: 'POST', path: '/owner/native/actions', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'native-action') },
+    { method: 'POST', path: '/owner/native/photos', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'native-photo') },
+    { method: 'GET', path: '/owner/cities/autocomplete', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'city-autocomplete') },
+    { method: 'POST', path: '/owner/cities/resolve', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'city-resolve') },
     { method: 'GET', path: '/owner', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'read') },
     { method: 'PUT', path: '/owner', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'configure') },
     { method: 'PUT', path: '/owner/config', auth: true, handler: (req, ctx) => routeHandler(req, ctx, 'configure') },

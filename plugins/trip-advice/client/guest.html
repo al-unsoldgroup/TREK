@@ -11,7 +11,7 @@
 </head>
 <body>
   <div id="app">
-    <div class="topbar"><span class="eyebrow">TREK / shared advice</span><span>Read-only trip plan</span></div>
+    <div class="topbar"><span class="eyebrow">TREK / shared advice</span></div>
     <main class="shell">
       <div id="loading" class="loading" role="status" aria-live="polite">Loading the shared trip…</div>
       <div id="error-banner" class="error" role="alert" hidden></div>
@@ -25,7 +25,7 @@
         </header>
         <section class="route" aria-labelledby="route-heading">
           <div class="route-copy"><h2 id="route-heading">The route</h2><p class="muted small">A schematic overview. Choose a destination to jump to its card.</p></div>
-          <ol id="route-list" class="route-list" aria-label="Trip destinations"></ol>
+          <div><h3>Committed</h3><ol id="route-list" class="route-list" aria-label="Committed destinations"></ol><details id="route-others"><summary>Others</summary><ol id="route-others-list" class="route-list" aria-label="Other destinations"></ol></details></div>
         </section>
         <nav class="date-sticky" aria-label="Trip dates"><div id="date-ribbon" class="date-ribbon"></div></nav>
         <section class="itinerary" aria-labelledby="stays-heading">
@@ -53,20 +53,21 @@
     <form id="suggest-form" method="dialog">
       <div class="dialog-header"><h2 id="suggest-heading">Suggest a place</h2><button id="suggest-close" type="button" class="icon-button" aria-label="Close suggestion dialog">×</button></div>
       <p id="search-disclaimer" class="muted small">Search is powered by the host's bounded Google Places connection. Results are not stored by this page. The destination returned by the host decides where the suggestion belongs.</p>
-      <div class="form-grid"><label>Section<select id="suggest-category"><option value="see">See</option><option value="eat">Eat</option></select></label><label>Search near<select id="suggest-city"></select></label></div>
+      <div id="suggest-search-controls" class="form-grid"><label>Section<select id="suggest-category"><option value="see">See</option><option value="eat">Eat</option></select></label><label>Search near<select id="suggest-city"></select></label></div>
       <label for="place-search">Find a place</label>
       <input id="place-search" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="search-results" aria-expanded="false" autocomplete="off" placeholder="Start with two characters">
       <p class="muted small">Use Up and Down to move, Enter to select, and Escape to close results.</p>
       <ul id="search-results" class="results" role="listbox" aria-label="Place search results" hidden></ul>
       <p id="result-status" class="status" role="status" aria-live="polite"></p>
       <div id="selected-place" class="selected-place" hidden></div>
-      <label for="suggest-name">Display name <span class="muted">(optional)</span></label><input id="suggest-name" maxlength="60" autocomplete="nickname" placeholder="Guest adviser">
+      <div id="suggest-personal-details"><label for="suggest-name">Display name <span class="muted">(optional)</span></label><input id="suggest-name" maxlength="60" autocomplete="nickname" placeholder="Guest adviser">
       <label for="suggest-reason">Why this place? <span class="muted">(optional)</span></label><textarea id="suggest-reason" maxlength="500" placeholder="What makes it worth a visit?"></textarea>
-      <div class="form-actions"><button id="suggest-cancel" type="button" class="button">Cancel</button><button id="suggest-submit" type="submit" class="button primary" disabled>Send suggestion</button></div>
+      </div><div id="suggest-form-actions" class="form-actions"><button id="suggest-cancel" type="button" class="button">Cancel</button><button id="suggest-submit" type="submit" class="button primary" disabled>Send suggestion</button></div>
     </form>
   </dialog>
   <script src="advice-model.js"></script>
   <script src="advice-protocol.js"></script>
+  <script src="advice-map.js"></script>
   <script src="advice.js"></script>
 </body>
 </html>

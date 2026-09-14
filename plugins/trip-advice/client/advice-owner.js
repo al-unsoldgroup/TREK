@@ -8,7 +8,7 @@
   function preparePreset(stored, candidates) {
     if (!candidates?.preset) throw new Error('TREK needs an update to prepare this trip automatically.');
     const hidden = { cityIds: [], dayIds: [], placeIds: [], assignmentIds: [], ...(stored?.source === 'trip' ? stored.hidden : {}) };
-    return { preset: clone(candidates.preset), candidates: clone(candidates), hidden: clone(hidden) };
+    return { preset: clone(candidates.preset), candidates: clone(candidates), hidden: clone(hidden), displayNotes: stored?.displayNotes === true };
   }
   function toggle(state, key, id, hide) {
     state.hidden[key] = hide ? [...new Set([...state.hidden[key], id])] : state.hidden[key].filter(value => value !== id);
@@ -16,7 +16,7 @@
   function hideCity(state, cityId, hide) {
     toggle(state, 'cityIds', cityId, hide);
   }
-  function readPreset(state) { return clone({ ...state.preset, source: 'trip', hidden: state.hidden }); }
+  function readPreset(state) { return clone({ ...state.preset, source: 'trip', hidden: state.hidden, displayNotes: state.displayNotes }); }
   function createEditor(panel, stored, candidates, changed) {
     const state = preparePreset(stored, candidates);
     const doc = panel.ownerDocument;
@@ -29,8 +29,12 @@
     const details = element('details');
     details.append(element('summary', 'Hide items from this link'));
     const list = element('div'); details.append(list);
+    const notesLabel = element('label', undefined, 'check-row'), notesToggle = element('input');
+    notesToggle.type = 'checkbox'; notesToggle.checked = state.displayNotes;
+    notesToggle.addEventListener('change', () => { state.displayNotes = notesToggle.checked; changed(); });
+    notesLabel.append(notesToggle, element('span', 'Display day notes to people with this link'));
     panel.replaceChildren(element('p', (state.preset.cities.map(city => city.label).join(' · ') || 'Your trip') + ' · ' + candidates.days.length + ' days', 'muted'),
-      element('p', 'Cities, itinerary and saved places come from your trip. New eligible items are included automatically. Only hide exceptions below.', 'muted small'), details);
+      element('p', 'Cities, itinerary and saved places come from your trip. New eligible items are included automatically. Only hide exceptions below.', 'muted small'), notesLabel, details);
     function render() {
       list.replaceChildren();
       const group = title => { const node = element('fieldset', undefined, 'config-group'); node.append(element('legend', title)); list.append(node); return node; };
