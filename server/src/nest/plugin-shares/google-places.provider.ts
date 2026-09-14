@@ -29,7 +29,10 @@ const FETCH_TIMEOUT_MS = 5000;
 const PHOTO_HOSTS = new Set(['lh3.googleusercontent.com', 'lh4.googleusercontent.com', 'lh5.googleusercontent.com', 'lh6.googleusercontent.com']);
 
 const text = (max: number) => z.string().min(1).max(max);
-const googleText = z.strictObject({ text: text(300), matches: z.array(z.strictObject({ endOffset: z.number().int().min(0).max(300) })).max(50).optional() });
+// `startOffset` is omitted when a match begins at 0 and present otherwise, so a
+// schema without it rejects every match that is not a prefix.
+const offset = z.number().int().min(0).max(300);
+const googleText = z.strictObject({ text: text(300), matches: z.array(z.strictObject({ startOffset: offset.optional(), endOffset: offset })).max(50).optional() });
 const autocompleteBody = z.strictObject({
   suggestions: z.array(z.union([
     z.strictObject({ placePrediction: z.strictObject({ placeId: text(256), structuredFormat: z.strictObject({ mainText: googleText, secondaryText: googleText.optional() }) }) }),
