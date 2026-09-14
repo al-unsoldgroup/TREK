@@ -46,6 +46,15 @@ describe('GooglePlacesProvider', () => {
     expect(result.data.suggestions).toHaveLength(1);
   });
 
+  it('keeps the session token within the 36 characters Google accepts', async () => {
+    Object.assign(process.env, baseEnv);
+    const calls: Array<{ init?: RequestInit }> = [];
+    const places = provider(async (_url, init) => { calls.push({ init }); return response({ suggestions: [] }); });
+    await places.autocomplete(principal, { version: 1, kind: 'places.autocomplete', searchId: actionId, cityId: 'elsewhere', category: 'see', input: 'Place', locale: 'en' });
+    const { sessionToken } = JSON.parse(String(calls[0].init?.body));
+    expect(sessionToken.length).toBeLessThanOrEqual(36);
+  });
+
   it('rejects prediction handles from another share/session and revokes after an await', async () => {
     Object.assign(process.env, baseEnv);
     const fetcher = vi.fn<GooglePlacesFetch>(async () => response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: { mainText: { text: 'Place' } } } }] }));
