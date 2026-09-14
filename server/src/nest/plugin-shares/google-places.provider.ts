@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional, HttpException, ServiceUnavailableException } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   advicePlacesAutocompleteResultSchema, advicePlacesResolveResultSchema, advicePhotoResultSchema, advicePlacesMetadataResultSchema,
@@ -151,7 +151,10 @@ export class GooglePlacesProvider {
     const key = `${this.handleKey(principal)}:${searchId}`;
     const current = this.searchSessions.get(key);
     if (current) return current.token;
-    const token = opaque();
+    // Google Places rejects session tokens longer than 36 characters. Opaque
+    // handles remain 43-character base64url values, but the upstream billing
+    // session token follows Google's narrower contract.
+    const token = randomUUID();
     this.searchSessions.set(key, { token, expiresAt: Date.now() + HANDLE_TTL_MS });
     return token;
   }

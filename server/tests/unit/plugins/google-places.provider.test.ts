@@ -246,6 +246,7 @@ describe('GooglePlacesProvider', () => {
     const body = JSON.parse(String(calls[0].init?.body));
     expect(body.locationBias.rectangle).toEqual({ low: { latitude: 40, longitude: -4 }, high: { latitude: 41, longitude: -3 } });
     expect(body).not.toHaveProperty('includedRegionCodes');
+    expect(body.sessionToken).toMatch(/^[0-9a-f-]{36}$/);
     expect(result.data.suggestions).toHaveLength(1);
   });
 
