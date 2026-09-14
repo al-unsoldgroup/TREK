@@ -156,6 +156,16 @@ describe('GooglePlacesProvider', () => {
     expect(result.data.suggestions).toHaveLength(1);
   });
 
+  it('accepts a match that does not start at the beginning of the text', async () => {
+    Object.assign(process.env, baseEnv);
+    const places = provider(async () => response({ suggestions: [{ placePrediction: { placeId: 'ChIJplace', structuredFormat: {
+      mainText: { text: 'Senso-Ji', matches: [{ startOffset: 3, endOffset: 8 }] },
+      secondaryText: { text: 'Japan, Tokyo', matches: [{ endOffset: 5 }] },
+    } } }] }));
+    const result = await places.autocomplete(principal, { version: 1, kind: 'places.autocomplete', searchId: actionId, cityId: 'elsewhere', category: 'see', input: 'senso', locale: 'en' });
+    expect(result.data.suggestions[0].mainText).toBe('Senso-Ji');
+  });
+
   it('keeps the session token within the 36 characters Google accepts', async () => {
     Object.assign(process.env, baseEnv);
     const calls: Array<{ init?: RequestInit }> = [];
