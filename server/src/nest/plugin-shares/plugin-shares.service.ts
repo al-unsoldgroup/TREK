@@ -82,6 +82,11 @@ export class PluginSharesService {
     return row ? { shareId: row.id, token: row.token, enabled: !!row.enabled, revision: row.revision,
       expiresAt: row.expires_at, config: adviceShareConfigSchema.parse(JSON.parse(row.config_json)) } : null;
   }
+
+  private ownerResult(row: Link) {
+    return { shareId: row.id, token: row.token, enabled: !!row.enabled, revision: row.revision,
+      expiresAt: row.expires_at, config: z.union([adviceShareConfigSchema, adviceShareConfigV2Schema]).parse(JSON.parse(row.config_json)) };
+  }
   write(tripId: number, user: User, input: z.infer<typeof adviceOwnerWriteSchema>) {
     this.requireManage(tripId, user);
     const body = adviceOwnerWriteSchema.parse(input);
@@ -311,7 +316,7 @@ export class PluginSharesService {
       if (!rotate) this.lifecycle?.enqueuePurge(row.id);
       this.db.run('UPDATE plugin_share_links SET token = ?, enabled = ?, epoch = epoch + 1, revision = revision + 1 WHERE id = ?', rotate ? this.newToken() : row.token, rotate ? row.enabled : 0, row.id);
       this.db.run('DELETE FROM plugin_share_sessions WHERE share_id = ?', row.id);
-      return this.getOwner(tripId, user)!;
+      return this.ownerResult(this.db.get<Link>('SELECT * FROM plugin_share_links WHERE id = ?', row.id)!);
     });
     this.lifecycle?.flushInBackground();
     return result;

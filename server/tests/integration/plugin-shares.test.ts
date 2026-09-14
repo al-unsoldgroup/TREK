@@ -477,6 +477,24 @@ describe('advice authority and public HTTP', () => {
     db.run('UPDATE plugin_share_links SET enabled = 1, expires_at = ?', '2000-01-01T00:00:00.000Z');
     expect(() => shares.bootstrap(rotated.token)).toThrow();
   });
+
+  it('rotates a native v2 advice link without parsing it as a legacy config', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    const draft = shares.ownerNative(tripId, owner.id).draftConfig;
+    const configured = shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: 0,
+      enabled: true,
+      expiresInDays: 30,
+      config: draft,
+    });
+
+    const rotated = shares.revoke(tripId, owner, configured.config!.revision, true);
+
+    expect(rotated.token).not.toBe(configured.config!.token);
+    expect(rotated.revision).toBe(configured.config!.revision + 1);
+    expect(rotated.config.version).toBe(2);
+    expect(db.get('SELECT COUNT(*) AS count FROM plugin_share_sessions WHERE share_id = ?', configured.config!.shareId)).toEqual({ count: 0 });
+  });
   it.each(['configuration', 'rotation'] as const)('preserves feedback on %s changes while revoking guest authority', change => {
     const link = publish();
     const guest = shares.session(link.token, undefined, 'preserve-feedback');
