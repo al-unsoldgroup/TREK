@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
-import { adviceActionSchema, adviceEmptySchema, adviceOwnerWriteSchema, adviceRevisionSchema, adviceShareConfigSchema } from '@trek/shared';
-import type { AdviceAction } from '@trek/shared';
+import { advicePublicActionSchema, adviceEmptySchema, adviceOwnerWriteSchema, adviceRevisionSchema, adviceShareConfigSchema } from '@trek/shared';
+import type { AdviceAction, AdviceActionV2 } from '@trek/shared';
 export class AdviceOwnerWriteDto extends createZodDto(adviceOwnerWriteSchema) {}
 export class AdviceConfigDto extends createZodDto(adviceShareConfigSchema) {}
 export class AdviceRevisionDto extends createZodDto(adviceRevisionSchema) {}
@@ -11,8 +11,8 @@ export class AdviceSessionDto extends createZodDto(adviceEmptySchema) {}
 // obtain the shared discriminated-union type without a cast.
 export class AdviceActionDto {
   static isZodDto = true;
-  static schema = adviceActionSchema;
-  static create(input: unknown): AdviceAction { return adviceActionSchema.parse(input); }
+  static schema = advicePublicActionSchema;
+  static create(input: unknown): AdviceAction | AdviceActionV2 { return advicePublicActionSchema.parse(input); }
 }
 /** Compatibility name for host fixtures that imported the S1 DTO directly. */
 export class AdviceReadDto extends AdviceActionDto {}

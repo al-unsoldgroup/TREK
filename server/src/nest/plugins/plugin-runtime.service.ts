@@ -39,7 +39,7 @@ import { HTTP_OUTBOUND_PREFIX as HTTP_OUTBOUND, PLUGIN_API_VERSION } from './pro
 import type { PluginActionDescriptor, PluginActionResult, PluginActionScope } from '@trek/shared';
 import { PluginShareLifecycleService } from '../plugin-shares/plugin-share-lifecycle.service';
 import type { PublicSharePrincipal } from './protocol/envelope';
-import type { AdviceAction } from '@trek/shared';
+import type { AdviceAction, AdviceActionV2 } from '@trek/shared';
 
 // Mirrors HOST_RE in install/manifest.ts: an exact hostname or a `*.`-prefixed wildcard
 // with a real multi-label suffix. Rejects a bare `*`, a whole-TLD wildcard, a scheme and
@@ -989,7 +989,7 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
     return this.supervisor.invoke(id, method, params, { actingUserId });
   }
-  invokePublicShare(principal: PublicSharePrincipal, action: AdviceAction): Promise<unknown> {
+  invokePublicShare(principal: PublicSharePrincipal, action: AdviceAction | AdviceActionV2): Promise<unknown> {
     return this.supervisor.invoke(principal.pluginId, 'invoke.publicShare', {
       version: 1, action, scope: { shareId: principal.shareId, guestId: principal.guestId, epoch: principal.epoch },
     }, { publicShare: principal, timeoutMs: 5000 });

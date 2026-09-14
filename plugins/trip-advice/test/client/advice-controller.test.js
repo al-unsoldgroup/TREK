@@ -15,6 +15,7 @@ function loadController(options = {}) {
     clearTimeout,
     setTimeout,
     URL,
+    IntersectionObserver: options.IntersectionObserver,
   };
   window.parent = options.parent || window;
   const context = vm.createContext({ window, document: options.document, URL, Blob, navigator: { language: 'en' }, console });
@@ -48,6 +49,7 @@ function removalDocument() {
     focus() { document.activeElement = this; },
     scrollIntoView() {},
     showModal() { this.open = true; },
+    close() { this.open = false; },
     click() { if (!this.disabled) return this.listeners.click?.(); },
   }) };
   return document;
@@ -83,7 +85,14 @@ test('photo preview does not display bytes without a safe source link', async ()
   assert.ok(!preview.all().some(node => node.tag === 'a'));
 });
 
-function guestHarness(action) {
+test('places without a photo handle do not render an empty photo preview box', () => {
+  const document = removalDocument();
+  const preview = loadController({ document }).photoPreview({ title: 'Garden' }, {});
+  assert.equal(preview.hidden, true);
+  assert.ok(!preview.all().some(node => node.textContent === 'Photo unavailable'));
+});
+
+function guestHarness(action, options = {}) {
   const document = removalDocument();
   const ids = new Map([...fs.readFileSync('client/guest.html', 'utf8').matchAll(/id="([^"]+)"/g)]
     .map(([, id]) => [id, document.createElement('div')]));
@@ -104,11 +113,67 @@ function guestHarness(action) {
     action: async input => { calls.push(input); return action ? action(input, feedback) : feedback; },
     close: () => { closed = true; },
   };
-  loadController({ document }).renderGuest(root, projection, bridge, {});
+  loadController({ document, ...options }).renderGuest(root, projection, bridge, {});
   const control = label => [...ids.values()].flatMap(node => [node, ...node.all()]).find(node => node.tag === 'button' && node.textContent === label);
   return { document, ids, feedback, calls, control, closed: () => closed };
 }
 const settleGuest = () => new Promise(resolve => setImmediate(resolve));
+
+test('visible place metadata requests are serialized and old observed targets are released on rerender', async () => {
+  let observer;
+  class Observer {
+    constructor(callback) { this.callback = callback; this.targets = new Set(); this.disconnected = 0; observer = this; }
+    observe(target) { this.targets.add(target); }
+    unobserve(target) { this.targets.delete(target); }
+    disconnect() { this.targets.clear(); this.disconnected++; }
+  }
+  const releases = [];
+  const page = guestHarness((action, feedback) => {
+    if (action.kind === 'places.metadata') return new Promise(resolve => releases.push(() => resolve({ placeKey: action.placeKey, placeType: 'Museum' })));
+    feedback.projection.shortlists = [{ cityId: 'city-a', eat: [], see: [1, 2, 3].map(id => ({ key: `p:${id}`, title: `Museum ${id}`, category: 'see', cityId: 'city-a', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: `google-${id}`, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Museum' })) }];
+    return feedback;
+  }, { IntersectionObserver: Observer });
+  await settleGuest();
+  observer.callback([...observer.targets].map(target => ({ target, isIntersecting: true })));
+  await settleGuest();
+  assert.equal(page.calls.filter(action => action.kind === 'places.metadata').length, 1);
+  releases.shift()(); await settleGuest();
+  assert.equal(page.calls.filter(action => action.kind === 'places.metadata').length, 2);
+  releases.shift()(); await settleGuest(); releases.shift()(); await settleGuest();
+  const disconnected = observer.disconnected;
+  page.control('Eat').click(); await settleGuest();
+  assert.ok(observer.disconnected > disconnected);
+});
+
+test('Suggest an idea shares the See and Eat toolbar, outside the tablist', async () => {
+  const page = guestHarness();
+  await settleGuest();
+  const nodes = page.ids.get('stays').children[0].all();
+  const tabs = nodes.find(node => node.attributes.role === 'tablist');
+  const toolbar = nodes.find(node => node.children.includes(tabs));
+  assert.ok(toolbar.children.some(node => node.tag === 'button' && node.textContent === 'Suggest an idea'));
+  assert.equal(tabs.children.length, 2);
+  assert.ok(tabs.children.every(node => node.attributes.role === 'tab'));
+  assert.equal(nodes.filter(node => node.tag === 'button' && node.textContent === 'Suggest an idea').length, 1);
+});
+
+test('each scheduled day opens a quick recommendation search with full details hidden', async () => {
+  const page = guestHarness((action, feedback) => {
+    feedback.projection.stays[0].days = [{ key: 'd:1', date: '2026-10-09', schedule: [] }, { key: 'd:2', date: '2026-10-10', schedule: [] }];
+    return feedback;
+  });
+  await settleGuest();
+  const buttons = page.ids.get('stays').all().filter(node => node.tag === 'button' && node.textContent === 'Recommend here');
+  assert.equal(buttons.length, 2);
+  await buttons[1].click();
+  assert.equal(page.ids.get('suggest-dialog').open, true);
+  assert.equal(page.ids.get('suggest-dialog').dataset.mode, 'quick');
+  assert.equal(page.ids.get('suggest-search-controls').hidden, true);
+  assert.equal(page.ids.get('suggest-personal-details').hidden, true);
+  assert.equal(page.ids.get('suggest-form-actions').hidden, true);
+  assert.equal(page.document.activeElement, page.ids.get('place-search'));
+  assert.equal(page.calls.filter(action => action.kind === 'suggestion.create').length, 0);
+});
 
 test('guest renders shortlist-only destinations and Elsewhere with working local tabs', async () => {
   const page = guestHarness((action, feedback) => {
@@ -119,8 +184,8 @@ test('guest renders shortlist-only destinations and Elsewhere with working local
   });
   await settleGuest();
   const nodes = () => page.ids.get('stays').all();
-  assert.ok(nodes().some(node => node.tag === 'h2' && node.textContent === 'Other city'));
-  assert.ok(nodes().some(node => node.tag === 'h2' && node.textContent === 'Elsewhere'));
+  assert.ok(nodes().some(node => node.tag === 'h2' && node.children.some(child => child.textContent === 'Other city')));
+  assert.ok(nodes().some(node => node.tag === 'h2' && node.children.some(child => child.textContent === 'Elsewhere')));
   const tab = nodes().find(node => node.id === 'tab-elsewhere-eat');
   await tab.click();
   assert.equal(nodes().find(node => node.id === 'tab-elsewhere-eat').attributes['aria-selected'], 'true');
@@ -132,6 +197,79 @@ test('guest renders shortlist-only destinations and Elsewhere with working local
   const elsewhere = nodes().find(node => node.attributes['aria-label'] === 'Elsewhere stay');
   await elsewhere.all().find(node => node.tag === 'button' && node.textContent === 'Suggest an idea').click();
   assert.equal(page.ids.get('suggest-city').value, 'city-a');
+});
+
+test('route separates committed destinations and city schedules can collapse independently', async () => {
+  const page = guestHarness((action, feedback) => {
+    feedback.projection.cities.push(...(feedback.projection.cities.length === 1 ? [{ id: 'city-b', label: 'Optional city', countryCodes: ['JP'] }] : []));
+    feedback.projection.stays[0].days = [{ key: 'd:1', date: '2026-10-09', schedule: [] }];
+    return feedback;
+  });
+  await settleGuest();
+  assert.ok(page.ids.get('route-list').all().some(node => node.textContent === 'Test city · 1 day'));
+  assert.ok(page.ids.get('route-others-list').all().some(node => node.textContent === 'Optional city · Ideas'));
+  assert.ok(!page.ids.get('route-list').all().some(node => node.textContent === 'Optional city · Ideas'));
+  await page.control('Test city').click();
+  assert.equal(page.control('Test city').attributes['aria-expanded'], 'false');
+  assert.equal(page.ids.get('stays').all().find(node => node.id === 'stay-stay-a-body').hidden, true);
+  await page.control('Test city · 1 day').click();
+  assert.equal(page.control('Test city').attributes['aria-expanded'], 'true');
+});
+
+test('public daily notes precede schedule and remain collapsible without HTML interpretation', async () => {
+  const page = guestHarness((action, feedback) => {
+    feedback.projection.stays[0].days = [{ key: 'd:1', date: '2026-10-09', schedule: [], notes: [{ text: '<script>Day intent</script>\nWalk slowly.' }] }];
+    return feedback;
+  });
+  await settleGuest();
+  const day = page.ids.get('stays').all().find(node => node.id === 'day-d-1');
+  const notes = day.children.find(node => node.className === 'day-notes');
+  assert.equal(notes.open, true);
+  assert.equal(day.children[1], notes);
+  assert.equal(notes.children[1].textContent, '<script>Day intent</script>\nWalk slowly.');
+  notes.open = false; notes.listeners.toggle();
+  await page.control('Test city · 1 day').click();
+  assert.equal(page.ids.get('stays').all().find(node => node.className === 'day-notes').open, false);
+});
+
+test('guest markup no longer calls the shared plan read-only', () => {
+  assert.ok(!fs.readFileSync('client/guest.html', 'utf8').includes('Read-only trip plan'));
+});
+
+test('quick search selection creates a day suggestion and Edit opens full details', async () => {
+  const suggestionId = '22222222-2222-4222-8222-222222222222';
+  const place = { googlePlaceId: 'ChIJTestGarden', cityId: 'city-a', title: 'Garden', locality: 'Test city', countryCode: 'JP' };
+  const page = guestHarness((action, feedback) => {
+    feedback.projection.stays[0].days = [{ key: 'd:1', date: '2026-10-09', schedule: [] }];
+    if (action.kind === 'places.autocomplete') return { suggestions: [{ predictionId: 'prediction-a', mainText: 'Garden' }] };
+    if (action.kind === 'places.resolve') return { selectionId: 'selection-a', place };
+    if (action.kind === 'suggestion.create') {
+      feedback.myPendingSuggestions = [{ ...place, key: `s:${suggestionId}`, category: 'see', dayKey: 'd:1', mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden&query_place_id=ChIJTestGarden', state: 'pending', reason: null, displayName: null }];
+      return { suggestionId, state: 'pending' };
+    }
+    if (action.kind === 'suggestion.update') return { suggestionId, state: 'pending' };
+    return feedback;
+  });
+  await settleGuest();
+  await page.control('Recommend here').click();
+  page.ids.get('place-search').listeners.input({ target: { value: 'Garden' } });
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await page.ids.get('search-results').children[0].click();
+  await settleGuest();
+  const created = page.calls.find(action => action.kind === 'suggestion.create');
+  assert.equal(created.dayKey, 'd:1');
+  assert.equal(created.selectionId, 'selection-a');
+  assert.equal(page.ids.get('suggest-dialog').open, false);
+  await page.control('Edit').click();
+  assert.equal(page.ids.get('suggest-dialog').dataset.mode, 'full');
+  assert.equal(page.ids.get('suggest-personal-details').hidden, false);
+  assert.equal(page.ids.get('suggest-submit').textContent, 'Save changes');
+  page.ids.get('suggest-reason').value = 'Go at sunset';
+  await page.ids.get('suggest-form').listeners.submit({ preventDefault() {} });
+  const updated = page.calls.find(action => action.kind === 'suggestion.update');
+  assert.equal(updated.suggestionId, suggestionId);
+  assert.equal(updated.reason, 'Go at sunset');
+  assert.equal(updated.selectionId, undefined);
 });
 
 test('rendered guest deletion sends only the selected comment and refreshes the inbox', async () => {

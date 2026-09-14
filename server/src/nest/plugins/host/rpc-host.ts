@@ -89,7 +89,7 @@ export class PluginRpcHost {
     if (publicShare) {
       // Public invocations expose only the projection, fail-closed selection seam,
       // and the addon's scoped own database. Native/member/open methods remain denied.
-      const allowed = req.method === 'publicShare.snapshot' || req.method === 'publicShare.resolveSelection' ||
+      const allowed = req.method === 'publicShare.snapshot' || req.method === 'publicShare.resolveSelection' || req.method === 'publicShare.filterSuggestionKeys' ||
         ((req.method === 'db.query' || req.method === 'db.exec' || req.method === 'db.tx') && !!this.deps.publicShareData);
       if (actingUserId !== undefined || publicShare.pluginId !== this.pluginId || !allowed || !this.deps.validatePublicShare) {
         return this.err(req.id, 'RESOURCE_FORBIDDEN', 'Method unavailable in public share context');

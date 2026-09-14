@@ -80,7 +80,7 @@ function validateScope(scope) {
 
 function validateAction(action) {
   object(action, 'action');
-  assert(action.version === 1, 'action.version must be 1');
+  assert(action.version === 1 || action.version === 2, 'action.version must be 1 or 2');
   const kind = action.kind;
   if (kind === 'read') {
     exact(action, ['version', 'kind', 'commentsCursor'], 'action');
@@ -96,10 +96,15 @@ function validateAction(action) {
     return action;
   }
   if (kind === 'comment.create') {
-    exact(action, ['version', 'kind', 'requestId', 'text', 'displayName'], 'action');
+    exact(action, ['version', 'kind', 'requestId', 'text', 'displayName', ...(action.version === 2 ? ['anchor'] : [])], 'action');
     uuid(action.requestId, 'requestId');
     text(action.text, 'text', 2000);
     if (action.displayName !== undefined) text(action.displayName, 'displayName', 100, true);
+    if (action.anchor !== undefined) {
+      exact(action.anchor, ['kind', 'key'], 'anchor');
+      assert(['city', 'day', 'place'].includes(action.anchor.kind), 'anchor.kind is invalid');
+      text(action.anchor.key, 'anchor.key', 160);
+    }
     return action;
   }
   if (kind === 'comment.delete') {
@@ -123,10 +128,28 @@ function validateAction(action) {
     text(action.predictionId, 'predictionId', 160);
     return action;
   }
-  if (kind === 'suggestion.create') {
-    exact(action, ['version', 'kind', 'requestId', 'selectionId', 'category', 'reason', 'displayName'], 'action');
+  if (kind === 'places.metadata') {
+    exact(action, ['version', 'kind', 'placeKey'], 'action');
+    assert(action.version === 2, 'places.metadata requires action.version 2');
+    assert(/^p:[1-9][0-9]*$/.test(text(action.placeKey, 'placeKey', 160)), 'placeKey is invalid');
+    return action;
+  }
+  if (kind === 'map.tile') {
+    exact(action, ['version', 'kind', 'dayKey', 'z', 'x', 'y'], 'action');
+    assert(action.version === 2, 'map.tile requires action.version 2');
+    assert(/^d:[1-9][0-9]*$/.test(text(action.dayKey, 'dayKey', 160)), 'dayKey is invalid');
+    assert(Number.isInteger(action.z) && action.z >= 2 && action.z <= 17, 'z is invalid');
+    assert(Number.isInteger(action.x) && action.x >= 0 && action.x < 2 ** action.z, 'x is invalid');
+    assert(Number.isInteger(action.y) && action.y >= 0 && action.y < 2 ** action.z, 'y is invalid');
+    return action;
+  }
+  if (kind === 'suggestion.create' || kind === 'suggestion.update') {
+    exact(action, ['version', 'kind', 'requestId', 'selectionId', 'category', 'reason', 'displayName', 'dayKey', ...(kind === 'suggestion.update' ? ['suggestionId'] : [])], 'action');
     uuid(action.requestId, 'requestId');
-    text(action.selectionId, 'selectionId', 160);
+    if (kind === 'suggestion.create' || action.selectionId !== undefined) text(action.selectionId, 'selectionId', 160);
+    if (kind === 'suggestion.update') uuid(action.suggestionId, 'suggestionId');
+    if (action.dayKey !== undefined && action.dayKey !== null) text(action.dayKey, 'dayKey', 160);
+    if (action.dayKey === null) assert(action.version === 2 && kind === 'suggestion.update', 'dayKey cannot be null');
     category(action.category);
     if (action.reason !== undefined) text(action.reason, 'reason', 500, true);
     if (action.displayName !== undefined) text(action.displayName, 'displayName', 60, true);

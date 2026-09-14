@@ -286,7 +286,7 @@
     attribution.hidden = true;
     wrap.append(attribution);
     const handle = place.photoHandle || place.photo?.handle;
-    if (typeof handle !== 'string' || !bridge) { fallback.textContent = 'Photo unavailable'; return wrap; }
+    if (typeof handle !== 'string' || !bridge?.photoAsset) { wrap.hidden = true; return wrap; }
     bridge.photoAsset(handle).then(asset => {
       if (!wrap.isConnected) return;
       if (!asset || !Protocol.validPhoto(asset.result) || asset.result.state !== 'available' || !asset.url) {
@@ -331,7 +331,7 @@
     return link;
   }
 
-  function placeRow(place, state, projection, bridge, onVote, onJump, onWithdraw) {
+  function placeRow(place, state, projection, bridge, onVote, onJump, onWithdraw, onEdit) {
     const row = el('article', undefined, 'place-row');
     row.id = `place-${String(place.key).replace(/[^a-z0-9_-]/gi, '-')}`;
     row.tabIndex = -1;
@@ -342,12 +342,14 @@
     copy.append(titleLine);
     copy.append(el('p', `${place.locality || Model.cityLabel(projection, place.cityId)} · ${categoryLabel(place.category)}`, 'place-meta'));
     copy.append(photoPreview(place, bridge));
+    bridge.decoratePlace?.(copy, place);
     if (place.suggested) {
       const detail = `Suggested by ${place.by || 'Guest adviser'}${place.reason ? `: ${place.reason}` : ''}`;
       copy.append(el('p', detail, 'place-note'));
     }
     if (place.suggested) {
       copy.append(el('p', 'Voting opens if the owner publishes this suggestion to the shortlist.', 'pending-note'));
+      if (onEdit && place.status === 'pending') copy.append(button('Edit', () => onEdit(place), 'button'));
       if (onWithdraw && place.status === 'pending' && place.key.startsWith('s:')) copy.append(removalControl(
         'Withdraw suggestion', 'The owner will no longer see this as a pending suggestion.', () => onWithdraw(place)
       ));
@@ -377,9 +379,41 @@
     let searchTimer = null;
     let searchSerial = 0;
     let phase = 'active';
+    const collapsedCities = new Set();
+    const collapsedNotes = new Set();
+    const metadata = new Map();
+    const suggestionMetadata = new Map();
+    const metadataTargets = new Map();
+    let metadataQueue = Promise.resolve();
+    let metadataObserver;
     const transport = bridge;
     bridge = { ...transport, action: action => phase === 'active'
       ? transport.action(action) : Promise.reject(new Error('This guest session is closing or erased.')) };
+    function decoratePlace(copy, place) {
+      if (place.placeType) copy.append(el('p', place.placeType, 'place-meta'));
+      if (!place.key.startsWith('p:') || !place.googlePlaceId || !global.IntersectionObserver) return;
+      const show = result => {
+        if (!copy.isConnected || phase !== 'active' || result?.placeKey !== place.key) return;
+        if (result.placeType && !place.placeType) copy.append(el('p', result.placeType, 'place-meta'));
+        if (result.photoHandle && !place.photoHandle) copy.append(photoPreview({ ...place, photoHandle: result.photoHandle }, bridge));
+      };
+      metadataTargets.set(copy, { place, show });
+      if (!metadataObserver) metadataObserver = new global.IntersectionObserver(entries => {
+        entries.filter(entry => entry.isIntersecting).forEach(entry => {
+          metadataObserver.unobserve(entry.target);
+          const target = metadataTargets.get(entry.target); metadataTargets.delete(entry.target);
+          if (!target || phase !== 'active') return;
+          if (!metadata.has(target.place.key)) {
+            const request = metadataQueue.then(() => bridge.action({ version: 1, kind: 'places.metadata', placeKey: target.place.key })).catch(() => null);
+            metadataQueue = request;
+            metadata.set(target.place.key, request);
+          }
+          metadata.get(target.place.key).then(target.show);
+        });
+      });
+      metadataObserver.observe(copy);
+    }
+    bridge.decoratePlace = decoratePlace;
 
     function announce(message) { if (phase === 'active') $('announcement').textContent = message; }
     function syncSuggestionCities(selectedCityId) {
@@ -401,6 +435,7 @@
       projection = read.projection;
       syncSuggestionCities(state.dialog?.cityId || projection.cities?.[0]?.id);
       state = Model.apply(state, { type: 'feedback', data: read.feedback, appendComments }, projection);
+      state.pendingSuggestions = state.pendingSuggestions.map(place => ({ ...place, ...suggestionMetadata.get(place.key) }));
       render();
     }
     async function refresh(commentsCursor, appendComments = false) {
@@ -476,17 +511,20 @@
       announce(`${place.title} is in the ${categoryLabel(place.category)} ideas for ${Model.cityLabel(projection, place.cityId)}.`);
     }
     async function submitSuggestion(event) {
-      event.preventDefault();
+      event?.preventDefault();
       const dialog = state.dialog;
-      if (!dialog?.selection) return;
+      if (!dialog?.selection || state.busy.suggestion) return;
+      const reason = $('suggest-reason').value.trim(); const name = $('suggest-name').value.trim();
       state = Model.apply(state, { type: 'suggestion.pending' }, projection); renderDialog();
       try {
-        const reason = $('suggest-reason').value.trim(); const name = $('suggest-name').value.trim();
-        const result = await bridge.action({ version: 1, kind: 'suggestion.create', requestId: uuid(), selectionId: dialog.selection.selectionId, category: dialog.category, ...(reason ? { reason } : {}), ...(name ? { displayName: name } : {}) });
-        if (duplicateTarget(result)) { closeDialog(); return; }
+        const result = await bridge.action({ version: 1, kind: dialog.suggestionId ? 'suggestion.update' : 'suggestion.create', requestId: uuid(), ...(dialog.suggestionId ? { suggestionId: dialog.suggestionId } : {}), ...(dialog.selection.selectionId ? { selectionId: dialog.selection.selectionId } : {}), category: dialog.category, ...(dialog.dayKey ? { dayKey: dialog.dayKey } : {}), ...(reason ? { reason } : {}), ...(name ? { displayName: name } : {}) });
+        if (phase !== 'active') return;
+        if (duplicateTarget(result)) { state = Model.apply(state, { type: 'suggestion.result' }, projection); if (state.dialog?.searchId === dialog.searchId) closeDialog(); return; }
+        if (!Protocol.uuid(result?.suggestionId) || result.state !== 'pending') throw new Error('TREK did not confirm the suggestion. Please try again.');
+        if (typeof result?.suggestionId === 'string') suggestionMetadata.set(`s:${result.suggestionId}`, { ...(dialog.selection.placeType ? { placeType: dialog.selection.placeType } : {}), ...(dialog.selection.photoHandle ? { photoHandle: dialog.selection.photoHandle } : {}) });
         state = Model.apply(state, { type: 'suggestion.result', message: 'Suggestion sent for owner review.' }, projection);
-        closeDialog(); await refresh(); announce(state.message);
-      } catch (caught) { state = Model.apply(state, { type: 'error', message: errorText(caught), key: 'suggestion' }, projection); renderDialog(); }
+        if (state.dialog?.searchId === dialog.searchId) closeDialog(); await refresh(); announce('Suggestion saved for owner review.');
+      } catch (caught) { if (phase !== 'active') return; state = Model.apply(state, { type: 'error', message: errorText(caught), key: 'suggestion' }, projection); if (state.dialog?.searchId === dialog.searchId) state.dialog = { ...state.dialog, error: errorText(caught) }; renderDialog(); }
     }
     function focusAndScroll(id) {
       const target = $(id);
@@ -495,11 +533,13 @@
       target.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
     function chooseDate(date) {
-      state = Model.apply(state, { type: 'date', date }, projection); render();
       const entry = Model.uniqueDates(projection).find(item => item.date === date);
+      if (entry) collapsedCities.delete(entry.cityId);
+      state = Model.apply(state, { type: 'date', date }, projection); render();
       if (entry) { focusAndScroll(`day-${entry.dayKey.replace(/[^a-z0-9_-]/gi, '-')}`); announce(`${Model.cityLabel(projection, entry.cityId)}, ${formatDate(date, locale, { day: 'numeric', month: 'long', year: 'numeric' })}.`); }
     }
     function chooseCity(cityId) {
+      collapsedCities.delete(cityId);
       state = Model.apply(state, { type: 'city', cityId }, projection); render();
       const stay = Model.cardStays(projection).find(item => item.cityId === cityId);
       const target = stay ? $(`stay-${stay.id.replace(/[^a-z0-9_-]/gi, '-')}`) : null;
@@ -515,23 +555,24 @@
       if (bounds.left < left) ribbon.scrollLeft += bounds.left - left;
       if (bounds.right > right) ribbon.scrollLeft += bounds.right - right;
     }
-    function openDialog(cityId, category) {
+    function openDialog(cityId, category, options = {}) {
       const searchable = (projection.cities || []).filter(city => city.countryCodes.length);
       cityId = searchable.find(city => city.id === cityId)?.id || searchable[0]?.id;
       if (!cityId) { error('No destinations are available for place search yet.'); return; }
       opener = document.activeElement;
-      state = Model.apply(state, { type: 'dialog', value: { cityId, category, query: '', results: [], active: -1, selection: null, searchId: uuid(), pending: false } }, projection);
+      state = Model.apply(state, { type: 'dialog', value: { cityId, category, query: '', results: [], active: -1, selection: null, searchId: uuid(), pending: false, ...options } }, projection);
       $('suggest-dialog').showModal();
       $('suggest-category').value = category;
       syncSuggestionCities(cityId);
       $('suggest-city').value = cityId;
-      $('suggest-name').value = state.displayName;
+      $('suggest-name').value = options.displayName ?? state.displayName;
       $('place-search').value = '';
       renderDialog();
       $('place-search').focus();
     }
     function closeDialog() {
       global.clearTimeout(searchTimer);
+      searchSerial++;
       const dialog = $('suggest-dialog');
       if (dialog.open) dialog.close();
       state = Model.apply(state, { type: 'dialog', value: null }, projection); render();
@@ -550,16 +591,18 @@
         const results = Array.isArray(result?.suggestions) ? result.suggestions.filter(item => item && typeof item.predictionId === 'string' && typeof item.mainText === 'string').slice(0, 5) : [];
         state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, results, active: -1, pending: false } }, projection); renderDialog();
       } catch (caught) {
-        if (serial !== searchSerial) return;
+        if (serial !== searchSerial || !state.dialog || state.dialog.searchId !== dialog.searchId) return;
         state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, results: [], active: -1, pending: false, error: errorText(caught) } }, projection); renderDialog();
       }
     }
     async function selectResult(result) {
       const dialog = state.dialog;
       if (!dialog || !result) return;
+      const serial = ++searchSerial;
       state = Model.apply(state, { type: 'dialog', value: { ...dialog, pending: true, active: -1 } }, projection); renderDialog();
       try {
         const resolved = await bridge.action({ version: 1, kind: 'places.resolve', searchId: dialog.searchId, predictionId: result.predictionId });
+        if (serial !== searchSerial || !state.dialog || state.dialog.searchId !== dialog.searchId || phase !== 'active') return;
         const raw = resolved?.place || resolved;
         const selectionId = resolved?.selectionId;
         if (!resolved || typeof selectionId !== 'string' || !raw || typeof raw.googlePlaceId !== 'string' || !raw.cityId || !raw.title || !raw.countryCode) throw new Error('TREK returned an invalid place selection.');
@@ -567,16 +610,21 @@
         if (selection.googlePlaceId && selection.mapsUrl) { const url = new URL(selection.mapsUrl); url.searchParams.set('query_place_id', selection.googlePlaceId); selection.mapsUrl = url.href; }
         if (!Protocol.validPlace(selection)) throw new Error('TREK returned an invalid place selection.');
         state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, query: result.mainText, selection: { ...selection, selectionId }, results: [], pending: false, error: '' } }, projection); renderDialog();
-      } catch (caught) { state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, pending: false, error: errorText(caught) } }, projection); renderDialog(); }
+        if (dialog.mode === 'quick') await submitSuggestion();
+      } catch (caught) { if (serial !== searchSerial || !state.dialog || state.dialog.searchId !== dialog.searchId) return; state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, pending: false, error: errorText(caught) } }, projection); renderDialog(); }
     }
     function renderDialog() {
       const dialog = state.dialog;
       if (!dialog) return;
+      const quick = dialog.mode === 'quick';
+      $('suggest-dialog').dataset.mode = quick ? 'quick' : 'full';
+      $('suggest-heading').textContent = quick ? 'Recommend here' : 'Suggest a place';
+      ['suggest-search-controls', 'suggest-personal-details', 'suggest-form-actions'].forEach(id => { $(id).hidden = quick; });
       $('suggest-category').value = dialog.category;
       syncSuggestionCities(dialog.cityId);
       $('suggest-city').value = dialog.cityId;
-      $('suggest-submit').disabled = !dialog.selection || dialog.pending;
-      $('suggest-submit').textContent = dialog.pending ? 'Working…' : 'Send suggestion';
+      $('suggest-submit').disabled = !dialog.selection || dialog.pending || state.busy.suggestion;
+      $('suggest-submit').textContent = dialog.pending || state.busy.suggestion ? 'Working…' : dialog.suggestionId ? 'Save changes' : 'Send suggestion';
       const list = $('search-results'); list.replaceChildren(); list.hidden = !dialog.results.length;
       $('place-search').setAttribute('aria-expanded', String(dialog.results.length > 0));
       dialog.results.forEach((result, index) => {
@@ -590,20 +638,22 @@
       if (dialog.active >= 0 && dialog.results[dialog.active]) $('place-search').setAttribute('aria-activedescendant', `search-result-${dialog.active}`);
       else $('place-search').removeAttribute('aria-activedescendant');
       const status = $('result-status');
-      status.textContent = dialog.error || (dialog.pending ? 'Searching or resolving…' : dialog.results.length ? `${dialog.results.length} results. Use arrow keys and Enter.` : dialog.query.trim().length >= 2 ? 'No places found. Try another search.' : 'Type at least two characters to search.');
+      status.textContent = dialog.error || (state.busy.suggestion ? 'Saving recommendation…' : dialog.pending ? 'Searching or resolving…' : dialog.selection ? 'Place selected.' : dialog.results.length ? `${dialog.results.length} results. Use arrow keys and Enter.` : dialog.query.trim().length >= 2 ? 'No places found. Try another search.' : 'Type at least two characters to search.');
       const selected = $('selected-place'); selected.replaceChildren(); selected.hidden = !dialog.selection;
       if (dialog.selection) { selected.append(mapLink(dialog.selection, bridge), el('p', `${dialog.selection.locality || Model.cityLabel(projection, dialog.selection.cityId)} · ${categoryLabel(dialog.category)}`), photoPreview(dialog.selection, bridge)); }
       $('suggest-reason').value = dialog.reason || '';
     }
     function renderRoute() {
       const list = $('route-list'); list.replaceChildren();
+      const others = $('route-others-list'); others.replaceChildren();
+      const committed = new Set((projection.stays || []).filter(stay => stay.days?.length).map(stay => stay.cityId));
       const seen = new Set();
       Model.cardStays(projection).forEach(stay => {
         if (seen.has(stay.cityId)) return;
         seen.add(stay.cityId);
         const item = el('li');
         item.append(button(`${Model.cityLabel(projection, stay.cityId)} · ${stay.days?.length ? `${stay.days.length} day${stay.days.length === 1 ? '' : 's'}` : 'Ideas'}`, () => chooseCity(stay.cityId)));
-        list.append(item);
+        (committed.has(stay.cityId) ? list : others).append(item);
       });
     }
     function renderDates() {
@@ -624,7 +674,10 @@
       ['see', 'eat'].forEach(tabCategory => {
         const tab = button(categoryLabel(tabCategory), () => { state = Model.apply(state, { type: 'category', cityId, category: tabCategory }, projection); render(); });
         tab.id = `tab-${canonicalId}-${tabCategory}`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `panel-${canonicalId}-${tabCategory}`); tab.setAttribute('aria-selected', String(category === tabCategory)); tab.tabIndex = category === tabCategory ? 0 : -1; tabs.append(tab);
-      }); advice.append(tabs);
+      });
+      const toolbar = el('div', undefined, 'advice-toolbar');
+      toolbar.append(tabs, button('Suggest an idea', () => openDialog(cityId, category), 'button primary'));
+      advice.append(toolbar);
       tabs.addEventListener('keydown', event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
@@ -635,37 +688,61 @@
       ['see', 'eat'].forEach(tabCategory => {
         const panel = el('div', undefined, category === tabCategory ? 'tab-panel' : 'tab-panel hidden'); panel.id = `panel-${canonicalId}-${tabCategory}`; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', `tab-${canonicalId}-${tabCategory}`); panel.tabIndex = 0;
         const heading = el('div', undefined, 'advice-heading'); heading.append(el('h3', tabCategory === 'eat' ? 'Good things to eat' : 'Worth a detour'));
-        heading.append(button('Suggest an idea', () => openDialog(cityId, tabCategory), 'button primary'));
         panel.append(heading);
-        const places = Model.shortlistFor(projection, cityId, tabCategory).concat(state.pendingSuggestions.filter(item => item.cityId === cityId && item.category === tabCategory).map(item => item.place || item));
+        const places = Model.shortlistFor(projection, cityId, tabCategory).concat(state.pendingSuggestions.filter(item => !item.dayKey && item.cityId === cityId && item.category === tabCategory).map(item => item.place || item));
         if (!places.length) panel.append(el('p', `No ${tabCategory === 'eat' ? 'food places' : 'sights'} are shortlisted yet.`, 'empty'));
         places.forEach(place => {
           const withdraw = removeFeedback('suggestion.withdraw', 'suggestionId', place.key.slice(2), 'Suggestion withdrawn.');
-          panel.append(placeRow(place, state, projection, bridge, vote, jumpToPlace, () => withdraw()));
+          panel.append(placeRow(place, state, projection, bridge, vote, jumpToPlace, () => withdraw(), editSuggestion));
         });
         panel.setAttribute('aria-label', `${Model.cityLabel(projection, cityId)} ${categoryLabel(tabCategory)} ideas`);
         advice.append(panel);
       });
       return advice;
     }
+    function editSuggestion(place) {
+      openDialog(place.cityId, place.category, { suggestionId: place.key.slice(2), selection: place, dayKey: place.dayKey, reason: place.reason || '', displayName: place.displayName || '', query: place.title });
+      $('place-search').value = place.title;
+    }
     function renderCards() {
+      metadataObserver?.disconnect(); metadataTargets.clear();
+      $('stays').querySelectorAll('.daily-map').forEach(map => map.disposeMap?.());
       const container = $('stays'); container.replaceChildren();
       const renderedAdvice = new Set();
       Model.cardStays(projection).forEach(stay => {
         const card = el('section', undefined, 'stay-card'); card.id = `stay-${stay.id.replace(/[^a-z0-9_-]/gi, '-')}`; card.tabIndex = -1; card.setAttribute('role', 'region'); card.setAttribute('aria-label', `${Model.cityLabel(projection, stay.cityId)} stay`);
-        const header = el('header', undefined, 'stay-header'); header.append(el('h2', Model.cityLabel(projection, stay.cityId)), el('span', stay.days?.length ? `${stay.days.length} day${stay.days.length === 1 ? '' : 's'}` : 'Ideas beyond the settled route', 'muted small')); card.append(header);
-        if (!stay.days?.length) card.append(el('p', 'No settled dates here. Suggestions stay separate from the plan.', 'empty'));
+        const header = el('header', undefined, 'stay-header');
+        const cityToggle = button(Model.cityLabel(projection, stay.cityId), () => { if (collapsedCities.has(stay.cityId)) collapsedCities.delete(stay.cityId); else collapsedCities.add(stay.cityId); render(); }, 'city-toggle');
+        const body = el('div'); body.id = `${card.id}-body`; body.hidden = collapsedCities.has(stay.cityId);
+        cityToggle.setAttribute('aria-expanded', String(!body.hidden)); cityToggle.setAttribute('aria-controls', body.id);
+        const cityHeading = el('h2'); cityHeading.append(cityToggle);
+        header.append(cityHeading, el('span', stay.days?.length ? `${stay.days.length} day${stay.days.length === 1 ? '' : 's'}` : 'Ideas beyond the settled route', 'muted small')); card.append(header, body);
+        if (!stay.days?.length) body.append(el('p', 'No settled dates here. Suggestions stay separate from the plan.', 'empty'));
         (stay.days || []).forEach(day => {
           const dayBlock = el('section', undefined, day.date === state.selectedDate ? 'day selected' : 'day'); dayBlock.id = `day-${day.key.replace(/[^a-z0-9_-]/gi, '-')}`; dayBlock.tabIndex = -1; dayBlock.setAttribute('aria-label', `${Model.cityLabel(projection, stay.cityId)}, ${formatDate(day.date, locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
           dayBlock.append(el('h3', formatDate(day.date, locale, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }), 'day-title'));
+          if (day.notes?.length) {
+            const notes = el('details', undefined, 'day-notes'); notes.open = !collapsedNotes.has(day.key);
+            notes.append(el('summary', 'Plan for the day'));
+            day.notes.forEach(note => notes.append(el('p', note.text, 'day-note-content')));
+            notes.addEventListener('toggle', () => { if (notes.open) collapsedNotes.delete(day.key); else collapsedNotes.add(day.key); });
+            dayBlock.append(notes);
+          }
           if (!day.schedule?.length) dayBlock.append(el('p', 'No settled places published for this date.', 'muted small'));
           (day.schedule || []).forEach(row => {
-            const schedule = el('div', undefined, 'schedule-row'); const time = el('span', row.time || 'Any time', 'time'); const copy = el('div', undefined, 'place-copy'); copy.append(mapLink(row.place, bridge), el('p', `${categoryLabel(row.place.category)} · ${row.place.locality || ''}`, 'place-meta'), photoPreview(row.place, bridge)); schedule.append(time, copy); if (row.booked) schedule.append(el('span', 'Booked', 'badge')); dayBlock.append(schedule);
-          }); card.append(dayBlock);
+            const schedule = el('div', undefined, 'schedule-row'); schedule.id = `place-${String(row.place.key).replace(/[^a-z0-9_-]/gi, '-')}`; const time = el('span', row.time || 'Any time', 'time'); const copy = el('div', undefined, 'place-copy'); copy.append(mapLink(row.place, bridge), el('p', `${categoryLabel(row.place.category)} · ${row.place.locality || ''}`, 'place-meta'), photoPreview(row.place, bridge)); decoratePlace(copy, row.place); schedule.append(time, copy); if (row.booked) schedule.append(el('span', 'Booked', 'badge')); dayBlock.append(schedule);
+          });
+          const consideration = ['see', 'eat'].flatMap(category => Model.shortlistFor(projection, stay.cityId, category));
+          const map = global.TripAdviceMap?.render({ document, bridge, day, consideration, votes: state.votes, onVote: (key, value) => { const place = Model.placeIndex(projection).get(key); if (place) return vote(place, value); } });
+          if (map) dayBlock.append(map);
+          const pending = state.pendingSuggestions.filter(place => place.dayKey === day.key);
+          pending.forEach(place => dayBlock.append(placeRow(place, state, projection, bridge, vote, jumpToPlace, removeFeedback('suggestion.withdraw', 'suggestionId', place.key.slice(2), 'Suggestion withdrawn.'), editSuggestion)));
+          dayBlock.append(button('Recommend here', () => openDialog(stay.cityId, state.categories[stay.cityId] || 'see', { mode: 'quick', dayKey: day.key }), 'button recommend-here'));
+          body.append(dayBlock);
         });
         const canonical = stay.shortlistCityId || stay.cityId;
-        if (!renderedAdvice.has(canonical)) { renderedAdvice.add(canonical); card.append(renderAdvice(canonical, canonical)); }
-        else { const pointer = el('div', undefined, 'return-pointer'); pointer.append(el('p', `More ${Model.cityLabel(projection, canonical)} ideas are kept in the first ${Model.cityLabel(projection, canonical)} card.`, 'muted small')); pointer.append(button(`Open ${Model.cityLabel(projection, canonical)} ideas`, () => focusAndScroll(`advice-${canonical}`), 'button')); card.append(pointer); }
+        if (!renderedAdvice.has(canonical)) { renderedAdvice.add(canonical); body.append(renderAdvice(canonical, canonical)); }
+        else { const pointer = el('div', undefined, 'return-pointer'); pointer.append(el('p', `More ${Model.cityLabel(projection, canonical)} ideas are kept in the first ${Model.cityLabel(projection, canonical)} card.`, 'muted small')); pointer.append(button(`Open ${Model.cityLabel(projection, canonical)} ideas`, () => focusAndScroll(`advice-${canonical}`), 'button')); body.append(pointer); }
         container.append(card);
       });
     }
@@ -701,6 +778,8 @@
       'Remove your votes, comments, and suggestions from this advice link and end this guest session. Owner-added trip places remain.', async () => {
         if (phase !== 'active') return;
         phase = 'erasing';
+        $('stays').querySelectorAll('.daily-map').forEach(map => map.disposeMap?.());
+        metadataObserver?.disconnect(); metadataTargets.clear(); metadata.clear(); suggestionMetadata.clear();
         $('content').inert = true;
         global.clearTimeout(searchTimer);
         if ($('suggest-dialog').open) $('suggest-dialog').close();
@@ -731,15 +810,15 @@
     $('suggest-dialog').addEventListener('click', event => { if (event.target === $('suggest-dialog')) closeDialog(); });
     $('suggest-close').addEventListener('click', closeDialog); $('suggest-cancel').addEventListener('click', closeDialog);
     $('suggest-form').addEventListener('submit', submitSuggestion);
-    $('place-search').addEventListener('input', event => { if (!state.dialog) return; state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, query: event.target.value, selection: null, error: '' } }, projection); renderDialog(); global.clearTimeout(searchTimer); searchTimer = global.setTimeout(searchPlaces, 300); });
+    $('place-search').addEventListener('input', event => { if (!state.dialog || state.busy.suggestion) return; searchSerial++; state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, query: event.target.value, selection: null, results: [], active: -1, pending: false, error: '' } }, projection); renderDialog(); global.clearTimeout(searchTimer); searchTimer = global.setTimeout(searchPlaces, 300); });
     $('place-search').addEventListener('keydown', event => {
       const dialog = state.dialog; if (!dialog) return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const delta = event.key === 'ArrowDown' ? 1 : -1; const active = dialog.results.length ? (dialog.active + delta + dialog.results.length) % dialog.results.length : -1; state = Model.apply(state, { type: 'dialog', value: { ...dialog, active } }, projection); renderDialog(); }
       if (event.key === 'Enter' && dialog.active >= 0) { event.preventDefault(); selectResult(dialog.results[dialog.active]); }
       if (event.key === 'Escape' && dialog.results.length) { event.preventDefault(); state = Model.apply(state, { type: 'dialog', value: { ...dialog, results: [], active: -1 } }, projection); renderDialog(); }
     });
-    $('suggest-category').addEventListener('change', event => { if (state.dialog) { state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, category: event.target.value, selection: null } }, projection); renderDialog(); } });
-    $('suggest-city').addEventListener('change', event => { if (state.dialog) { state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, cityId: event.target.value, selection: null } }, projection); renderDialog(); } });
+    $('suggest-category').addEventListener('change', event => { if (state.dialog) { searchSerial++; state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, category: event.target.value, results: [], active: -1, pending: false } }, projection); renderDialog(); } });
+    $('suggest-city').addEventListener('change', event => { if (state.dialog) { searchSerial++; state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, cityId: event.target.value, selection: null, results: [], active: -1, pending: false } }, projection); renderDialog(); } });
     $('suggest-reason').addEventListener('input', event => { if (state.dialog) state = Model.apply(state, { type: 'dialog', value: { ...state.dialog, reason: event.target.value.slice(0, 500) } }, projection); });
     $('suggest-name').addEventListener('input', event => { state = Model.apply(state, { type: 'display-name', value: event.target.value }, projection); });
     refresh();
@@ -764,7 +843,7 @@
   function owner() {
     const root = $('owner-app'); if (!root) return;
     const bridge = OwnerBridge();
-    let context; let response; let previewRevision = null; let previewRun = 0;
+    let context; let response; let previewRevision = null; let previewConfig = null; let previewRun = 0;
     let setupEditor = null;
     const ownerError = message => { $('owner-error').hidden = false; $('owner-error').textContent = message; };
     const tripId = () => context?.tripId;
@@ -772,6 +851,7 @@
       setupEditor = global.TrekAdviceOwner.createEditor($('config-editor'), config, candidates, () => {
         previewRun++;
         previewRevision = null;
+        previewConfig = null;
         $('preview-status').textContent = 'Hidden items changed. Preview before saving.';
       });
     }
@@ -811,10 +891,9 @@
         const config = currentConfig();
         if (!config) throw new Error('Select the trip information to preview.');
         const result = await bridge.invoke(`/owner/preview?tripId=${encodeURIComponent(tripId())}`, 'POST', config);
-        if (run !== previewRun) return;
+        if (run !== previewRun) return false;
         const projection = result?.projection || result;
         if (!Protocol.validProjection(projection)) throw new Error('TREK returned an invalid preview.');
-        previewRevision = projection.revision;
         const panel = $('preview');
         const template = document.createElement('template');
         // This build-generated constant is the trusted guest document, never trip data.
@@ -822,9 +901,12 @@
         panel.replaceChildren(el('p', 'Private preview: navigation and categories work. Feedback, search, and photos are disabled here. Nothing has been published.', 'status'), template.content.cloneNode(true));
         const previewBridge = global.TrekAdvicePreview.bridge(projection, url => global.parent.postMessage({ type: 'trek:openExternal', url }, '*'));
         renderGuest(panel, projection, previewBridge, context);
+        previewRevision = projection.revision;
+        previewConfig = JSON.stringify(config);
         $('preview-status').textContent = 'Review the guest page below before enabling the link.';
         if (scroll) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      } catch (caught) { if (run === previewRun) { previewRevision = null; ownerError(errorText(caught)); } }
+        return true;
+      } catch (caught) { if (run === previewRun) { previewRevision = null; previewConfig = null; ownerError(errorText(caught)); } return false; }
       finally { control.disabled = false; }
     }
     let saving = false;
@@ -832,10 +914,15 @@
       if (saving) return;
       saving = true;
       $('publish-button').disabled = true; $('pause-button').disabled = true;
+      $('owner-error').hidden = true; $('publish-status').textContent = '';
       try {
-        const config = currentConfig();
+        let config = currentConfig();
         if (!config) throw new Error('The trip preset is not ready.');
-        if (enabled && !previewRevision) throw new Error('Refresh the preview before sharing your changes.');
+        if (enabled && (!previewRevision || previewConfig !== JSON.stringify(config))) {
+          if (!await preview(false)) return;
+          config = currentConfig();
+          if (!previewRevision || previewConfig !== JSON.stringify(config)) throw new Error('The trip changed while preparing the preview. Try saving again.');
+        }
         const result = await bridge.invoke(`/owner/config?tripId=${encodeURIComponent(tripId())}`, 'PUT', {
           enabled, expiresInDays: Number($('expires').value),
           expectedRevision: response?.config?.revision || response?.revision || 0,

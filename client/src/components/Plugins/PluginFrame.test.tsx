@@ -77,6 +77,16 @@ describe('PluginFrame', () => {
     expect(sandbox).not.toContain('allow-same-origin');
   });
 
+  it('FE-PLUGINS-FRAME-062: delegates clipboard writes only to Trip Advice', () => {
+    const { container, rerender } = render(<PluginFrame pluginId="demo" />);
+    expect(container.querySelector('iframe')!.getAttribute('allow')).toBeNull();
+
+    rerender(<PluginFrame pluginId="trip-advice" />);
+    const iframe = container.querySelector('iframe')!;
+    expect(iframe.getAttribute('allow')).toBe('clipboard-write');
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
+  });
+
   it('FE-PLUGINS-FRAME-002: authenticates messages by sender window — a foreign source is ignored', () => {
     const { container } = render(<PluginFrame pluginId="demo" />);
     const iframe = container.querySelector('iframe')!;

@@ -4325,6 +4325,12 @@ function runMigrations(db: Database.Database): void {
       db.exec("UPDATE plugin_share_links SET retention_started_at = MIN(expires_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE enabled = 0 AND retention_started_at IS NULL");
       db.exec('CREATE INDEX IF NOT EXISTS plugin_share_retention ON plugin_share_links(feedback_purge_queued, COALESCE(retention_started_at, expires_at))');
     },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS plugin_advice_map_tiles (
+        tile_key TEXT PRIMARY KEY, bytes BLOB NOT NULL, expires_at INTEGER NOT NULL,
+        etag TEXT, last_modified TEXT
+      )`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

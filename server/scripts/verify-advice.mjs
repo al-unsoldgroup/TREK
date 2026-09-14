@@ -11,6 +11,8 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 // remote run reports every failure instead of only the first one.
 const build = ['run', 'build', '--workspace=shared'];
 const commands = [
+  ['run', 'test', '--workspace=client', '--', 'src/components/Plugins/TripAdviceOwner.test.ts'],
+  ['run', 'test', '--workspace=server', '--', 'tests/unit/plugins/advice-map.provider.test.ts'],
   ['run', 'test', '--workspace=server', '--', 'tests/unit/plugins/public-share-rpc.test.ts'],
   ['run', 'test', '--workspace=server', '--', 'tests/e2e/admin.e2e.test.ts'],
   ['--prefix', 'plugins/trip-advice', 'test'],
@@ -33,7 +35,7 @@ const commands = [
     'tests/unit/nest/llm-parse/clients.test.ts', 'tests/unit/nest/llm-parse/llm-client.factory.test.ts',
     'tests/unit/nest/llm-parse/llm-config.resolver.test.ts', 'tests/unit/nest/llm-parse/llm-parse.service.test.ts',
     'tests/unit/services/llmConfig.test.ts', 'tests/unit/nest/settings.service.test.ts',
-    'tests/unit/plugins/google-places.provider.test.ts'],
+    'tests/unit/plugins/google-places.provider.test.ts', 'tests/unit/plugins/owner-city.provider.test.ts'],
   ['--prefix', 'plugin-sdk', 'test', '--', 'test/public-share.test.ts', 'test/sdk.test.ts', 'test/permissions-parity.test.ts', 'test/manifest-roundtrip.test.ts'],
   ['run', 'test:ws', '--workspace=server'],
   ['run', 'test:integration', '--workspace=server', '--', '--exclude=tests/integration/plugins/trip-advice-runtime.test.ts'],
@@ -63,6 +65,10 @@ const run = (args) => {
   return result.status ?? 1;
 };
 
+if (process.argv.includes('--generate')) {
+  if (run(['run', 'gen:plugin-share', '--workspace=server']) !== 0) process.exit(1);
+  if (run(['run', 'gen:plugin-facts', '--workspace=server']) !== 0) process.exit(1);
+}
 if (run(build) !== 0) process.exit(1);
 const failed = selected.filter((args) => run(args) !== 0);
 console.log(`\nadvice verification summary: ${selected.length - failed.length}/${selected.length} checks passed`);

@@ -39,6 +39,7 @@ import { validateRouteGuards, PUBLIC_ROUTE_ALLOW_LIST } from '../../src/nest/com
 import { createUser, createTrip, createDay, createPlace, createDayAssignment, createCategory } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
 import type { AdviceReadResult, AdviceShareConfig } from '@trek/shared';
+import { adviceShareConfigV2Schema, adviceProjectionSchema, adviceProjectionV2Schema, adviceBootstrapSchema } from '@trek/shared';
 import type { PublicSharePrincipal } from '../../src/nest/plugins/protocol/envelope';
 import type { User } from '../../src/types';
 
@@ -61,6 +62,7 @@ let categoryId: number;
 let scheduledPlaceId: number;
 let shortlistPlaceId: number;
 let dayId: number;
+let returnDay: number;
 const ownerPath = () => `/api/trips/${tripId}/share-link/plugins/trip-advice`;
 const publicPath = (token: string) => `/api/shared/${token}/plugins/trip-advice`;
 const origin = { Origin: 'https://trek.example.test', 'Sec-Fetch-Site': 'same-origin' };
@@ -93,7 +95,7 @@ beforeEach(() => {
   tripId = createTrip(testDb, owner.id).id;
   categoryId = createCategory(testDb).id;
   dayId = createDay(testDb, tripId, { date: '2026-10-09' }).id;
-  const returnDay = createDay(testDb, tripId, { date: '2026-10-23' }).id;
+  returnDay = createDay(testDb, tripId, { date: '2026-10-23' }).id;
   scheduledPlaceId = createPlace(testDb, tripId).id;
   shortlistPlaceId = createPlace(testDb, tripId).id;
   assignmentId = createDayAssignment(testDb, dayId, scheduledPlaceId).id;
@@ -113,6 +115,149 @@ afterAll(async () => { await app.close(); testDb.close(); vi.unstubAllEnvs(); })
 const publish = () => shares.write(tripId, owner, { config, expectedRevision: 0, enabled: true, expiresInDays: 10 });
 
 describe('advice authority and public HTTP', () => {
+  it('locks native v2 contracts without confusing the v1 bootstrap', () => {
+    expect(adviceShareConfigV2Schema.parse({ version: 2, showNotes: false, hiddenCityKeys: [], hiddenDayKeys: [], hiddenNoteDayKeys: [], hiddenPlaceKeys: [], hiddenIdeaKeys: [], addedCities: [] }).version).toBe(2);
+    expect(adviceShareConfigV2Schema.safeParse({ version: 2, showNotes: true, cities: [] }).success).toBe(false);
+    expect(adviceBootstrapSchema.safeParse({ kind: 'plugin-share', version: 2, title: 'Native trip', expiresAt: '2026-10-09T00:00:00.000Z', plugin: { id: 'trip-advice', protocolVersion: 2, surface: 'native' } }).success).toBe(true);
+    expect(adviceBootstrapSchema.safeParse({ kind: 'plugin-share', version: 2, title: 'Mixed trip', expiresAt: '2026-10-09T00:00:00.000Z', plugin: { id: 'trip-advice', protocolVersion: 2, entry: 'guest.html', surface: 'native' } }).success).toBe(false);
+  });
+  it('migrates v1 visibility to native exceptions without revealing excluded trip content or notes', () => {
+    const native = projection.migrateV1(tripId, config);
+    const before = projection.build(tripId, config);
+    const after = adviceProjectionV2Schema.parse(projection.buildV2(tripId, native));
+    const visible = (value: { stays: Array<{ days: Array<{ key: string; schedule: Array<{ key: string }> }> }>; shortlists: Array<{ see: Array<{ key: string }>; eat: Array<{ key: string }> }> }) => ({
+      days: value.stays.flatMap(stay => stay.days.map(day => day.key)).sort(),
+      schedule: value.stays.flatMap(stay => stay.days.flatMap(day => day.schedule.map(row => row.key))).sort(),
+      ideas: value.shortlists.flatMap(list => [...list.see, ...list.eat].map(place => place.key)).sort(),
+    });
+    expect(visible(after)).toEqual(visible(before));
+    const withoutFirstDay = adviceProjectionV2Schema.parse(projection.buildV2(tripId, { ...native, hiddenDayKeys: [`d:${dayId}`] }));
+    expect(withoutFirstDay.stays.flatMap(stay => stay.days).find(day => day.key === `d:${returnDay}`)?.dayNumber).toBe(2);
+    expect(native.showNotes).toBe(false);
+    expect(JSON.stringify(after)).not.toContain('PRIVATE-CANARY');
+  });
+  it('keeps legacy presentation until an explicit hash-bound upgrade and preserves token and feedback identity', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, scheduledPlaceId);
+    db.run('INSERT INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)', scheduledPlaceId, 'JP', 'JP-13', 'Tokyo');
+    const link = publish();
+    const legacy = shares.bootstrap(link.token);
+    const preview = shares.ownerNative(tripId, owner.id);
+    expect(preview.legacy).toBe(true);
+    expect(shares.bootstrap(link.token)).toEqual(legacy);
+    const ownerPreview = shares.ownerPrincipal(tripId, owner.id, true);
+    expect(ownerPreview.preview).toBe(true);
+    expect(shares.providerSnapshot(ownerPreview)).toMatchObject({ version: 2, title: 'Test Trip 3' });
+    const providerCities = shares.providerCities(ownerPreview);
+    const previewCityIds = new Set(shares.providerSnapshot(ownerPreview).cities.map(city => city.id));
+    expect(providerCities.length).toBeGreaterThan(0);
+    expect(providerCities.every(city => previewCityIds.has(city.id))).toBe(true);
+    expect(shares.bootstrap(link.token)).toEqual(legacy);
+    const input = { expectedRevision: link.revision, config: preview.draftConfig, enabled: true, expiresInDays: 10 };
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, input)).toThrow('Review the native advice upgrade');
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, { ...input, upgradeToV2: { expectedLegacyHash: '0'.repeat(64) } })).toThrow('Review the native advice upgrade');
+    db.run('UPDATE day_assignments SET assignment_time = ? WHERE id = ?', '13:30', assignmentId);
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, { ...input, upgradeToV2: { expectedLegacyHash: preview.upgradeRevision } })).toThrow('Review the native advice upgrade');
+    const refreshed = shares.ownerNative(tripId, owner.id);
+    const upgraded = shares.ownerNativeConfigure(tripId, owner.id, { ...input, upgradeToV2: { expectedLegacyHash: refreshed.upgradeRevision } });
+    expect(upgraded.config?.token).toBe(link.token);
+    expect(upgraded.config?.shareId).toBe(link.shareId);
+    expect(upgraded.legacy).toBe(false);
+    expect(shares.bootstrap(link.token).version).toBe(2);
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, input)).toThrow('Advice configuration changed');
+  });
+  it('binds private native provider authority to its owner and configuration revision without a guest session', () => {
+    const draft = shares.ownerNative(tripId, owner.id);
+    const saved = shares.ownerNativeConfigure(tripId, owner.id, { expectedRevision: 0, config: draft.draftConfig, enabled: false, expiresInDays: 10 });
+    const principal = shares.ownerPrincipal(tripId, owner.id);
+    expect(principal.kind).toBe('adviceOwner');
+    expect(principal.preview).toBe(false);
+    expect(testDb.prepare('SELECT COUNT(*) AS count FROM plugin_share_sessions').get()).toEqual({ count: 0 });
+    expect(shares.providerSnapshot(principal).version).toBe(2);
+    expect(() => shares.bootstrap(saved.config!.token)).toThrow();
+    shares.ownerNativeConfigure(tripId, owner.id, { expectedRevision: saved.config!.revision, config: draft.draftConfig, enabled: false, expiresInDays: 10 });
+    expect(() => shares.validateProviderPrincipal(principal)).toThrow('Advice configuration changed');
+    const other = createUser(testDb).user as User;
+    expect(() => shares.ownerPrincipal(tripId, other.id)).toThrow('Trip not found');
+  });
+  it('withholds explicitly hidden suggestion keys without exposing the exception list', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    const draft = shares.ownerNative(tripId, owner.id);
+    const hidden = 's:11111111-1111-4111-8111-111111111111';
+    const visible = 's:22222222-2222-4222-8222-222222222222';
+    const saved = shares.ownerNativeConfigure(tripId, owner.id, { expectedRevision: 0, config: { ...draft.draftConfig, hiddenIdeaKeys: [hidden] }, enabled: true, expiresInDays: 10 });
+    const session = shares.session(saved.config!.token, undefined, 'hidden-idea-test');
+    const principal = shares.authorize(saved.config!.token, session.credential, session.csrfToken);
+    expect(shares.filterSuggestionKeys(principal, [hidden, visible])).toEqual([visible]);
+    expect(JSON.stringify(shares.snapshot(principal))).not.toContain(hidden);
+  });
+  it('preserves guest identity across native visibility autosaves and revokes it on disable', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    const draft = shares.ownerNative(tripId, owner.id);
+    const saved = shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: 0, config: draft.draftConfig, enabled: true, expiresInDays: 10,
+    });
+    const guest = shares.session(saved.config!.token, undefined, 'native-autosave');
+    const before = shares.authorize(saved.config!.token, guest.credential, guest.csrfToken);
+    const updated = shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: saved.config!.revision,
+      config: { ...draft.draftConfig, hiddenDayKeys: [`d:${dayId}`] },
+      enabled: true,
+      expiresInDays: 10,
+    });
+    const after = shares.authorize(updated.config!.token, guest.credential, guest.csrfToken);
+    expect(after.guestId).toBe(before.guestId);
+    expect(after.epoch).toBe(before.epoch + 1);
+    shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: updated.config!.revision, config: updated.draftConfig, enabled: false, expiresInDays: 10,
+    });
+    expect(() => shares.authorize(updated.config!.token, guest.credential, guest.csrfToken)).toThrow();
+  });
+  it('separates bounded passive media reads from the unchanged feedback budget', () => {
+    const link = publish();
+    const guest = shares.session(link.token, undefined, 'media-limit-test');
+    expect(() => shares.authorizeMedia(link.token, guest.credential, 'wrong-csrf')).toThrow();
+    for (let index = 0; index < 120; index++) shares.authorizeMedia(link.token, guest.credential, guest.csrfToken);
+    expect(() => shares.authorizeMedia(link.token, guest.credential, guest.csrfToken)).toThrow('Advice request limit reached');
+    for (let index = 0; index < 30; index++) shares.authorize(link.token, guest.credential, guest.csrfToken);
+    expect(() => shares.authorize(link.token, guest.credential, guest.csrfToken)).toThrow('Advice request limit reached');
+  });
+  it('caps passive media reads across guests on the same share', () => {
+    const link = publish();
+    for (let guestIndex = 0; guestIndex < 5; guestIndex++) {
+      const guest = shares.session(link.token, undefined, `media-guest-${guestIndex}`);
+      for (let index = 0; index < 120; index++) shares.authorizeMedia(link.token, guest.credential, guest.csrfToken);
+    }
+    const sixth = shares.session(link.token, undefined, 'media-guest-6');
+    expect(() => shares.authorizeMedia(link.token, sixth.credential, sixth.csrfToken)).toThrow('Advice request limit reached');
+    expect(() => shares.authorize(link.token, sixth.credential, sixth.csrfToken)).not.toThrow();
+  });
+  it('keeps day notes private by default and publishes only selected day text after explicit opt-in', () => {
+    db.run('UPDATE days SET notes = ? WHERE id = ?', 'Day intent', dayId);
+    db.run('INSERT INTO day_notes (day_id, trip_id, text) VALUES (?, ?, ?)', dayId, tripId, 'Walk slowly through the gardens');
+    const hiddenDay = createDay(testDb, tripId, { date: '2026-10-11' }).id;
+    db.run('INSERT INTO day_notes (day_id, trip_id, text) VALUES (?, ?, ?)', hiddenDay, tripId, 'HIDDEN-DAY-NOTE');
+    expect(JSON.stringify(projection.build(tripId, config))).not.toMatch(/Day intent|gardens|HIDDEN-DAY-NOTE/);
+    const shown = projection.build(tripId, { ...config, displayNotes: true });
+    expect(shown.stays[0]?.days[0]?.notes).toEqual([{ text: 'Day intent' }, { text: 'Walk slowly through the gardens' }]);
+    expect(JSON.stringify(shown)).not.toContain('HIDDEN-DAY-NOTE');
+    expect(JSON.stringify(shown)).not.toMatch(/reservation_notes|phone|website/);
+  });
+  it('keeps the note opt-in when rebuilding automatic trip presets', () => {
+    db.run('UPDATE days SET notes = ? WHERE id = ?', 'Automatic day intent', dayId);
+    const preset = projection.preset(tripId);
+    expect(JSON.stringify(projection.build(tripId, { ...preset, displayNotes: true }))).toContain('Automatic day intent');
+    expect(JSON.stringify(projection.build(tripId, { ...preset, displayNotes: false }))).not.toContain('Automatic day intent');
+  });
+  it('includes valid map coordinates only on authorized published places', () => {
+    db.run('UPDATE places SET lat = ?, lng = ? WHERE id = ?', 35.7, 139.7, scheduledPlaceId);
+    db.run('UPDATE places SET lat = NULL, lng = NULL WHERE id = ?', shortlistPlaceId);
+    const shown = projection.build(tripId, config);
+    expect(shown.stays[0]?.days[0]?.schedule[0]?.place.coordinates).toEqual({ lat: 35.7, lng: 139.7 });
+    expect(shown.shortlists[0]?.eat[0]?.coordinates).toBeUndefined();
+    const hidden = projection.build(tripId, { ...config, schedule: [] });
+    expect(JSON.stringify(hidden)).not.toContain('35.7');
+  });
   it('keeps unlocated saved places in Elsewhere without adding a fictitious city', () => {
     db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE trip_id = ?', tripId);
     db.run('UPDATE places SET address = ? WHERE id = ?', 'Museum, Tokyo, Japan', scheduledPlaceId);
@@ -433,7 +578,7 @@ describe('advice authority and public HTTP', () => {
     const link = publish(); const session = shares.session(link.token, undefined, 'ip');
     invoke.mockImplementationOnce(async principal => {
       const result: AdviceReadResult = {
-        projection: shares.snapshot(principal), feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
+        projection: adviceProjectionSchema.parse(shares.snapshot(principal)), feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
       };
       shares.revoke(tripId, owner, link.revision, false);
       return result;

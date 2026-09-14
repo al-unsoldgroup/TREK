@@ -11,11 +11,13 @@
   const category = value => value === 'see' || value === 'eat';
 
   function validPlace(value) {
-    if (!exact(value, ['key', 'title', 'category', 'cityId', 'locality', 'countryCode', 'googlePlaceId', 'mapsUrl', 'photoHandle', 'photo'])) return false;
+    if (!exact(value, ['key', 'title', 'category', 'cityId', 'locality', 'countryCode', 'googlePlaceId', 'mapsUrl', 'photoHandle', 'photo', 'placeType', 'coordinates'])) return false;
     return string(value.key, MAX.id) && string(value.title, MAX.title) && category(value.category) &&
       string(value.cityId, MAX.id) && string(value.locality, MAX.label) && (value.countryCode === null || string(value.countryCode, 3)) &&
       (value.googlePlaceId === null || string(value.googlePlaceId, MAX.id)) && string(value.mapsUrl, 1000) &&
       (!has(value, 'photoHandle') || string(value.photoHandle, MAX.id)) &&
+      (!has(value, 'placeType') || string(value.placeType, MAX.label)) &&
+      (!has(value, 'coordinates') || (exact(value.coordinates, ['lat', 'lng']) && Number.isFinite(value.coordinates.lat) && Math.abs(value.coordinates.lat) <= 90 && Number.isFinite(value.coordinates.lng) && Math.abs(value.coordinates.lng) <= 180)) &&
       (!has(value, 'photo') || (object(value.photo) && ((exact(value.photo, ['handle']) && string(value.photo.handle, MAX.id)) || (exact(value.photo, ['state', 'handle']) && value.photo.state === 'loadable' && string(value.photo.handle, MAX.id)) || (exact(value.photo, ['state']) && value.photo.state === 'unavailable'))));
   }
 
@@ -34,7 +36,8 @@
       if (!exact(stay, ['id', 'cityId', 'shortlistCityId', 'days']) || !string(stay.id, MAX.id) || !cityIds.has(stay.cityId) ||
           !string(stay.shortlistCityId, MAX.id) || !Array.isArray(stay.days)) return false;
       for (const day of stay.days) {
-        if (!exact(day, ['key', 'date', 'schedule']) || !string(day.key, MAX.id) || !/^\d{4}-\d{2}-\d{2}$/.test(day.date) || !Array.isArray(day.schedule)) return false;
+        if (!exact(day, ['key', 'date', 'schedule', 'notes']) || !string(day.key, MAX.id) || !/^\d{4}-\d{2}-\d{2}$/.test(day.date) || !Array.isArray(day.schedule) ||
+            (has(day, 'notes') && (!Array.isArray(day.notes) || day.notes.length > 100 || day.notes.some(note => !exact(note, ['text']) || !string(note.text, 10000))))) return false;
         for (const row of day.schedule) {
           if (!exact(row, ['key', 'place', 'time', 'booked']) || !string(row.key, MAX.id) ||
               (row.time !== null && !string(row.time, 40)) || typeof row.booked !== 'boolean' || !validPlace(row.place)) return false;
@@ -70,9 +73,15 @@
       case 'places.autocomplete': return exact(value, ['version', 'kind', 'searchId', 'cityId', 'category', 'input', 'locale']) && uuid(value.searchId) &&
         string(value.cityId, MAX.id) && category(value.category) && string(value.input, 200) && value.input.trim().length >= 2 && string(value.locale, 35);
       case 'places.resolve': return exact(value, ['version', 'kind', 'searchId', 'predictionId']) && uuid(value.searchId) && string(value.predictionId, MAX.id);
-      case 'suggestion.create': return exact(value, ['version', 'kind', 'requestId', 'selectionId', 'category', 'reason', 'displayName']) && uuid(value.requestId) &&
+      case 'places.metadata': return exact(value, ['version', 'kind', 'placeKey']) && /^p:[1-9]\d*$/.test(value.placeKey);
+      case 'map.tile': return exact(value, ['version', 'kind', 'dayKey', 'z', 'x', 'y']) && /^d:[1-9]\d*$/.test(value.dayKey) &&
+        integer(value.z) && value.z >= 2 && value.z <= 17 && integer(value.x) && integer(value.y) && value.x >= 0 && value.y >= 0 && value.x < 2 ** value.z && value.y < 2 ** value.z;
+      case 'suggestion.create': return exact(value, ['version', 'kind', 'requestId', 'selectionId', 'category', 'reason', 'displayName', 'dayKey']) && uuid(value.requestId) &&
         string(value.selectionId, MAX.id) && category(value.category) && (!has(value, 'reason') || string(value.reason, 500)) &&
-        (!has(value, 'displayName') || string(value.displayName, 60));
+        (!has(value, 'displayName') || string(value.displayName, 60)) && (!has(value, 'dayKey') || string(value.dayKey, MAX.id));
+      case 'suggestion.update': return exact(value, ['version', 'kind', 'requestId', 'suggestionId', 'selectionId', 'category', 'reason', 'displayName', 'dayKey']) && uuid(value.requestId) && uuid(value.suggestionId) &&
+        category(value.category) && (!has(value, 'selectionId') || string(value.selectionId, MAX.id)) && (!has(value, 'reason') || string(value.reason, 500)) &&
+        (!has(value, 'displayName') || string(value.displayName, 60)) && (!has(value, 'dayKey') || value.dayKey === null || string(value.dayKey, MAX.id));
       case 'suggestion.withdraw': return exact(value, ['version', 'kind', 'requestId', 'suggestionId']) && uuid(value.requestId) && string(value.suggestionId, MAX.id);
       case 'session.erase': return exact(value, ['version', 'kind', 'requestId']) && uuid(value.requestId);
       default: return false;

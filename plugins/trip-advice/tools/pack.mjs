@@ -15,6 +15,7 @@ const RUNTIME_FILES = [
   'client/guest.html',
   'client/index.html',
   'client/advice.js',
+  'client/advice-map.js',
   'client/advice-model.js',
   'client/advice-protocol.js',
   'client/advice-owner.js',

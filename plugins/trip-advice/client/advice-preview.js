@@ -9,6 +9,7 @@
     for (const stay of projection.stays) for (const day of stay.days) for (const row of day.schedule) places.set(row.place.key, row.place);
     for (const list of projection.shortlists) for (const place of [...list.see, ...list.eat]) places.set(place.key, place);
     return {
+      preview: true,
       async action(action) {
         if (action.kind !== 'read') throw new Error('Preview only. Publish an advice link before guests can send feedback.');
         return { projection, feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null };

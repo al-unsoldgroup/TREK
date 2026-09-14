@@ -1,14 +1,14 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { adviceOwnerCandidatesSchema, adviceProjectionSchema, adviceShareConfigSchema, type AdvicePlace, type AdviceShareConfig } from '@trek/shared';
+import { adviceOwnerCandidatesSchema, adviceProjectionSchema, adviceShareConfigSchema, adviceProjectionV2Schema, adviceShareConfigV2Schema, type AdvicePlace, type AdviceShareConfig, type AdviceShareConfigV2 } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
 import { getCountryFromCoords } from '../atlas/atlas-geo';
 import { adviceCountry, adviceLocality } from './plugin-share-location';
 
-interface Day { id: number; date: string | null; day_number: number }
+interface Day { id: number; date: string | null; day_number: number; notes: string | null }
 interface Assignment { id: number; place_id: number; day_id: number; assignment_time: string | null; order_index: number }
-interface Place { id: number; google_place_id: string | null }
+interface Place { id: number; google_place_id: string | null; lat: number | null; lng: number | null }
 
 @Injectable()
 export class PluginShareProjectionService {
@@ -154,10 +154,18 @@ export class PluginShareProjectionService {
   }
 
   build(tripId: number, config: AdviceShareConfig, validate = false): z.infer<typeof adviceProjectionSchema> {
+    const displayNotes = config.displayNotes === true;
     const native = config.source === 'trip' ? this.nativePreset(tripId, config.hidden) : null;
     if (native) config = native.config;
-    const days = this.db.all<Day>('SELECT id, date, day_number FROM days WHERE trip_id = ? ORDER BY day_number, id', tripId);
-    const places = this.db.all<Place>('SELECT id, google_place_id FROM places WHERE trip_id = ?', tripId);
+    const days = this.db.all<Day>('SELECT id, date, day_number, notes FROM days WHERE trip_id = ? ORDER BY day_number, id', tripId);
+    const places = this.db.all<Place>('SELECT id, google_place_id, lat, lng FROM places WHERE trip_id = ?', tripId);
+    const dayNotes = displayNotes ? this.db.all<{ day_id: number; text: string }>('SELECT day_id, text FROM day_notes WHERE trip_id = ? ORDER BY sort_order, id', tripId) : [];
+    const notesFor = (day: Day) => {
+      if (!displayNotes) return {};
+      const notes = [day.notes, ...dayNotes.filter(note => note.day_id === day.id).map(note => note.text)]
+        .flatMap(text => typeof text === 'string' && text.trim() ? [{ text: text.trim().slice(0, 10000) }] : []).slice(0, 100);
+      return notes.length ? { notes } : {};
+    };
     const assignments = this.db.all<Assignment>(`SELECT a.id, a.place_id, a.day_id, a.assignment_time, a.order_index
       FROM day_assignments a JOIN days d ON d.id = a.day_id JOIN places p ON p.id = a.place_id
       WHERE d.trip_id = ? AND p.trip_id = ? ORDER BY a.order_index, a.id`, tripId, tripId);
@@ -182,12 +190,13 @@ export class PluginShareProjectionService {
       const queryLocality = ['Location not specified', 'Trip days'].includes(locality) ? null : locality;
       maps.searchParams.set('api', '1'); maps.searchParams.set('query', [text, queryLocality, countryCode].filter(Boolean).join(' '));
       if (p.google_place_id) maps.searchParams.set('query_place_id', p.google_place_id);
-      return { key: `p:${p.id}`, title: text, category, cityId, locality, countryCode, googlePlaceId: p.google_place_id, mapsUrl: maps.href };
+      const coordinates = p.lat !== null && p.lng !== null && Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180 ? { lat: p.lat, lng: p.lng } : undefined;
+      return { key: `p:${p.id}`, title: text, category, cityId, locality, countryCode, googlePlaceId: p.google_place_id, mapsUrl: maps.href, ...(coordinates ? { coordinates } : {}) };
     };
     const stays: z.infer<typeof adviceProjectionSchema>['stays'] = config.stays.map(stay => {
       const city = config.cities.find(c => c.id === stay.cityId)!;
       return { id: stay.id, cityId: city.id, shortlistCityId: city.id,
-        days: days.filter(d => stay.dayIds.includes(d.id) && d.date).map(day => ({ key: `d:${day.id}`, date: day.date!,
+        days: days.filter(d => stay.dayIds.includes(d.id) && d.date).map(day => ({ key: `d:${day.id}`, date: day.date!, ...notesFor(day),
           schedule: assignments.filter(a => a.day_id === day.id && selectedAssignments.has(a.id) && !excluded.has(a.place_id) && !excludedAssignments.has(a.id)).map(a => {
             const selection = selectedAssignments.get(a.id)!;
             const p = places.find(p => p.id === a.place_id)!;
@@ -215,5 +224,47 @@ export class PluginShareProjectionService {
     const publicData = { version: 1 as const, title: config.publicTitle,
       cities: config.cities.map(({ id, label, countryCodes }) => ({ id, label, countryCodes })), stays, shortlists };
     return adviceProjectionSchema.parse({ ...publicData, revision: createHash('sha256').update(JSON.stringify(publicData)).digest('hex') });
+  }
+
+  migrateV1(tripId: number, config: AdviceShareConfig): AdviceShareConfigV2 {
+    const before = this.build(tripId, config);
+    const all = this.build(tripId, this.preset(tripId));
+    const dayKeys = new Set(before.stays.flatMap(stay => stay.days.map(day => day.key)));
+    const assignmentKeys = new Set(before.stays.flatMap(stay => stay.days.flatMap(day => day.schedule.map(row => row.key))));
+    const ideaKeys = new Set(before.shortlists.flatMap(list => [...list.see, ...list.eat].map(place => place.key)));
+    const visibleCities = new Set(all.stays.filter(stay => stay.days.some(day => dayKeys.has(day.key))).map(stay => stay.cityId));
+    for (const list of all.shortlists) if ([...list.see, ...list.eat].some(place => ideaKeys.has(place.key))) visibleCities.add(list.cityId);
+    for (const stay of all.stays) for (const day of stay.days) for (const row of day.schedule) if (assignmentKeys.has(row.key)) visibleCities.add(row.place.cityId);
+    return adviceShareConfigV2Schema.parse({ version: 2, showNotes: config.displayNotes === true,
+      hiddenCityKeys: all.cities.filter(city => !visibleCities.has(city.id)).map(city => city.id),
+      hiddenDayKeys: all.stays.flatMap(stay => stay.days.filter(day => !dayKeys.has(day.key)).map(day => day.key)),
+      hiddenNoteDayKeys: [], hiddenPlaceKeys: all.stays.flatMap(stay => stay.days.flatMap(day => day.schedule.filter(row => !assignmentKeys.has(row.key)).map(row => row.key))),
+      hiddenIdeaKeys: all.shortlists.flatMap(list => [...list.see, ...list.eat].filter(place => !ideaKeys.has(place.key)).map(place => place.key)), addedCities: [],
+    });
+  }
+
+  buildV2(tripId: number, input: AdviceShareConfigV2, owner = false) {
+    const config = adviceShareConfigV2Schema.parse(input);
+    const hidden = { cityIds: owner ? [] : config.hiddenCityKeys, dayIds: owner ? [] : config.hiddenDayKeys.map(key => Number(key.slice(2))),
+      placeIds: owner ? [] : config.hiddenPlaceKeys.filter(key => key.startsWith('p:')).map(key => Number(key.slice(2))),
+      assignmentIds: owner ? [] : config.hiddenPlaceKeys.filter(key => key.startsWith('a:')).map(key => Number(key.slice(2))) };
+    const base = this.build(tripId, { ...this.preset(tripId, hidden), displayNotes: config.showNotes });
+    const dayDetails = new Map(this.db.all<{ id: number; title: string | null; day_number: number }>('SELECT id, title, day_number FROM days WHERE trip_id = ?', tripId).map(day => [`d:${day.id}`, day]));
+    const place = ({ coordinates, ...value }: AdvicePlace) => ({ ...value, ...(coordinates ?? {}) });
+    const data = { version: 2 as const, title: base.title,
+      cities: [...base.cities, ...config.addedCities.filter(city => owner || !config.hiddenCityKeys.includes(city.key)).map(city => ({ id: city.key, label: city.label, countryCodes: city.countryCodes }))],
+      stays: base.stays.map(stay => ({ ...stay, days: stay.days.map(({ notes, ...day }) => {
+        const note = notes?.map(value => value.text).join('\n\n').slice(0, 10000);
+        const detail = dayDetails.get(day.key)!;
+        return { ...day, dayNumber: detail.day_number, title: (detail.title ?? '').slice(0, 200),
+          ...(note && (owner || !config.hiddenNoteDayKeys.includes(day.key)) ? { note } : {}),
+          schedule: day.schedule.map(row => ({ ...row, place: place(row.place) })) };
+      }) })),
+      shortlists: [...base.shortlists.map(list => ({ ...list,
+        see: list.see.filter(item => owner || !config.hiddenIdeaKeys.includes(item.key)).map(place),
+        eat: list.eat.filter(item => owner || !config.hiddenIdeaKeys.includes(item.key)).map(place),
+      })), ...config.addedCities.filter(city => owner || !config.hiddenCityKeys.includes(city.key)).map(city => ({ cityId: city.key, see: [], eat: [] }))],
+    };
+    return adviceProjectionV2Schema.parse({ ...data, revision: createHash('sha256').update(JSON.stringify(data)).digest('hex') });
   }
 }

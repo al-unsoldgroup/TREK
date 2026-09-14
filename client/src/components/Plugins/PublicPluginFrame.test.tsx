@@ -4,7 +4,7 @@ import PublicPluginFrame from './PublicPluginFrame'
 
 const publicApi = vi.hoisted(() => ({
   createSession: vi.fn(),
-  action: vi.fn(),
+  actionV1: vi.fn(),
   photo: vi.fn(),
 }))
 
@@ -52,7 +52,7 @@ function fromFrame(iframe: HTMLIFrameElement, data: unknown) {
 
 beforeEach(() => {
   publicApi.createSession.mockResolvedValue({ csrfToken: 'host-only-csrf', expiresAt: bootstrap.expiresAt })
-  publicApi.action.mockResolvedValue(feedback)
+  publicApi.actionV1.mockResolvedValue(feedback)
   publicApi.photo.mockResolvedValue({ state: 'available', mimeType: 'image/jpeg', bytesBase64: '/9j/', authors: [], googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo' })
   vi.spyOn(window, 'open').mockImplementation(() => null)
 })
@@ -61,7 +61,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   publicApi.createSession.mockReset()
-  publicApi.action.mockReset()
+  publicApi.actionV1.mockReset()
   publicApi.photo.mockReset()
 })
 
@@ -85,7 +85,7 @@ describe('PublicPluginFrame', () => {
 
     await act(async () => undefined)
     expect(publicApi.createSession).not.toHaveBeenCalled()
-    expect(publicApi.action).not.toHaveBeenCalled()
+    expect(publicApi.actionV1).not.toHaveBeenCalled()
   })
 
   it('FE-USG215-FRAME-003: handles the addon read handshake without sending session credentials to the child', async () => {
@@ -93,7 +93,7 @@ describe('PublicPluginFrame', () => {
     fromFrame(iframe, { type: 'trek:public:ready', version: 1 })
     fromFrame(iframe, { type: 'trek:public:action', id: 'public-1', action: { version: 1, kind: 'read', commentsCursor: 'opaque-cursor' } })
 
-    await waitFor(() => expect(publicApi.action).toHaveBeenCalledWith('ta_public', 'host-only-csrf', { version: 1, kind: 'read', commentsCursor: 'opaque-cursor' }, expect.any(AbortSignal)))
+    await waitFor(() => expect(publicApi.actionV1).toHaveBeenCalledWith('ta_public', 'host-only-csrf', { version: 1, kind: 'read', commentsCursor: 'opaque-cursor' }, expect.any(AbortSignal)))
     expect(posted.some((message) => message.type === 'trek:public:result' && message.id === 'public-1')).toBe(true)
     expect(posted.every((message) => !('csrfToken' in message) && !('token' in message))).toBe(true)
   })
@@ -102,7 +102,7 @@ describe('PublicPluginFrame', () => {
     const { iframe } = mount()
     fromFrame(iframe, { type: 'trek:public:ready', version: 1 })
     fromFrame(iframe, { type: 'trek:public:action', id: 'public-1', action: { version: 1, kind: 'read' } })
-    await waitFor(() => expect(publicApi.action).toHaveBeenCalled())
+    await waitFor(() => expect(publicApi.actionV1).toHaveBeenCalled())
 
     fromFrame(iframe, { type: 'trek:public:openMaps', placeKeyOrSelectionId: 'p:1' })
     fromFrame(iframe, { type: 'trek:public:openMaps', placeKeyOrSelectionId: 'https://evil.example' })
@@ -116,7 +116,7 @@ describe('PublicPluginFrame', () => {
     fromFrame(iframe, { type: 'trek:public:photo', id: 'public-1', handle: 'photo-handle' })
     fromFrame(iframe, { type: 'trek:public:openAttribution', uri: 'https://evil.example/photo' })
 
-    expect(publicApi.action).not.toHaveBeenCalled()
+    expect(publicApi.actionV1).not.toHaveBeenCalled()
     await waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ type: 'trek:public:result', id: 'public-1' })))
     expect(publicApi.photo).toHaveBeenCalledWith('ta_public', 'photo-handle', 'host-only-csrf', expect.any(AbortSignal))
     expect(posted).toContainEqual(expect.objectContaining({ type: 'trek:public:result', id: 'public-1', result: expect.objectContaining({ googleAttribution: 'Google Maps', googleMapsUri: 'https://www.google.com/maps/photo' }) }))
@@ -134,7 +134,7 @@ describe('PublicPluginFrame', () => {
   })
 
   it('FE-USG215-FRAME-007: clears a revoked session so the next action must reinitialize', async () => {
-    publicApi.action.mockRejectedValue(new Error('Public advice is no longer available.'))
+    publicApi.actionV1.mockRejectedValue(new Error('Public advice is no longer available.'))
     const { iframe, posted } = mount()
     fromFrame(iframe, { type: 'trek:public:action', id: 'public-1', action: { version: 1, kind: 'read' } })
     await waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ type: 'trek:public:error', id: 'public-1' })))
@@ -144,7 +144,7 @@ describe('PublicPluginFrame', () => {
   })
 
   it('FE-USG215-FRAME-008: forwards a valid write union member and preserves its strict envelope', async () => {
-    publicApi.action.mockResolvedValue({ version: 1, kind: 'comment.create', data: { accepted: true } })
+    publicApi.actionV1.mockResolvedValue({ version: 1, kind: 'comment.create', data: { accepted: true } })
     const { iframe, posted } = mount()
     fromFrame(iframe, {
       type: 'trek:public:action',
@@ -152,7 +152,7 @@ describe('PublicPluginFrame', () => {
       action: { version: 1, kind: 'comment.create', requestId: '123e4567-e89b-42d3-a456-426614174000', text: 'Try the market' },
     })
 
-    await waitFor(() => expect(publicApi.action).toHaveBeenCalledWith(
+    await waitFor(() => expect(publicApi.actionV1).toHaveBeenCalledWith(
       'ta_public',
       'host-only-csrf',
       { version: 1, kind: 'comment.create', requestId: '123e4567-e89b-42d3-a456-426614174000', text: 'Try the market' },
@@ -162,14 +162,14 @@ describe('PublicPluginFrame', () => {
   })
 
   it('FE-USG215-FRAME-009: opens Maps for a host-resolved selection only', async () => {
-    publicApi.action.mockResolvedValue({ version: 1, kind: 'places.resolve', data: { selectionId: 'selection-1', mapsUrl: 'https://www.google.com/maps/search/Resolved' } })
+    publicApi.actionV1.mockResolvedValue({ version: 1, kind: 'places.resolve', data: { selectionId: 'selection-1', mapsUrl: 'https://www.google.com/maps/search/Resolved' } })
     const { iframe } = mount()
     fromFrame(iframe, {
       type: 'trek:public:action',
       id: 'public-1',
       action: { version: 1, kind: 'places.resolve', searchId: '123e4567-e89b-42d3-a456-426614174000', predictionId: 'prediction-1' },
     })
-    await waitFor(() => expect(publicApi.action).toHaveBeenCalled())
+    await waitFor(() => expect(publicApi.actionV1).toHaveBeenCalled())
 
     fromFrame(iframe, { type: 'trek:public:openMaps', placeKeyOrSelectionId: 'selection-1' })
     fromFrame(iframe, { type: 'trek:public:openMaps', placeKeyOrSelectionId: 'https://evil.example' })

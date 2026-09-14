@@ -13,7 +13,7 @@ import ErrorBoundary from '../shared/ErrorBoundary'
 
 interface PublicPluginFrameProps {
   token: string
-  bootstrap: AdviceBootstrap
+  bootstrap: Extract<AdviceBootstrap, { version: 1 }>
 }
 
 type PublicMessage =
@@ -280,7 +280,7 @@ export default function PublicPluginFrame({ token: shareToken, bootstrap }: Publ
       actionCountRef.current += 1
       pendingIdsRef.current.add(message.id)
       void ensureSession()
-        .then((session) => publicShareApi.action(shareToken, session.csrfToken, message.action, controller.signal))
+        .then((session) => publicShareApi.actionV1(shareToken, session.csrfToken, message.action, controller.signal))
         .then((result) => {
           if (!active || blockedRef.current) return
           if ('projection' in result) {

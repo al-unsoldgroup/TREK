@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException, UnauthorizedException, HttpException, Optional } from '@nestjs/common';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { ADVICE_PLUGIN_ID, ADVICE_SHARE_PERMISSION, adviceBootstrapSchema, adviceNativeImportSchema, adviceOwnerWriteSchema, adviceShareConfigSchema } from '@trek/shared';
-import type { AdviceNativeImportResult } from '@trek/shared';
+import { ADVICE_PLUGIN_ID, ADVICE_SHARE_PERMISSION, adviceBootstrapSchema, adviceNativeImportSchema, adviceOwnerWriteSchema, adviceShareConfigSchema, advicePublicShareCapabilitySchema, adviceShareConfigV2Schema, adviceOwnerWriteV2Schema } from '@trek/shared';
+import type { AdviceNativeImportResult, AdviceAddedCity } from '@trek/shared';
 import { readEnv } from '../../app-config';
 import { DatabaseService } from '../database/database.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -17,6 +17,9 @@ interface Session { id: string; share_id: string; epoch: number; guest_id: strin
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const csrf = (s: string) => createHmac('sha256', s).update('trek-advice-csrf-v1').digest('base64url');
 export const ADVICE_COOKIE = '__Secure-trek-advice';
+export interface OwnerAdvicePrincipal { kind: 'adviceOwner'; pluginId: 'trip-advice'; tripId: number; userId: number;
+  shareId: string; sessionId: string; guestId: string; epoch: number; preview: boolean }
+export type AdviceProviderPrincipal = PublicSharePrincipal | OwnerAdvicePrincipal;
 
 @Injectable()
 export class PluginSharesService {
@@ -32,8 +35,9 @@ export class PluginSharesService {
     if (!row || !row.enabled || row.status !== 'active') this.unavailable();
     try {
       const granted = z.array(z.string()).parse(JSON.parse(row.granted_permissions));
-      const cap = z.object({ publicShare: z.strictObject({ version: z.literal(1), entry: z.literal('guest.html') }) }).parse(JSON.parse(row.capabilities));
+      const cap = z.object({ publicShare: advicePublicShareCapabilitySchema }).parse(JSON.parse(row.capabilities));
       if (!granted.includes(ADVICE_SHARE_PERMISSION) || !cap.publicShare) this.unavailable();
+      return cap.publicShare;
     } catch { this.unavailable(); }
   }
   private live(row: Link | undefined): Link {
@@ -55,6 +59,11 @@ export class PluginSharesService {
   ownsToken(token: string) { return !!this.db.get('SELECT 1 FROM plugin_share_links WHERE token = ?', token); }
   bootstrap(token: string) {
     const row = this.byToken(token);
+    const native = adviceShareConfigV2Schema.safeParse(JSON.parse(row.config_json));
+    if (native.success && this.available().version !== 2) this.unavailable();
+    if (native.success) return adviceBootstrapSchema.parse({ kind: 'plugin-share', version: 2,
+      title: this.projection.buildV2(row.trip_id, native.data).title, expiresAt: row.expires_at,
+      plugin: { id: ADVICE_PLUGIN_ID, surface: 'native', protocolVersion: 2 } });
     const config = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
     const title = config.source === 'trip'
       ? this.db.get<{ title: string }>('SELECT title FROM trips WHERE id = ?', row.trip_id)?.title.slice(0, 200)
@@ -122,6 +131,127 @@ export class PluginSharesService {
 
   ownerConfigure(tripId: number, userId: number, input: unknown) {
     return this.write(tripId, this.actor(userId), adviceOwnerWriteSchema.parse(input));
+  }
+
+  private legacyHash(row: Link) {
+    const config = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
+    return hash(JSON.stringify({ config, projection: this.projection.build(row.trip_id, config) }));
+  }
+
+  private nativeConfig(row: Link) {
+    const stored = z.union([adviceShareConfigSchema, adviceShareConfigV2Schema]).parse(JSON.parse(row.config_json));
+    const native = adviceShareConfigV2Schema.safeParse(stored);
+    return native.success ? native.data : this.projection.migrateV1(row.trip_id, adviceShareConfigSchema.parse(stored));
+  }
+
+  ownerNative(tripId: number, userId: number) {
+    this.requireManage(tripId, this.actor(userId));
+    const row = this.db.get<Link>('SELECT * FROM plugin_share_links WHERE trip_id = ?', tripId);
+    const stored = row ? z.union([adviceShareConfigSchema, adviceShareConfigV2Schema]).parse(JSON.parse(row.config_json)) : null;
+    const native = adviceShareConfigV2Schema.safeParse(stored);
+    const draftConfig = native.success ? native.data : this.projection.migrateV1(tripId, row ? adviceShareConfigSchema.parse(stored) : this.projection.preset(tripId));
+    return { version: 2 as const, config: row ? { shareId: row.id, token: row.token, enabled: !!row.enabled, revision: row.revision, expiresAt: row.expires_at, config: stored } : null,
+      legacy: !!row && !native.success, ...(row && !native.success ? { upgradeRevision: this.legacyHash(row) } : {}),
+      draftConfig, projection: this.projection.buildV2(tripId, draftConfig, true) };
+  }
+
+  ownerNativeConfigure(tripId: number, userId: number, input: unknown) {
+    const actor = this.actor(userId);
+    this.requireManage(tripId, actor);
+    const body = adviceOwnerWriteV2Schema.parse(input);
+    this.projection.buildV2(tripId, body.config);
+    if (body.enabled && this.available().version !== 2) throw new ConflictException('Native advice plugin upgrade required');
+    this.db.transaction(() => {
+      const row = this.db.get<Link>('SELECT * FROM plugin_share_links WHERE trip_id = ?', tripId);
+      if ((row?.revision ?? 0) !== body.expectedRevision) throw new ConflictException('Advice configuration changed');
+      const stored = row ? JSON.parse(row.config_json) : null;
+      const native = adviceShareConfigV2Schema.safeParse(stored);
+      if (row && !native.success && (!body.upgradeToV2 || body.upgradeToV2.expectedLegacyHash !== this.legacyHash(row))) throw new ConflictException('Review the native advice upgrade before saving');
+      const existingCities = native.success ? native.data.addedCities : [];
+      if (body.config.addedCities.some(city => !existingCities.some(existing => JSON.stringify(existing) === JSON.stringify(city)))) throw new ForbiddenException('Resolve added cities through the owner city search');
+      const expires = new Date(Date.now() + body.expiresInDays * 86400000).toISOString();
+      if (row) {
+        this.lifecycle?.enqueueDue(row.id);
+        const retentionStart = body.enabled ? null : row.retention_started_at ?? new Date(Math.min(Date.now(), Date.parse(row.expires_at))).toISOString();
+        this.db.run('UPDATE plugin_share_links SET config_json = ?, enabled = ?, expires_at = ?, retention_started_at = ?, feedback_purge_queued = CASE WHEN ? THEN 0 ELSE feedback_purge_queued END, revision = revision + 1, epoch = epoch + 1 WHERE id = ?', JSON.stringify(body.config), Number(body.enabled), expires, retentionStart, Number(body.enabled), row.id);
+        if (body.enabled) {
+          // Visibility autosaves change the share epoch so every subsequent
+          // action is checked against the new projection. Preserve each guest's
+          // identity by advancing its bound session to that same epoch.
+          this.db.run('UPDATE plugin_share_sessions SET epoch = (SELECT epoch FROM plugin_share_links WHERE id = ?) WHERE share_id = ?', row.id, row.id);
+        } else {
+          this.db.run('DELETE FROM plugin_share_sessions WHERE share_id = ?', row.id);
+        }
+      } else {
+        this.db.run('INSERT INTO plugin_share_links (id, trip_id, token, created_by, config_json, enabled, expires_at, retention_started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          randomUUID(), tripId, this.newToken(), userId, JSON.stringify(body.config), Number(body.enabled), expires, body.enabled ? null : new Date().toISOString());
+      }
+    });
+    this.lifecycle?.flushInBackground();
+    return this.ownerNative(tripId, userId);
+  }
+
+  ownerNativePreview(tripId: number, userId: number, input: unknown) {
+    this.requireManage(tripId, this.actor(userId));
+    return this.projection.buildV2(tripId, adviceShareConfigV2Schema.parse(input));
+  }
+
+  requireNativeOwner(tripId: number, userId: number) {
+    const actor = this.actor(userId);
+    this.requireManage(tripId, actor);
+    return actor;
+  }
+
+  ownerPrincipal(tripId: number, userId: number, passive = false): OwnerAdvicePrincipal {
+    this.requireNativeOwner(tripId, userId);
+    const row = this.db.get<Link>('SELECT * FROM plugin_share_links WHERE trip_id = ?', tripId);
+    if (!row) throw new ConflictException('Create the advice link first');
+    const preview = !adviceShareConfigV2Schema.safeParse(JSON.parse(row.config_json)).success;
+    this.nativeConfig(row);
+    const sessionId = `owner:${tripId}:${userId}`;
+    this.limit(passive ? 'media-session' : 'action-session', sessionId, passive ? 120 : 30);
+    this.limit(passive ? 'media-share' : 'action-share', row.id, passive ? 600 : 300);
+    return { kind: 'adviceOwner', pluginId: ADVICE_PLUGIN_ID, tripId, userId, shareId: row.id, sessionId, guestId: sessionId, epoch: row.revision, preview };
+  }
+
+  validateProviderPrincipal(principal: AdviceProviderPrincipal) {
+    if (principal.kind === 'publicShare') return this.validatePrincipal(principal);
+    this.requireNativeOwner(principal.tripId, principal.userId);
+    const row = this.db.get<Link>('SELECT * FROM plugin_share_links WHERE trip_id = ? AND id = ?', principal.tripId, principal.shareId);
+    if (!row || row.revision !== principal.epoch) throw new ConflictException('Advice configuration changed');
+    return row;
+  }
+
+  providerSnapshot(principal: AdviceProviderPrincipal) {
+    if (principal.kind === 'publicShare') return this.snapshot(principal);
+    const row = this.validateProviderPrincipal(principal);
+    return this.projection.buildV2(principal.tripId, this.nativeConfig(row), true);
+  }
+
+  providerCities(principal: AdviceProviderPrincipal) {
+    if (principal.kind === 'publicShare') return this.publicCities(principal);
+    const row = this.validateProviderPrincipal(principal);
+    const config = this.nativeConfig(row);
+    const projectedIds = new Set(this.projection.buildV2(principal.tripId, config, true).cities.map(city => city.id));
+    return [...this.projection.preset(principal.tripId).cities,
+      ...config.addedCities.map(city => ({ id: city.key, label: city.label, countryCodes: city.countryCodes, bounds: city.bounds }))]
+      .filter(city => projectedIds.has(city.id))
+      .flatMap(city => city.bounds && city.countryCodes.length ? [{ ...city, bounds: city.bounds }] : []);
+  }
+
+  addNativeCity(tripId: number, userId: number, expectedRevision: number, city: AdviceAddedCity) {
+    this.requireNativeOwner(tripId, userId);
+    this.db.transaction(() => {
+      const row = this.db.get<Link>('SELECT * FROM plugin_share_links WHERE trip_id = ?', tripId);
+      if (!row || row.revision !== expectedRevision) throw new ConflictException('Advice configuration changed');
+      const config = adviceShareConfigV2Schema.parse(JSON.parse(row.config_json));
+      if (config.addedCities.some(existing => existing.key === city.key) || this.projection.preset(tripId).cities.some(existing => existing.id === city.key)) throw new ConflictException('City already exists');
+      const updated = adviceShareConfigV2Schema.parse({ ...config, addedCities: [...config.addedCities, city] });
+      this.projection.buildV2(tripId, updated);
+      this.db.run('UPDATE plugin_share_links SET config_json = ?, revision = revision + 1, epoch = epoch + 1 WHERE id = ?', JSON.stringify(updated), row.id);
+      this.db.run('DELETE FROM plugin_share_sessions WHERE share_id = ?', row.id);
+    });
+    return this.ownerNative(tripId, userId);
   }
 
   /**
@@ -233,19 +363,19 @@ export class PluginSharesService {
     });
   }
   authorize(token: string, credential: string | undefined, csrfToken: string | undefined): PublicSharePrincipal {
-    const row = this.byToken(token);
-    if (!credential) throw new UnauthorizedException('Advice session required');
-    const expected = Buffer.from(csrf(credential));
-    const supplied = Buffer.from(csrfToken ?? '');
-    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) throw new ForbiddenException('Invalid advice CSRF token');
-    const session = this.db.get<Session>('SELECT * FROM plugin_share_sessions WHERE share_id = ? AND credential_hash = ?', row.id, hash(credential));
-    if (!session) throw new UnauthorizedException('Advice session required');
-    const principal: PublicSharePrincipal = { kind: 'publicShare', pluginId: ADVICE_PLUGIN_ID, shareId: row.id, epoch: row.epoch, sessionId: session.id, guestId: session.guest_id };
-    this.validatePrincipal(principal);
-    this.limit('action-session', session.id, 30); this.limit('action-share', row.id, 300);
+    const principal = this.authorizeSession(token, credential, csrfToken);
+    this.limit('action-session', principal.sessionId, 30); this.limit('action-share', principal.shareId, 300);
+    return principal;
+  }
+  authorizeMedia(token: string, credential: string | undefined, csrfToken: string | undefined): PublicSharePrincipal {
+    const principal = this.authorizeSession(token, credential, csrfToken);
+    this.limit('media-session', principal.sessionId, 120); this.limit('media-share', principal.shareId, 600);
     return principal;
   }
   authorizePhoto(token: string, credential: string | undefined, csrfToken: string | undefined): PublicSharePrincipal {
+    return this.authorizeSession(token, credential, csrfToken);
+  }
+  private authorizeSession(token: string, credential: string | undefined, csrfToken: string | undefined): PublicSharePrincipal {
     const row = this.byToken(token);
     if (!credential) throw new UnauthorizedException('Advice session required');
     const expected = Buffer.from(csrf(credential));
@@ -275,7 +405,14 @@ export class PluginSharesService {
   }
   snapshot(scope: PublicSharePrincipal) {
     const row = this.validatePrincipal(scope);
-    return this.projection.build(row.trip_id, adviceShareConfigSchema.parse(JSON.parse(row.config_json)));
+    const stored = JSON.parse(row.config_json);
+    const native = adviceShareConfigV2Schema.safeParse(stored);
+    return native.success ? this.projection.buildV2(row.trip_id, native.data) : this.projection.build(row.trip_id, adviceShareConfigSchema.parse(stored));
+  }
+  filterSuggestionKeys(scope: PublicSharePrincipal, keys: string[]) {
+    const row = this.validatePrincipal(scope);
+    const config = adviceShareConfigV2Schema.safeParse(JSON.parse(row.config_json));
+    return config.success ? keys.filter(key => !config.data.hiddenIdeaKeys.includes(key)) : keys;
   }
   /** Host-derived city geometry for the provider's soft bias. No country code
    * is sent as an includedRegionCodes restriction: configured geography is only
@@ -287,6 +424,13 @@ export class PluginSharesService {
 
   publicCities(scope: PublicSharePrincipal) {
     const row = this.validatePrincipal(scope);
+    const native = adviceShareConfigV2Schema.safeParse(JSON.parse(row.config_json));
+    if (native.success) {
+      const visible = new Set(this.projection.buildV2(row.trip_id, native.data).cities.map(city => city.id));
+      return [...this.projection.preset(row.trip_id).cities,
+        ...native.data.addedCities.map(city => ({ id: city.key, label: city.label, countryCodes: city.countryCodes, bounds: city.bounds }))]
+        .flatMap(city => visible.has(city.id) && city.bounds && city.countryCodes.length ? [{ ...city, bounds: city.bounds }] : []);
+    }
     const stored = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
     const config = stored.source === 'trip' ? this.projection.preset(row.trip_id, stored.hidden) : stored;
     return config.cities.flatMap(city => city.bounds && city.countryCodes.length ? [{ ...city, bounds: city.bounds }] : []);
