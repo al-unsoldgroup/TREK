@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional, HttpException, ServiceUnavailableException } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   advicePlacesAutocompleteResultSchema, advicePlacesResolveResultSchema, advicePhotoResultSchema,
@@ -138,7 +138,9 @@ export class GooglePlacesProvider {
     const key = `${this.handleKey(principal)}:${searchId}`;
     const current = this.searchSessions.get(key);
     if (current) return current.token;
-    const token = opaque();
+    // A UUID, not opaque(): Google caps session_token at 36 characters and
+    // rejects the 43-character base64url value with INVALID_ARGUMENT.
+    const token = randomUUID();
     this.searchSessions.set(key, { token, expiresAt: Date.now() + HANDLE_TTL_MS });
     return token;
   }
