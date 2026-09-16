@@ -46,9 +46,6 @@
 .ta-city > summary, .ta-day-heading, .ta-toolbar { padding: 14px 16px; display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .ta-city > summary { cursor: pointer; background: var(--ta-color-surface-muted); }
 .ta-day { border-top: 1px solid var(--ta-color-border); scroll-margin-top: 90px; }
-.ta-considerations { border-top: 1px solid var(--ta-color-border); }
-.ta-considerations > summary { padding: 14px 16px; cursor: pointer; color: var(--ta-color-text-muted); }
-.ta-considerations .ta-toolbar { justify-content: flex-start; }
 .ta-assignment-time { display: inline-block; margin-right: 8px; color: var(--ta-color-text-muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
 .ta-day > summary { cursor: pointer; }
 .ta-day > summary::after { content: '▾'; }
