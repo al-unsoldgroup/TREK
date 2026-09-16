@@ -423,7 +423,7 @@ describe('advice authority and public HTTP', () => {
     expect(permission).toHaveBeenCalledWith('share_manage', owner.role, owner.id, owner.id, false);
     permission.mockReturnValue(true);
     const body = { config, expectedRevision: 0, enabled: true, expiresInDays: 10 };
-    await request(app.getHttpServer()).put(ownerPath()).set('Cookie', authCookie(owner.id)).send(body).expect(200);
+    await request(app.getHttpServer()).put(ownerPath()).set({ ...origin, Origin: `${origin.Origin}:443` }).set('Cookie', authCookie(owner.id)).send(body).expect(200);
     await request(app.getHttpServer()).put(ownerPath()).set('Cookie', authCookie(owner.id)).send(body).expect(409);
   });
   it('separates bootstrap from legacy projection and refuses legacy tokens on advice', async () => {
@@ -441,7 +441,7 @@ describe('advice authority and public HTTP', () => {
     const link = publish();
     await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).send({}).expect(403);
     await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).set({ ...origin, Origin: 'https://evil.test' }).send({}).expect(403);
-    const session = await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).set(origin).send({}).expect(200);
+    const session = await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).set({ ...origin, Origin: `${origin.Origin}:443` }).send({}).expect(200);
     const cookie = session.headers['set-cookie'][0];
     expect(cookie).toContain('HttpOnly'); expect(cookie).toContain('Secure'); expect(cookie).toContain('SameSite=Strict'); expect(cookie).toContain(`Path=${publicPath(link.token)}`);
     const credentials = `${cookie.split(';')[0]}; ${authCookie(owner.id)}`;

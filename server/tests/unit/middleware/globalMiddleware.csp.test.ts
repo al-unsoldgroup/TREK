@@ -66,6 +66,34 @@ describe('global CSP: script-src', () => {
   });
 });
 
+describe('global CORS origin matching', () => {
+  const saved = process.env.ALLOWED_ORIGINS;
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env.ALLOWED_ORIGINS;
+    else process.env.ALLOWED_ORIGINS = saved;
+  });
+
+  async function requestFrom(origin: string) {
+    process.env.ALLOWED_ORIGINS = 'https://trips.unsold.group';
+    const app = express();
+    applyGlobalMiddleware(app);
+    app.post('/api/shared/example/plugins/trip-advice/session', (_req, res) => res.json({ ok: true }));
+    return request(app).post('/api/shared/example/plugins/trip-advice/session').set('Origin', origin);
+  }
+
+  it('accepts an explicitly written default HTTPS port as the configured origin', async () => {
+    const res = await requestFrom('https://trips.unsold.group:443');
+    expect(res.status).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBe('https://trips.unsold.group:443');
+  });
+
+  it('still rejects opaque and unrelated origins', async () => {
+    expect((await requestFrom('null')).status).toBe(500);
+    expect((await requestFrom('https://evil.example')).status).toBe(500);
+  });
+});
+
 describe('forced-HTTPS redirect', () => {
   const saved = { FORCE_HTTPS: process.env.FORCE_HTTPS, APP_URL: process.env.APP_URL };
 
