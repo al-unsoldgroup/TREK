@@ -20,11 +20,19 @@
 .ta-surface button, .ta-dialog button, .ta-surface summary, .ta-dialog input, .ta-dialog select { min-height: 44px; }
 .ta-surface button, .ta-dialog button { cursor: pointer; }
 .ta-surface :focus-visible, .ta-dialog :focus-visible { outline: 3px solid var(--ta-color-brand); outline-offset: 3px; }
-.ta-owner-bar { position: sticky; top: 0; z-index: 30; min-height: var(--ta-owner-bar-height); display: flex; align-items: center; flex-wrap: wrap; gap: var(--ta-space-3); padding: var(--ta-space-3) var(--ta-space-5); background: var(--ta-color-owner-bar); color: var(--ta-color-on-dark); }
+.ta-owner-bar { position: sticky; top: 0; z-index: 30; height: var(--ta-owner-bar-height); display: flex; align-items: center; flex-wrap: nowrap; gap: var(--ta-space-3); padding: var(--ta-space-3) var(--ta-space-5); overflow-x: auto; background: var(--ta-color-owner-bar); color: var(--ta-color-on-dark); }
 .ta-owner-bar span { margin-right: auto; }
 .ta-hero { padding: var(--ta-space-7) max(18px, calc((100% - var(--ta-content-max))/2)); background: var(--ta-color-surface-muted); }
 .ta-hero h1 { font-family: var(--ta-font-editorial); font-size: clamp(2rem, 5vw, 3rem); margin: 8px 0; }
-.ta-hero nav { display: flex; gap: 8px; margin-top: 20px; }
+.ta-jumpbar { position: sticky; top: 0; z-index: 25; border-bottom: 1px solid var(--ta-color-border); background: var(--ta-color-surface); box-shadow: var(--ta-shadow-card); }
+.ta-has-owner-bar .ta-jumpbar { top: var(--ta-owner-bar-height); }
+.ta-has-owner-bar .ta-route { top: calc(var(--ta-owner-bar-height) + 58px); }
+.ta-has-owner-bar .ta-city, .ta-has-owner-bar .ta-day, .ta-has-owner-bar .ta-section { scroll-margin-top: calc(var(--ta-owner-bar-height) + 90px); }
+.ta-jumpbar-main { max-width: var(--ta-content-max); margin: auto; padding: 0 18px; display: flex; align-items: center; gap: var(--ta-space-3); }
+.ta-jump-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; font-weight: 600; }
+.ta-section-jumps { display: flex; gap: var(--ta-space-1); }
+.ta-jumpbar .ta-button { padding: 4px 9px; font-size: .78rem; }
+.ta-city-jumps { display: none; }
 .ta-page { max-width: var(--ta-content-max); margin: auto; padding: var(--ta-space-5) 18px 64px; }
 .ta-layout { display: grid; grid-template-columns: var(--ta-route-width) minmax(0, 1fr); gap: 18px; align-items: start; }
 .ta-card { background: var(--ta-color-surface); border: 1px solid var(--ta-color-border); border-radius: var(--ta-radius-card); box-shadow: var(--ta-shadow-card); overflow: hidden; }
@@ -89,5 +97,5 @@
 .ta-dialog[data-mode="quick"] form label { grid-column: 1 / -1; }
 .ta-anchor-link { display: block; color: var(--ta-color-brand); text-decoration: underline; }
 .ta-google-attribution { display: inline-block; padding: 2px 4px; color: #1f1f1f; background: #fff; font-family: Arial, sans-serif; font-size: 12px; font-weight: 400; line-height: 1.4; white-space: nowrap; }
-@media (max-width: 760px) { .ta-surface, .ta-dialog { --ta-thumbnail: 36px; --ta-map-collapsed: 174px; --ta-owner-bar-height: 56px; } .ta-layout { grid-template-columns: minmax(0, 1fr); } .ta-route { position: static; } .ta-place { flex-wrap: wrap; } .ta-votes { margin-left: auto; } .ta-owner-bar { padding: 8px 12px; } .ta-selected-place { flex-wrap: wrap; } .ta-selection-actions { flex-basis: 100%; justify-content: flex-end; } .ta-toolbar .ta-button { padding-inline: 6px; font-size: .82rem; } }
+@media (max-width: 760px) { .ta-surface, .ta-dialog { --ta-thumbnail: 36px; --ta-map-collapsed: 174px; --ta-owner-bar-height: 56px; } .ta-layout { grid-template-columns: minmax(0, 1fr); } .ta-route { position: static; } .ta-place { flex-wrap: wrap; } .ta-votes { margin-left: auto; } .ta-owner-bar { padding: 8px 12px; } .ta-selected-place { flex-wrap: wrap; } .ta-selection-actions { flex-basis: 100%; justify-content: flex-end; } .ta-toolbar .ta-button { padding-inline: 6px; font-size: .82rem; } .ta-city-jumps { display: flex; gap: var(--ta-space-1); padding: 0 12px; overflow-x: auto; overscroll-behavior-inline: contain; } .ta-city-jumps .ta-button { flex: 0 0 auto; } .ta-city, .ta-day, .ta-section { scroll-margin-top: 112px; } .ta-has-owner-bar .ta-city, .ta-has-owner-bar .ta-day, .ta-has-owner-bar .ta-section { scroll-margin-top: calc(var(--ta-owner-bar-height) + 112px); } }
 @media (prefers-reduced-motion: reduce) { .ta-surface *, .ta-dialog * { scroll-behavior: auto !important; transition: none !important; } }

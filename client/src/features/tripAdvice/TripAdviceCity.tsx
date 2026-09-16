@@ -42,7 +42,7 @@ function CityConsiderations({ controller, cityId, label }: { controller: TripAdv
   const [open, setOpen] = useState(false)
   const [category, setCategory] = useState<'see' | 'eat'>('see')
   return <details className="ta-considerations" aria-label={`${label} considerations`} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary>See what we’re considering to See &amp; Eat</summary>
+    <summary>Vote on our shortlist</summary>
     {open && <div className="ta-day-body">
       <div className="ta-toolbar" role="group" aria-label={`${label} consideration categories`}>{(['see', 'eat'] as const).map(value => <button key={value} type="button" className="ta-button" aria-pressed={category === value} onClick={() => setCategory(value)}>{value === 'see' ? <Camera size={16} aria-hidden /> : <Utensils size={16} aria-hidden />}{value === 'see' ? 'See' : 'Eat'}</button>)}</div>
       <ConsiderationPlaces controller={controller} cityId={cityId} cityLabel={label} category={category} idPrefix={`ta-consideration-${cityId}`} />
