@@ -87,7 +87,7 @@
 .ta-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .ta-error { color: var(--ta-color-danger); }
 .ta-toolbar { padding-inline: 0; }
-.ta-toolbar > div, .ta-toolbar .ta-button, .ta-selection-actions { display: flex; align-items: center; gap: 6px; }
+.ta-toolbar > div, .ta-toolbar .ta-button, .ta-selection-actions, .ta-category-controls, .ta-category-controls > [role="group"] { display: flex; align-items: center; gap: 6px; }
 .ta-selected-place { display: flex; align-items: center; gap: 12px; padding-block: 12px; }
 .ta-selection-actions { margin-left: auto; flex-shrink: 0; }
 .ta-dialog[data-mode="quick"] form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
