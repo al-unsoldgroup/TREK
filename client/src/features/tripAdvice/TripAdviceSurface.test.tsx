@@ -30,7 +30,7 @@ describe('native Trip Advice', () => {
     controller.projection!.shortlists = [{ cityId: 'tokyo', see: [place], eat: [{ ...place, key: 'p:2', title: 'Tokyo cafe', category: 'eat' }] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:3', title: 'Kyoto temple', cityId: 'kyoto' }], eat: [] }]
     const { container } = render(<TripAdviceSurface controller={controller} />)
     const city = container.querySelector('#ta-city-tokyo')!
-    const considerations = within(city as HTMLElement).getByText('See what we’re considering to See & Eat').closest('details')!
+    const considerations = within(city as HTMLElement).getByText('Vote on our shortlist').closest('details')!
     expect(considerations.open).toBe(false)
     expect(within(considerations).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
     fireEvent.click(considerations.querySelector('summary')!)
@@ -57,6 +57,33 @@ describe('native Trip Advice', () => {
     fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'Eat' }))
     expect(within(day as HTMLElement).getByRole('link', { name: 'Tokyo cafe' })).toBeTruthy()
     expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+  })
+
+  it('filters consolidated ideas by place, city, and Google place type', () => {
+    const controller = controllerFixture()
+    const place = { key: 'p:1', title: 'Tokyo garden', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden', primaryType: 'Botanical garden' }
+    controller.projection!.shortlists = [{ cityId: 'tokyo', see: [place], eat: [] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:2', title: 'Kyoto temple', cityId: 'kyoto', locality: 'Kyoto', primaryType: 'Tourist attraction' }], eat: [] }]
+    render(<TripAdviceSurface controller={controller} />)
+    const ideas = screen.getByRole('region', { name: 'Ideas' })
+    const search = within(ideas).getByRole('searchbox', { name: 'Search ideas' })
+
+    fireEvent.change(search, { target: { value: 'tokyo botanical' } })
+    expect(within(ideas).getByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
+    expect(within(ideas).queryByRole('link', { name: 'Kyoto temple' })).toBeNull()
+
+    fireEvent.change(search, { target: { value: 'restaurant' } })
+    expect(within(ideas).getByText('No ideas match “restaurant”.')).toBeTruthy()
+  })
+
+  it('exposes compact section and city jump navigation', () => {
+    render(<TripAdviceSurface controller={controllerFixture()} />)
+    const navigation = screen.getByRole('navigation', { name: 'Trip navigation' })
+    expect(within(navigation).getByText('Japan')).toBeTruthy()
+    expect(within(navigation).getByRole('button', { name: 'Plan' })).toBeTruthy()
+    expect(within(navigation).getByRole('button', { name: 'Ideas' })).toBeTruthy()
+    expect(within(navigation).getByRole('button', { name: 'Comments' })).toBeTruthy()
+    expect(within(navigation).getByRole('button', { name: 'Tokyo' })).toBeTruthy()
+    expect(within(navigation).getByRole('button', { name: 'Kyoto' })).toBeTruthy()
   })
 
   it('explains when a day category has no city places under consideration', () => {
