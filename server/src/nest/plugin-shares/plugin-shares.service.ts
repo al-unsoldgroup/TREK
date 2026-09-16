@@ -3,7 +3,7 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { z } from 'zod';
 import { ADVICE_PLUGIN_ID, ADVICE_SHARE_PERMISSION, adviceBootstrapSchema, adviceNativeImportSchema, adviceOwnerWriteSchema, adviceShareConfigSchema, advicePublicShareCapabilitySchema, adviceShareConfigV2Schema, adviceOwnerWriteV2Schema } from '@trek/shared';
 import type { AdviceNativeImportResult, AdviceAddedCity } from '@trek/shared';
-import { readEnv } from '../../app-config';
+import { canonicalWebOrigin, readEnv } from '../../app-config';
 import { DatabaseService } from '../database/database.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RateLimitService } from '../common/rate-limit.service';
@@ -353,7 +353,7 @@ export class PluginSharesService {
     if (!configured || !origin || site !== 'same-origin') throw new ForbiddenException('Same-origin request required');
     let expected: URL;
     try { expected = new URL(configured); } catch { throw new ForbiddenException('Same-origin request required'); }
-    if (expected.protocol !== 'https:' || expected.origin !== origin) throw new ForbiddenException('Same-origin request required');
+    if (expected.protocol !== 'https:' || expected.origin !== canonicalWebOrigin(origin)) throw new ForbiddenException('Same-origin request required');
   }
   cookiePath(token: string) { return `/api/shared/${token}/plugins/${ADVICE_PLUGIN_ID}`; }
   credential(cookieHeader: string | undefined): string | undefined {

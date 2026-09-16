@@ -3,7 +3,7 @@ import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import { readEnv, type AppEnv } from '../app-config';
+import { canonicalWebOrigin, readEnv, type AppEnv } from '../app-config';
 import { logDebug, logWarn, logError } from '../nest/audit/audit-log.logger';
 
 /**
@@ -107,8 +107,9 @@ export function applyGlobalMiddleware(
 
   let corsOrigin: cors.CorsOptions['origin'];
   if (allowedOrigins) {
+    const canonicalOrigins = new Set(allowedOrigins.map(canonicalWebOrigin));
     corsOrigin = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+      if (!origin || canonicalOrigins.has(canonicalWebOrigin(origin))) callback(null, true);
       else callback(new Error('Not allowed by CORS'));
     };
   } else if (isProduction) {

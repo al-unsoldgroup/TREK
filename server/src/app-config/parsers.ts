@@ -11,6 +11,16 @@
 const TRUE_VALUES = new Set(['true', '1', 'on', 'yes']);
 const FALSE_VALUES = new Set(['false', '0', 'off', 'no']);
 
+/** Normalise HTTP(S) origins so explicit default ports compare like browsers do. */
+export function canonicalWebOrigin(value: string): string {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : value;
+  } catch {
+    return value;
+  }
+}
+
 /**
  * Unified boolean coercion for env switches — the ONE deliberate departure from
  * legacy parity: historically each site accepted a different literal ('true'
