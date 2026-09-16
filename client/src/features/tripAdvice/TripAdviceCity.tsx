@@ -38,18 +38,6 @@ function TripAdviceDay({ controller, cityId, cityLabel, day }: { controller: Tri
   </details>
 }
 
-function CityConsiderations({ controller, cityId, label }: { controller: TripAdviceController; cityId: string; label: string }) {
-  const [open, setOpen] = useState(false)
-  const [category, setCategory] = useState<'see' | 'eat'>('see')
-  return <details className="ta-considerations" aria-label={`${label} considerations`} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary>Vote on our shortlist</summary>
-    {open && <div className="ta-day-body">
-      <div className="ta-toolbar" role="group" aria-label={`${label} consideration categories`}>{(['see', 'eat'] as const).map(value => <button key={value} type="button" className="ta-button" aria-pressed={category === value} onClick={() => setCategory(value)}>{value === 'see' ? <Camera size={16} aria-hidden /> : <Utensils size={16} aria-hidden />}{value === 'see' ? 'See' : 'Eat'}</button>)}</div>
-      <ConsiderationPlaces controller={controller} cityId={cityId} cityLabel={label} category={category} idPrefix={`ta-consideration-${cityId}`} />
-    </div>}
-  </details>
-}
-
 export default function TripAdviceCity({ controller, cityId }: { controller: TripAdviceController; cityId: string }) {
   const [open, setOpen] = useState(true)
   const projection = controller.projection!
@@ -60,6 +48,5 @@ export default function TripAdviceCity({ controller, cityId }: { controller: Tri
     <summary><h2>{city.label}</h2><span className="ta-meta">{cityRange(controller, cityId)}</span><Visibility controller={controller} field="hiddenCityKeys" itemKey={cityId} label={city.label} /></summary>
     {days.map(day => <TripAdviceDay key={day.key} controller={controller} cityId={cityId} cityLabel={city.label} day={day} />)}
     {!days.length && <p className="ta-day-body ta-meta">A destination to consider. No committed dates yet.</p>}
-    <CityConsiderations controller={controller} cityId={cityId} label={city.label} />
   </details>
 }

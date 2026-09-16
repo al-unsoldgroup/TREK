@@ -24,31 +24,15 @@ describe('native Trip Advice', () => {
     expect(timed.querySelector('time')?.getAttribute('datetime')).toBe('09:30')
     expect(container.querySelector('[id="ta-place-a:2"] time')).toBeNull()
   })
-  it('opens city-scoped considerations below the days and switches See and Eat without leaking another city', async () => {
-    const controller = controllerFixture()
-    const place = { key: 'p:1', title: 'Tokyo garden', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden' }
-    controller.projection!.shortlists = [{ cityId: 'tokyo', see: [place], eat: [{ ...place, key: 'p:2', title: 'Tokyo cafe', category: 'eat' }] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:3', title: 'Kyoto temple', cityId: 'kyoto' }], eat: [] }]
-    const { container } = render(<TripAdviceSurface controller={controller} />)
-    const city = container.querySelector('#ta-city-tokyo')!
-    const considerations = within(city as HTMLElement).getByText('Vote on our shortlist').closest('details')!
-    expect(considerations.open).toBe(false)
-    expect(within(considerations).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
-    fireEvent.click(considerations.querySelector('summary')!)
-    expect(considerations.open).toBe(true)
-    expect(await within(considerations).findByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
-    expect(within(considerations).queryByRole('link', { name: 'Kyoto temple' })).toBeNull()
-    fireEvent.click(within(considerations).getByRole('button', { name: /^Eat$/ }))
-    expect(within(considerations).getByRole('link', { name: 'Tokyo cafe' })).toBeTruthy()
-    expect(within(considerations).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
-    expect(city.lastElementChild).toBe(considerations)
-  })
   it('reveals the current city shortlist from each day See and Eat control', () => {
     const controller = controllerFixture()
     const place = { key: 'p:1', title: 'Tokyo garden', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden' }
     controller.projection!.shortlists = [{ cityId: 'tokyo', see: [place], eat: [{ ...place, key: 'p:2', title: 'Tokyo cafe', category: 'eat' }] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:3', title: 'Kyoto temple', cityId: 'kyoto' }], eat: [] }]
     const { container } = render(<TripAdviceSurface controller={controller} />)
+    const city = container.querySelector('#ta-city-tokyo')!
     const day = container.querySelector('[id="ta-day-d:1"]')!
 
+    expect(within(city as HTMLElement).queryByText('Vote on our shortlist')).toBeNull()
     expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
     fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'See' }))
     expect(within(day as HTMLElement).getByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
