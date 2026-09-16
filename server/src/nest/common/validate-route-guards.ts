@@ -145,6 +145,7 @@ export const PUBLIC_ROUTE_ALLOW_LIST: string[] = [
   // Share-token validated.
   'SharedController.placePhotoBytes',
   'SharedController.read',
+  'SharedPageController.read',
 ];
 
 /**

@@ -57,6 +57,19 @@ export class PluginSharesService {
     return this.live(this.db.get<Link>('SELECT * FROM plugin_share_links WHERE token = ?', token));
   }
   ownsToken(token: string) { return !!this.db.get('SELECT 1 FROM plugin_share_links WHERE token = ?', token); }
+  socialMetadata(token: string) {
+    const row = this.byToken(token);
+    const trip = this.db.get<{ title: string; description: string | null; cover_image: string | null }>(
+      'SELECT title, description, cover_image FROM trips WHERE id = ?', row.trip_id);
+    if (!trip) this.unavailable();
+    const native = adviceShareConfigV2Schema.safeParse(JSON.parse(row.config_json));
+    if (native.success) {
+      if (this.available().version !== 2) this.unavailable();
+      return { title: this.projection.buildV2(row.trip_id, native.data).title, description: trip.description, coverImage: trip.cover_image };
+    }
+    const config = adviceShareConfigSchema.parse(JSON.parse(row.config_json));
+    return { title: config.source === 'trip' ? trip.title : config.publicTitle, description: null, coverImage: null };
+  }
   bootstrap(token: string) {
     const row = this.byToken(token);
     const native = adviceShareConfigV2Schema.safeParse(JSON.parse(row.config_json));

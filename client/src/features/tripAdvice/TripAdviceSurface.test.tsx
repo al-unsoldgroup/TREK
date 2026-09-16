@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TripAdviceSurface from './TripAdviceSurface'
 import type { TripAdviceController } from './tripAdvice.types'
@@ -14,6 +14,34 @@ export function controllerFixture(): TripAdviceController {
   }
 }
 describe('native Trip Advice', () => {
+  it('shows assignment times only on the corresponding scheduled rows', () => {
+    const controller = controllerFixture()
+    const place = { key: 'p:1', title: 'Garden', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden' }
+    controller.projection!.stays[0].days[0].schedule = [{ key: 'a:1', place, time: '09:30', booked: false }, { key: 'a:2', place: { ...place, key: 'p:2', title: 'Temple' }, time: null, booked: false }]
+    const { container } = render(<TripAdviceSurface controller={controller} />)
+    const timed = container.querySelector('[id="ta-place-a:1"]')!
+    expect(timed.querySelector('time')?.textContent).toBe('09:30')
+    expect(timed.querySelector('time')?.getAttribute('datetime')).toBe('09:30')
+    expect(container.querySelector('[id="ta-place-a:2"] time')).toBeNull()
+  })
+  it('opens city-scoped considerations below the days and switches See and Eat without leaking another city', async () => {
+    const controller = controllerFixture()
+    const place = { key: 'p:1', title: 'Tokyo garden', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden' }
+    controller.projection!.shortlists = [{ cityId: 'tokyo', see: [place], eat: [{ ...place, key: 'p:2', title: 'Tokyo cafe', category: 'eat' }] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:3', title: 'Kyoto temple', cityId: 'kyoto' }], eat: [] }]
+    const { container } = render(<TripAdviceSurface controller={controller} />)
+    const city = container.querySelector('#ta-city-tokyo')!
+    const considerations = within(city as HTMLElement).getByText('See what we’re considering to See & Eat').closest('details')!
+    expect(considerations.open).toBe(false)
+    expect(within(considerations).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+    fireEvent.click(considerations.querySelector('summary')!)
+    expect(considerations.open).toBe(true)
+    expect(await within(considerations).findByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
+    expect(within(considerations).queryByRole('link', { name: 'Kyoto temple' })).toBeNull()
+    fireEvent.click(within(considerations).getByRole('button', { name: /^Eat$/ }))
+    expect(within(considerations).getByRole('link', { name: 'Tokyo cafe' })).toBeTruthy()
+    expect(within(considerations).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+    expect(city.lastElementChild).toBe(considerations)
+  })
   it('labels independently collapsible days with number and full calendar date', () => {
     const { container } = render(<TripAdviceSurface controller={controllerFixture()} />)
     const day = container.querySelector<HTMLDetailsElement>('.ta-day')!

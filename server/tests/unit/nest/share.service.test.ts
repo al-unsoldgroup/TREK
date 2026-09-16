@@ -466,6 +466,29 @@ describe('getSharedPlacePhotoKey', () => {
   });
 });
 
+describe('getSocialMetadata', () => {
+  it('SHARE-SVC-032: returns trip social fields only for a live share token', () => {
+    const { trip, token } = seedSharedTrip();
+    testDb.prepare('UPDATE trips SET title = ?, description = ?, cover_image = ? WHERE id = ?')
+      .run('Japan 2026', 'Spring in Japan', '/uploads/japan.jpg', trip.id);
+
+    expect(svc.getSocialMetadata(token)).toEqual({
+      title: 'Japan 2026',
+      description: 'Spring in Japan',
+      coverImage: '/uploads/japan.jpg',
+    });
+    expect(svc.getSocialMetadata('unknown-token')).toBeNull();
+  });
+
+  it('SHARE-SVC-033: excludes expired share tokens', () => {
+    const { trip, token } = seedSharedTrip();
+    testDb.prepare('UPDATE share_tokens SET expires_at = ? WHERE trip_id = ?')
+      .run('2020-01-01T00:00:00.000Z', trip.id);
+
+    expect(svc.getSocialMetadata(token)).toBeNull();
+  });
+});
+
 // SHARE-SVC-026..028 (share.bridge delegation) were deleted with the bridge —
 // its last consumer, the legacy share-link tools in src/mcp/tools/trips.ts,
 // moved to the DI-discovered share.mcp.ts.

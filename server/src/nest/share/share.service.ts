@@ -46,6 +46,12 @@ export interface ShareTokenInfo {
   share_collab: boolean;
 }
 
+export interface ShareSocialMetadata {
+  title: string;
+  description: string | null;
+  coverImage: string | null;
+}
+
 /**
  * Public share links — the legacy shareService SQL folded in over the injected
  * DatabaseService. Trip access and the 'share_manage' permission gate
@@ -129,6 +135,16 @@ export class ShareService {
    */
   remove(tripId: string): void {
     this.dbs.run('DELETE FROM share_tokens WHERE trip_id = ?', tripId);
+  }
+
+  getSocialMetadata(token: string): ShareSocialMetadata | null {
+    const row = this.dbs.get<{ title: string; description: string | null; cover_image: string | null }>(`
+      SELECT t.title, t.description, t.cover_image
+      FROM share_tokens s
+      JOIN trips t ON t.id = s.trip_id
+      WHERE s.token = ? AND (s.expires_at IS NULL OR s.expires_at > datetime('now'))
+    `, token);
+    return row ? { title: row.title, description: row.description, coverImage: row.cover_image } : null;
   }
 
   /**
