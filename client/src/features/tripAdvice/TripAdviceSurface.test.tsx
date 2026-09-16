@@ -42,6 +42,34 @@ describe('native Trip Advice', () => {
     expect(within(considerations).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
     expect(city.lastElementChild).toBe(considerations)
   })
+  it('reveals the current city shortlist from each day See and Eat control', () => {
+    const controller = controllerFixture()
+    const place = { key: 'p:1', title: 'Tokyo garden', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden' }
+    controller.projection!.shortlists = [{ cityId: 'tokyo', see: [place], eat: [{ ...place, key: 'p:2', title: 'Tokyo cafe', category: 'eat' }] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:3', title: 'Kyoto temple', cityId: 'kyoto' }], eat: [] }]
+    const { container } = render(<TripAdviceSurface controller={controller} />)
+    const day = container.querySelector('[id="ta-day-d:1"]')!
+
+    expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+    fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'See' }))
+    expect(within(day as HTMLElement).getByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
+    expect(within(day as HTMLElement).queryByRole('link', { name: 'Kyoto temple' })).toBeNull()
+
+    fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'Eat' }))
+    expect(within(day as HTMLElement).getByRole('link', { name: 'Tokyo cafe' })).toBeTruthy()
+    expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+  })
+
+  it('explains when a day category has no city places under consideration', () => {
+    const controller = controllerFixture()
+    controller.projection!.shortlists = [{ cityId: 'tokyo', see: [], eat: [] }]
+    const { container } = render(<TripAdviceSurface controller={controller} />)
+    const day = container.querySelector('[id="ta-day-d:1"]')!
+
+    fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'Eat' }))
+    expect(within(day as HTMLElement).getByText('No places to eat under consideration in Tokyo yet.')).toBeTruthy()
+    expect(within(day as HTMLElement).getByRole('button', { name: 'Recommend here' })).toBeTruthy()
+  })
+
   it('labels independently collapsible days with number and full calendar date', () => {
     const { container } = render(<TripAdviceSurface controller={controllerFixture()} />)
     const day = container.querySelector<HTMLDetailsElement>('.ta-day')!
