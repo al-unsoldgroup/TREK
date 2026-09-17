@@ -38,9 +38,23 @@ describe('native Trip Advice', () => {
     expect(within(day as HTMLElement).getByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
     expect(within(day as HTMLElement).queryByRole('link', { name: 'Kyoto temple' })).toBeNull()
 
-    fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'Eat' }))
+    fireEvent.click(within(day as HTMLElement).getByRole('button', { name: 'See' }))
+    expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+
+    const eat = within(day as HTMLElement).getByRole('button', { name: 'Eat' })
+    fireEvent.click(eat)
     expect(within(day as HTMLElement).getByRole('link', { name: 'Tokyo cafe' })).toBeTruthy()
     expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo garden' })).toBeNull()
+
+    const categoryGroup = within(day as HTMLElement).getByRole('group', { name: 'Recommendation category' })
+    const collapse = within(day as HTMLElement).getByRole('button', { name: 'Collapse shortlist' })
+    expect(within(categoryGroup).queryByRole('button', { name: 'Collapse shortlist' })).toBeNull()
+    expect(collapse.getAttribute('aria-expanded')).toBe('true')
+    expect(document.getElementById(collapse.getAttribute('aria-controls')!)).toBeTruthy()
+    fireEvent.click(collapse)
+    expect(within(day as HTMLElement).queryByRole('link', { name: 'Tokyo cafe' })).toBeNull()
+    expect(within(day as HTMLElement).queryByRole('button', { name: 'Collapse shortlist' })).toBeNull()
+    expect(document.activeElement).toBe(eat)
   })
 
   it('filters consolidated ideas by place, city, and Google place type', () => {
