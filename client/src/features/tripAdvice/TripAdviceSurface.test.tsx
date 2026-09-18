@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TripAdviceSurface from './TripAdviceSurface'
 import type { TripAdviceController } from './tripAdvice.types'
-import { dayLabel, dayMapPlaces } from './tripAdvice.day'
+import { dayLabel, dayMapFitPlaces, dayMapPlaces } from './tripAdvice.day'
 
 vi.mock('./TripAdviceMap', () => ({ default: () => null }))
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -65,6 +65,9 @@ describe('native Trip Advice', () => {
     const ideas = screen.getByRole('region', { name: 'Ideas' })
     const search = within(ideas).getByRole('searchbox', { name: 'Search ideas' })
 
+    expect(within(ideas).getByRole('heading', { name: 'See' })).toBeTruthy()
+    expect(within(ideas).queryByRole('heading', { name: 'Eat' })).toBeNull()
+
     fireEvent.change(search, { target: { value: 'tokyo botanical' } })
     expect(within(ideas).getByRole('link', { name: 'Tokyo garden' })).toBeTruthy()
     expect(within(ideas).queryByRole('link', { name: 'Kyoto temple' })).toBeNull()
@@ -73,15 +76,22 @@ describe('native Trip Advice', () => {
     expect(within(ideas).getByText('No ideas match “restaurant”.')).toBeTruthy()
   })
 
-  it('exposes compact section and city jump navigation', () => {
+  it('exposes compact section navigation and a committed-destinations menu', () => {
     render(<TripAdviceSurface controller={controllerFixture()} />)
     const navigation = screen.getByRole('navigation', { name: 'Trip navigation' })
     expect(within(navigation).getByText('Japan')).toBeTruthy()
     expect(within(navigation).getByRole('button', { name: 'Plan' })).toBeTruthy()
     expect(within(navigation).getByRole('button', { name: 'Ideas' })).toBeTruthy()
     expect(within(navigation).getByRole('button', { name: 'Comments' })).toBeTruthy()
-    expect(within(navigation).getByRole('button', { name: 'Tokyo' })).toBeTruthy()
-    expect(within(navigation).getByRole('button', { name: 'Kyoto' })).toBeTruthy()
+    expect(within(navigation).queryByRole('group', { name: 'Committed destinations' })).toBeNull()
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Destinations' }))
+    const destinations = within(navigation).getByRole('group', { name: 'Committed destinations' })
+    expect(within(destinations).getByRole('button', { name: 'Tokyo' })).toBeTruthy()
+    expect(within(destinations).queryByRole('button', { name: 'Kyoto' })).toBeNull()
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Destinations' }))
+    expect(within(navigation).queryByRole('group', { name: 'Committed destinations' })).toBeNull()
   })
 
   it('explains when a day category has no city places under consideration', () => {
@@ -117,6 +127,15 @@ describe('native Trip Advice', () => {
     controller.projection!.shortlists = [{ cityId: 'tokyo', see: [{ ...place, key: 'p:2' }], eat: [] }, { cityId: 'kyoto', see: [{ ...place, key: 'p:3', cityId: 'kyoto' }], eat: [] }]
     controller.suggestions = [{ ...place, key: 's:22222222-2222-4222-8222-222222222222', googlePlaceId: 'google', dayKey: day.key, state: 'pending', reason: null, displayName: null }]
     expect(dayMapPlaces(controller, 'tokyo', day).map(value => value.key)).toEqual(['p:1', 'p:2'])
+  })
+  it('frames a day map around committed places while retaining shortlist markers', () => {
+    const places = [
+      { key: 'p:1', title: 'Committed one', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: '', lat: 35, lng: 139 },
+      { key: 'p:2', title: 'Shortlist', category: 'see' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: '', lat: 36, lng: 140 },
+      { key: 'p:3', title: 'Committed two', category: 'eat' as const, cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: null, mapsUrl: '', lat: 35.5, lng: 139.5 },
+    ]
+    expect(dayMapFitPlaces(places, new Set(['p:1', 'p:3'])).map(place => place.key)).toEqual(['p:1', 'p:3'])
+    expect(dayMapFitPlaces(places, new Set()).map(place => place.key)).toEqual(['p:1', 'p:2', 'p:3'])
   })
   it('full suggestions expose city/day targeting and section navigation marks the selected destination', () => {
     render(<TripAdviceSurface controller={controllerFixture()} />)

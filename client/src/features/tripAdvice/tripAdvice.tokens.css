@@ -32,6 +32,7 @@
 .ta-jump-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; font-weight: 600; }
 .ta-section-jumps { display: flex; gap: var(--ta-space-1); }
 .ta-jumpbar .ta-button { padding: 4px 9px; font-size: .78rem; }
+.ta-destinations-toggle { display: none; align-items: center; gap: var(--ta-space-1); }
 .ta-city-jumps { display: none; }
 .ta-page { max-width: var(--ta-content-max); margin: auto; padding: var(--ta-space-5) 18px 64px; }
 .ta-layout { display: grid; grid-template-columns: var(--ta-route-width) minmax(0, 1fr); gap: 18px; align-items: start; }
@@ -74,6 +75,8 @@
 .ta-map-expand { position: absolute; top: 8px; right: 8px; z-index: 500; }
 .ta-section { margin-top: 24px; scroll-margin-top: 90px; }
 .ta-section > h2 { margin-bottom: 12px; }
+.ta-idea-group { margin-top: var(--ta-space-5); }
+.ta-idea-group > h3 { margin: 0; padding-bottom: var(--ta-space-2); border-bottom: 1px solid var(--ta-color-border); }
 .ta-idea, .ta-comment { padding: 14px; margin-top: 10px; }
 .ta-recommend { width: 100%; margin-top: 12px; border-style: dashed; }
 .ta-dialog { color: var(--ta-color-text); }
@@ -94,5 +97,5 @@
 .ta-dialog[data-mode="quick"] form label { grid-column: 1 / -1; }
 .ta-anchor-link { display: block; color: var(--ta-color-brand); text-decoration: underline; }
 .ta-google-attribution { display: inline-block; padding: 2px 4px; color: #1f1f1f; background: #fff; font-family: Arial, sans-serif; font-size: 12px; font-weight: 400; line-height: 1.4; white-space: nowrap; }
-@media (max-width: 760px) { .ta-surface, .ta-dialog { --ta-thumbnail: 36px; --ta-map-collapsed: 174px; --ta-owner-bar-height: 56px; } .ta-layout { grid-template-columns: minmax(0, 1fr); } .ta-route { position: static; } .ta-place { flex-wrap: wrap; } .ta-votes { margin-left: auto; } .ta-owner-bar { padding: 8px 12px; } .ta-selected-place { flex-wrap: wrap; } .ta-selection-actions { flex-basis: 100%; justify-content: flex-end; } .ta-toolbar .ta-button { padding-inline: 6px; font-size: .82rem; } .ta-city-jumps { display: flex; gap: var(--ta-space-1); padding: 0 12px; overflow-x: auto; overscroll-behavior-inline: contain; } .ta-city-jumps .ta-button { flex: 0 0 auto; } .ta-city, .ta-day, .ta-section { scroll-margin-top: 112px; } .ta-has-owner-bar .ta-city, .ta-has-owner-bar .ta-day, .ta-has-owner-bar .ta-section { scroll-margin-top: calc(var(--ta-owner-bar-height) + 112px); } }
+@media (max-width: 760px) { .ta-surface, .ta-dialog { --ta-thumbnail: 36px; --ta-map-collapsed: 174px; --ta-owner-bar-height: 56px; } .ta-layout { grid-template-columns: minmax(0, 1fr); } .ta-route { display: none; } .ta-place { flex-wrap: wrap; } .ta-votes { margin-left: auto; } .ta-owner-bar { padding: 8px 12px; } .ta-selected-place { flex-wrap: wrap; } .ta-selection-actions { flex-basis: 100%; justify-content: flex-end; } .ta-toolbar { flex-wrap: wrap; } .ta-toolbar .ta-button { padding-inline: 6px; font-size: .82rem; } .ta-jumpbar-main { padding: 4px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; } .ta-jump-title { padding-inline: 6px; } .ta-section-jumps { overflow-x: auto; overscroll-behavior-inline: contain; } .ta-destinations-toggle { display: inline-flex; } .ta-city-jumps { display: flex; gap: var(--ta-space-1); padding: 0 12px 4px; overflow-x: auto; overscroll-behavior-inline: contain; } .ta-city-jumps .ta-button { flex: 0 0 auto; } .ta-city, .ta-day, .ta-section { scroll-margin-top: 112px; } .ta-has-owner-bar .ta-city, .ta-has-owner-bar .ta-day, .ta-has-owner-bar .ta-section { scroll-margin-top: calc(var(--ta-owner-bar-height) + 112px); } }
 @media (prefers-reduced-motion: reduce) { .ta-surface *, .ta-dialog * { scroll-behavior: auto !important; transition: none !important; } }
