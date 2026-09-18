@@ -78,8 +78,8 @@ export class PluginSharesRpc {
   async ownerNativeAction(params: Record<string, unknown>, ctx: PluginRpcContext) {
     if (Object.keys(params).some(key => !['tripId', 'action'].includes(key))) throw new BadParams('Invalid native action');
     const action = parse(adviceActionV2Schema, params.action, 'native action');
-    const principal = this.shares.ownerPrincipal(num(params.tripId, 'tripId'), this.owner(ctx), ['places.metadata', 'map.tile'].includes(action.kind));
-    if (principal.preview && !['read', 'places.autocomplete', 'places.resolve', 'places.metadata', 'map.tile'].includes(action.kind)) {
+    const principal = this.shares.ownerPrincipal(num(params.tripId, 'tripId'), this.owner(ctx), ['places.metadata', 'places.metadata.batch', 'map.tile'].includes(action.kind));
+    if (principal.preview && !['read', 'places.autocomplete', 'places.resolve', 'places.metadata', 'places.metadata.batch', 'map.tile'].includes(action.kind)) {
       throw new ForbiddenResource('Use the new design before editing shared feedback');
     }
     let result;
@@ -91,6 +91,11 @@ export class PluginSharesRpc {
         const { placeType, ...data } = found.data;
         result = { version: 2, kind: action.kind, data: { ...data, ...(placeType ? { primaryType: placeType } : {}) } };
       }
+    }
+    else if (action.kind === 'places.metadata.batch') {
+      const found = await this.places?.metadataBatch(principal, { ...action, version: 1 });
+      if (found) result = { version: 2, kind: action.kind, data: { places: found.data.places.map(({ placeType, ...place }) =>
+        ({ ...place, ...(placeType ? { primaryType: placeType } : {}) })) } };
     }
     else if (action.kind === 'map.tile') {
       const data = await this.maps?.tile(principal, { ...action, version: 1 });

@@ -9,14 +9,14 @@ export function useTripAdvicePlace(controller: TripAdviceController, place: Advi
     setMetadata(null)
     if (!place.key.startsWith('p:') || !place.googlePlaceId || (place.primaryType && place.photoHandle)) return
     let disposed = false
-    let observer: IntersectionObserver | undefined
-    const load = () => {
-      observer?.disconnect()
+    if (!globalThis.IntersectionObserver || !row.current) return
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return
+      observer.disconnect()
       void controller.metadata(place.key).then(value => { if (!disposed && value.placeKey === place.key) setMetadata(value) }).catch(() => { if (!disposed) setMetadata(null) })
-    }
-    if (!globalThis.IntersectionObserver) load()
-    else if (row.current) { observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) load() }); observer.observe(row.current) }
-    return () => { disposed = true; observer?.disconnect() }
+    })
+    observer.observe(row.current)
+    return () => { disposed = true; observer.disconnect() }
   }, [controller.metadata, place.googlePlaceId, place.key, place.photoHandle, place.primaryType])
   return { row, place: { ...place, ...(metadata?.primaryType ? { primaryType: metadata.primaryType } : {}), ...(metadata?.photoHandle ? { photoHandle: metadata.photoHandle } : {}) } }
 }

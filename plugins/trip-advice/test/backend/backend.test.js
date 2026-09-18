@@ -110,9 +110,42 @@ test('quick recommendations retain a published day and only their guest can edit
 
 test('native passive provider actions pass strict plugin validation', () => {
   assert.equal(validateAction({ version: 2, kind: 'places.metadata', placeKey: 'p:3' }).kind, 'places.metadata');
+  assert.deepEqual(validateAction({ version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:8'] }).placeKeys, ['p:1', 'p:8']);
   assert.equal(validateAction({ version: 2, kind: 'map.tile', dayKey: 'd:1', z: 8, x: 128, y: 128 }).kind, 'map.tile');
   assert.throws(() => validateAction({ version: 1, kind: 'places.metadata', placeKey: 'p:3' }), /version 2/);
+  assert.throws(() => validateAction({ version: 2, kind: 'places.metadata.batch', placeKeys: [] }), /1-8/);
+  assert.throws(() => validateAction({ version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:1'] }), /unique/);
+  assert.throws(() => validateAction({ version: 2, kind: 'places.metadata.batch', placeKeys: ['p:0'] }), /invalid/);
+  assert.throws(() => validateAction({ version: 2, kind: 'places.metadata.batch', placeKeys: Array.from({ length: 9 }, (_, index) => `p:${index + 1}`) }), /1-8/);
   assert.throws(() => validateAction({ version: 2, kind: 'map.tile', dayKey: 'd:1', z: 8, x: 256, y: 128 }), /x is invalid/);
+});
+
+test('native owner route forwards a strict metadata batch and returns its provider result', async () => {
+  const calls = [];
+  const expected = { version: 2, kind: 'places.metadata.batch', data: { places: [{ placeKey: 'p:1', primaryType: 'Museum' }] } };
+  const ctx = await ready({ publicShare: { owner: {
+    getNative: async () => ({ config: { shareId: SHARE_A } }),
+    nativeAction: async input => { calls.push(input); return { providerResult: expected }; }
+  } } });
+  const result = await require('../../server/lib/advice-service').routeHandler({ path: '/owner/41/native-action', body: {
+    version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1']
+  } }, ctx, 'native-action');
+  assert.equal(result.status, 200);
+  assert.deepEqual(JSON.parse(result.body), expected);
+  assert.deepEqual(calls, [{ tripId: 41, action: { version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1'] } }]);
+});
+
+test('native owner route exposes provider cooldown as an actionable rate limit', async () => {
+  const ctx = await ready({ publicShare: { owner: {
+    getNative: async () => ({ config: { shareId: SHARE_A } }),
+    nativeAction: async () => { throw new Error('HOST_ERROR: Google Places rate limit reached; retry after 120 seconds'); }
+  } } });
+  const result = await require('../../server/lib/advice-service').routeHandler({ path: '/owner/41/native-action', body: {
+    version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1']
+  } }, ctx, 'native-action');
+  assert.equal(result.status, 429);
+  assert.equal(result.headers['retry-after'], '120');
+  assert.equal(JSON.parse(result.body).code, 'RATE_LIMITED');
 });
 
 test('quick recommendation rejects unpublished day context without writing feedback', async () => {

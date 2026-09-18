@@ -3,9 +3,11 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   advicePlacesAutocompleteResultSchema, advicePlacesResolveResultSchema, advicePhotoResultSchema, advicePlacesMetadataResultSchema,
+  advicePlacesMetadataBatchResultSchema,
   type AdvicePlacesAutocompleteAction, type AdvicePlacesResolveAction,
   type AdvicePlacesAutocompleteResult, type AdvicePlacesResolveResult,
   type AdvicePlacesMetadataAction, type AdvicePlacesMetadataResult,
+  type AdvicePlacesMetadataBatchAction, type AdvicePlacesMetadataBatchResult,
   advicePlacesResolveResultV2Schema,
 } from '@trek/shared';
 import { readEnv } from '../../app-config';
@@ -28,6 +30,7 @@ const MAX_SEARCH_SESSIONS = 1000;
 const MAX_INFLIGHT_PER_SESSION = 4;
 const MAX_INFLIGHT = 64;
 const FETCH_TIMEOUT_MS = 5000;
+const BATCH_DETAILS_TIMEOUT_MS = 750;
 // Conservative whole USD cents per attempt, without free-tier/session discounts.
 // Google global list checked 2026-09-13: $2.83/$17/$7 per 1,000 requests.
 // https://developers.google.com/maps/billing-and-pricing/pricing
@@ -78,12 +81,24 @@ function safeHttpsUrl(raw: string, hosts?: Set<string>): string | null {
   } catch { return null; }
 }
 
+function retryAfterSeconds(value: string | null, now = Date.now()): number {
+  const seconds = value !== null && /^\d+$/.test(value.trim()) ? Number(value) : NaN;
+  const parsed = Number.isFinite(seconds) ? seconds : value === null ? NaN : (Date.parse(value) - now) / 1000;
+  const arithmeticMaximum = Math.floor((Number.MAX_SAFE_INTEGER - now) / 1000);
+  return Math.min(arithmeticMaximum, Math.max(1, Math.ceil(Number.isFinite(parsed) ? parsed : 5)));
+}
+
+export class GooglePlacesRateLimitException extends HttpException {
+  constructor(readonly retryAfterSeconds: number) { super(`Google Places rate limit reached; retry after ${retryAfterSeconds} seconds`, 429); }
+}
+
 @Injectable()
 export class GooglePlacesProvider {
   private readonly handles = new Map<string, Handle>();
   private readonly searchSessions = new Map<string, { token: string; expiresAt: number }>();
   private readonly inflight = new Map<string, number>();
   private totalInflight = 0;
+  private cooldownUntil = 0;
 
   constructor(private readonly db: DatabaseService, private readonly shares: PluginSharesService,
     @Optional() @Inject(GOOGLE_PLACES_FETCH) private readonly fetcher: GooglePlacesFetch = globalThis.fetch.bind(globalThis)) {}
@@ -168,13 +183,26 @@ export class GooglePlacesProvider {
     return value as T;
   }
 
-  private async json(url: string, init: RequestInit): Promise<unknown> {
+  private async json(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<unknown> {
     if (!url.startsWith(`${UPSTREAM}/`)) throw new ServiceUnavailableException('Google Places endpoint is unavailable');
-    const response = await this.fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const response = await this.fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(timeoutMs) });
+    if (response.status === 429) this.rateLimited(response);
     if (!response.ok || response.status >= 300) { discardBody(response); throw new ServiceUnavailableException('Google Places provider is unavailable'); }
     const body = await readCappedJson<unknown>(response, JSON_LIMIT);
     if (body === undefined) throw new ServiceUnavailableException('Google Places provider returned an invalid response');
     return body;
+  }
+
+  private rateLimited(response: Response): never {
+    const seconds = retryAfterSeconds(response.headers.get('retry-after'));
+    this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + seconds * 1000);
+    discardBody(response);
+    throw new GooglePlacesRateLimitException(seconds);
+  }
+
+  private assertAvailable(): void {
+    const remaining = this.cooldownUntil - Date.now();
+    if (remaining > 0) throw new GooglePlacesRateLimitException(Math.max(1, Math.ceil(remaining / 1000)));
   }
 
   private reserve(principal: AdviceProviderPrincipal, operation: keyof typeof ATTEMPT_CENTS, shareMax: number, instanceMax: number): void {
@@ -212,6 +240,7 @@ export class GooglePlacesProvider {
     const release = this.enter(principal);
     try {
       const key = this.configReady();
+      this.assertAvailable();
       const city = action.cityId === 'elsewhere' ? null : this.city(principal, action.cityId);
       if (action.cityId !== 'elsewhere' && !city && !this.snapshot(principal).cities.some(item => item.id === action.cityId)) throw new HttpException('Place city is unavailable', 422);
       this.reserve(principal, 'autocomplete', 500, 5000);
@@ -240,6 +269,7 @@ export class GooglePlacesProvider {
     const release = this.enter(principal);
     try {
       const key = this.configReady();
+      this.assertAvailable();
       this.reserve(principal, 'details', 100, 1000);
       const url = `${UPSTREAM}/v1/places/${encodeURIComponent(prediction.placeId)}?languageCode=en&sessionToken=${encodeURIComponent(prediction.sessionToken)}`;
       let raw: z.infer<typeof detailsBody>;
@@ -291,21 +321,46 @@ export class GooglePlacesProvider {
   }
 
   async metadata(principal: AdviceProviderPrincipal, action: AdvicePlacesMetadataAction): Promise<{ version: 1; kind: 'places.metadata'; data: AdvicePlacesMetadataResult }> {
+    const batch = await this.metadataBatchInternal(principal, { version: 1, kind: 'places.metadata.batch', placeKeys: [action.placeKey] }, false);
+    return { version: 1, kind: 'places.metadata', data: batch.data.places[0]! };
+  }
+
+  async metadataBatch(principal: AdviceProviderPrincipal, action: AdvicePlacesMetadataBatchAction): Promise<{ version: 1; kind: 'places.metadata.batch'; data: AdvicePlacesMetadataBatchResult }> {
+    return this.metadataBatchInternal(principal, action, true);
+  }
+
+  private async metadataBatchInternal(principal: AdviceProviderPrincipal, action: AdvicePlacesMetadataBatchAction, partialFailures: boolean): Promise<{ version: 1; kind: 'places.metadata.batch'; data: AdvicePlacesMetadataBatchResult }> {
     if (!isPrincipal(principal)) throw new HttpException('Invalid public share', 404);
     const projection = this.snapshot(principal);
-    const places = [...projection.shortlists.flatMap(list => [...list.see, ...list.eat]), ...projection.stays.flatMap(stay => stay.days.flatMap(day => day.schedule.map(item => item.place)))];
-    const place = places.find(item => item.key === action.placeKey);
-    if (!place?.googlePlaceId) throw new HttpException('Published Google place is unavailable', 422);
+    const published = [...projection.shortlists.flatMap(list => [...list.see, ...list.eat]), ...projection.stays.flatMap(stay => stay.days.flatMap(day => day.schedule.map(item => item.place)))];
+    const requested = action.placeKeys.map(placeKey => {
+      const place = published.find(item => item.key === placeKey);
+      if (!place?.googlePlaceId) throw new HttpException('Published Google place is unavailable', 422);
+      return { placeKey, googlePlaceId: place.googlePlaceId };
+    });
     const release = this.enter(principal);
     try {
       const key = this.configReady();
-      this.reserve(principal, 'details', 100, 1000);
-      const raw = detailsBody.parse(await this.json(`${UPSTREAM}/v1/places/${encodeURIComponent(place.googlePlaceId)}?languageCode=en`, {
-        method: 'GET', headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'id,displayName,photos,primaryTypeDisplayName' },
-      }));
-      this.validate(principal);
-      if (raw.id !== place.googlePlaceId) throw new ServiceUnavailableException('Google place identity changed');
-      return { version: 1, kind: 'places.metadata', data: advicePlacesMetadataResultSchema.parse({ placeKey: action.placeKey, ...this.presentation(principal, raw) }) };
+      const details = new Map<string, z.infer<typeof detailsBody> | null>();
+      for (const { googlePlaceId } of requested) {
+        if (details.has(googlePlaceId)) continue;
+        try {
+          this.assertAvailable();
+          this.reserve(principal, 'details', 100, 1000);
+          const raw = detailsBody.parse(await this.json(`${UPSTREAM}/v1/places/${encodeURIComponent(googlePlaceId)}?languageCode=en`, {
+            method: 'GET', headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'id,displayName,photos,primaryTypeDisplayName' },
+          }, partialFailures ? BATCH_DETAILS_TIMEOUT_MS : FETCH_TIMEOUT_MS));
+          this.validate(principal);
+          if (raw.id !== googlePlaceId) throw new ServiceUnavailableException('Google place identity changed');
+          details.set(googlePlaceId, raw);
+        } catch (error) {
+          if (error instanceof HttpException && error.getStatus() !== 503) throw error;
+          if (!partialFailures) throw error;
+          details.set(googlePlaceId, null);
+        }
+      }
+      return { version: 1, kind: 'places.metadata.batch', data: advicePlacesMetadataBatchResultSchema.parse({ places: requested.map(({ placeKey, googlePlaceId }) =>
+        advicePlacesMetadataResultSchema.parse({ placeKey, ...(details.get(googlePlaceId) ? this.presentation(principal, details.get(googlePlaceId)!) : {}) })) }) };
     } finally { release(); }
   }
 
@@ -325,12 +380,14 @@ export class GooglePlacesProvider {
     const release = this.enter(principal);
     try {
       const key = this.configReady();
+      this.assertAvailable();
       this.reserve(principal, 'photo', 300, 3000);
       const media = mediaBody.parse(await this.json(`${UPSTREAM}/v1/${photo.photoName}/media?maxWidthPx=512&skipHttpRedirect=true`, { headers: { 'X-Goog-Api-Key': key } }));
       const photoUrl = safeHttpsUrl(media.photoUri, PHOTO_HOSTS);
       if (!photoUrl) return advicePhotoResultSchema.parse({ state: 'unavailable', mimeType: null, bytesBase64: null, authors: [], googleAttribution: null });
       this.validate(principal);
       const response = await this.fetcher(photoUrl, { redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (response.status === 429) this.rateLimited(response);
       if (response.status >= 300 && response.status < 400) { discardBody(response); return advicePhotoResultSchema.parse({ state: 'unavailable', mimeType: null, bytesBase64: null, authors: [], googleAttribution: null }); }
       if (!response.ok || exceedsDeclaredLength(response, PHOTO_LIMIT)) { discardBody(response); return advicePhotoResultSchema.parse({ state: 'unavailable', mimeType: null, bytesBase64: null, authors: [], googleAttribution: null }); }
       const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.toLowerCase() ?? null;

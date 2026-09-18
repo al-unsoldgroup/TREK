@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { pluginsApi } from '../../api/client'
 import { useTripAdviceOwner } from './useTripAdviceOwner'
 
@@ -15,6 +15,7 @@ const owner = (over: Record<string, unknown> = {}) => ({
 const feedback = { projection, feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null }
 
 describe('native Trip Advice owner controller', () => {
+  afterEach(() => vi.useRealTimers())
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(pluginsApi.invoke).mockImplementation(async (_id, sub, init) => {
@@ -92,5 +93,28 @@ describe('native Trip Advice owner controller', () => {
     await act(async () => { await expect(view.result.current.owner!.copyLink()).resolves.toBeUndefined() })
     expect(view.result.current.error).toBe('Clipboard denied')
     expect(view.result.current.owner?.saveState).toBe('Link not copied')
+  })
+
+  it('batches and deduplicates metadata requests within the owner session', async () => {
+    vi.mocked(pluginsApi.invoke).mockImplementation(async (_id, sub, init) => {
+      if (sub.includes('/actions') && (init?.body as { kind?: string })?.kind === 'places.metadata.batch') {
+        return { version: 2, kind: 'places.metadata.batch', data: { places: [
+          { placeKey: 'p:1', primaryType: 'Garden' }, { placeKey: 'p:2', primaryType: 'Museum' },
+        ] } }
+      }
+      if (sub.includes('/actions')) return feedback
+      return owner()
+    })
+    const view = renderHook(() => useTripAdviceOwner(3))
+    await waitFor(() => expect(view.result.current.owner).toBeTruthy())
+    vi.useFakeTimers()
+    const first = view.result.current.metadata('p:1')
+    const resultsPromise = Promise.all([first, view.result.current.metadata('p:1'), view.result.current.metadata('p:2')])
+    await vi.runAllTimersAsync()
+    const results = await resultsPromise
+    const metadataCalls = vi.mocked(pluginsApi.invoke).mock.calls.filter(([, sub, init]) => sub.includes('/actions') && (init?.body as { kind?: string })?.kind === 'places.metadata.batch')
+    expect(metadataCalls).toHaveLength(1)
+    expect(metadataCalls[0]?.[2]?.body).toEqual({ version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:2'] })
+    expect(results.map(result => result.primaryType)).toEqual(['Garden', 'Garden', 'Museum'])
   })
 })

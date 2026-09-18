@@ -167,6 +167,23 @@ describe('PluginsProxyController', () => {
     expect(res.headers['set-cookie']).toBeUndefined(); // a plugin cannot set cookies
   });
 
+  it('passes through a strict numeric Retry-After without shortening it', async () => {
+    const runtime = makeRuntime({
+      invoke: vi.fn(async () => ({ status: 429, headers: { 'content-type': 'application/json', 'retry-after': '172800' }, body: '{"code":"RATE_LIMITED"}' })),
+    } as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('p', fakeReq('GET', '/status'), res as never);
+    expect(res.statusCode).toBe(429);
+    expect(res.headers['Retry-After']).toBe('172800');
+  });
+
+  it.each(['-1', '01', 'tomorrow', '9007199254741'])('strips an invalid plugin Retry-After value: %s', async value => {
+    const runtime = makeRuntime({ invoke: vi.fn(async () => ({ status: 429, headers: { 'retry-after': value }, body: '' })) } as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('p', fakeReq('GET', '/status'), res as never);
+    expect(res.headers['Retry-After']).toBeUndefined();
+  });
+
   it('502 when the plugin invoke throws', async () => {
     const runtime = makeRuntime({ invoke: vi.fn(async () => { throw new Error('down'); }) } as never);
     const res = fakeRes();

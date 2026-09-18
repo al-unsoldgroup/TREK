@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   adviceMapTileResultSchema,
   advicePlacesAutocompleteResultSchema,
   advicePlacesResolveResultV2Schema,
-  advicePlacesMetadataResultV2Schema,
-  type AdvicePlacesMetadataResultV2,
+  advicePlacesMetadataBatchResultV2Schema,
   type AdviceCommentAnchorV2,
   type AdviceActionV2,
   type AdviceReadResultV2,
 } from '@trek/shared'
 import { publicShareApi } from '../../api/publicShare'
+import { createPlaceMetadataBatcher } from './placeMetadataBatcher'
 import type { AdviceSuggestionInput, AdviceSuggestionUpdateInput, RecommendationContext, TripAdviceController } from './tripAdvice.types'
 
 const requestId = () => crypto.randomUUID()
@@ -27,7 +27,6 @@ export function useTripAdviceSession(token: string | undefined, sessionVersion?:
   const [status, setStatus] = useState('')
   const [erased, setErased] = useState(false)
   const active = useRef(0)
-  const metadataCache = useRef(new Map<string, Promise<AdvicePlacesMetadataResultV2>>())
 
   const refresh = useCallback(async (csrf = csrfToken) => {
     if (!token || !csrf) return
@@ -39,7 +38,6 @@ export function useTripAdviceSession(token: string | undefined, sessionVersion?:
   useEffect(() => {
     if (!token) { setLoading(false); setError('Public advice link unavailable.'); return }
     const controller = new AbortController()
-    metadataCache.current.clear()
     const current = ++active.current
     setLoading(true); setError(null); setErased(false)
     void publicShareApi.createSession(token, controller.signal).then(async session => {
@@ -124,14 +122,12 @@ export function useTripAdviceSession(token: string | undefined, sessionVersion?:
     return publicShareApi.photo(token, handle, csrfToken)
   }, [csrfToken, token])
 
-  const metadata = useCallback((placeKey: string) => {
-    if (!token || !csrfToken) return Promise.reject(new Error('Public advice session unavailable.'))
-    const existing = metadataCache.current.get(placeKey)
-    if (existing) return existing
-    const request = publicShareApi.writeV2(token, csrfToken, { version: 2, kind: 'places.metadata', placeKey }).then(result => advicePlacesMetadataResultV2Schema.parse(result.data))
-    metadataCache.current.set(placeKey, request)
-    return request
-  }, [csrfToken, token])
+  const metadataBatcher = useMemo(() => createPlaceMetadataBatcher(async placeKeys => {
+    if (!token || !csrfToken) throw new Error('Public advice session unavailable.')
+    const result = await publicShareApi.writeV2(token, csrfToken, { version: 2, kind: 'places.metadata.batch', placeKeys })
+    return advicePlacesMetadataBatchResultV2Schema.parse(result.data)
+  }), [csrfToken, token])
+  const metadata = useCallback((placeKey: string) => metadataBatcher.get(placeKey), [metadataBatcher])
 
   const mapTile = useCallback(async (dayKey: string, z: number, x: number, y: number) => {
     if (!token || !csrfToken) throw new Error('Public advice session unavailable.')

@@ -453,7 +453,9 @@ async function ownerPurgeFeedback(ctx, tripId) {
 function responseFor(error) {
   const status = error instanceof AdviceError ? error.status : 500;
   const body = status >= 500 ? { error: 'advice service unavailable' } : { error: error.message, code: error.code };
-  return { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }, body: JSON.stringify(body) };
+  const headers = { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+  if (error instanceof AdviceError && Number.isInteger(error.retryAfterSeconds)) headers['retry-after'] = String(error.retryAfterSeconds);
+  return { status, headers, body: JSON.stringify(body) };
 }
 
 async function routeHandler(req, ctx, operation) {
@@ -498,7 +500,13 @@ async function routeHandler(req, ctx, operation) {
       const message = error instanceof Error ? error.message : '';
       if (['HOST_ERROR: Advice configuration changed', 'HOST_ERROR: Review the native advice upgrade before saving', 'HOST_ERROR: Save the native advice configuration first'].includes(message)) return responseFor(new AdviceError(409, message.slice(12), 'ADVICE_CONFLICT'));
       if (message.startsWith('RESOURCE_FORBIDDEN:')) return responseFor(new AdviceError(403, 'Owner advice access denied', 'FORBIDDEN'));
-      if (message === 'HOST_ERROR: Advice request limit reached' || message === 'HOST_ERROR: Monthly Google Places budget reached') return responseFor(new AdviceError(429, message.slice(12), 'RATE_LIMITED'));
+      const providerCooldown = message.match(/^HOST_ERROR: Google Places rate limit reached; retry after ([1-9][0-9]*) seconds$/);
+      if (providerCooldown) {
+        const rateLimited = new AdviceError(429, message.slice(12), 'RATE_LIMITED');
+        rateLimited.retryAfterSeconds = Number(providerCooldown[1]);
+        return responseFor(rateLimited);
+      }
+      if (message === 'HOST_ERROR: Advice request limit reached' || message === 'HOST_ERROR: Monthly Google Places budget reached' || message === 'HOST_ERROR: Advice provider quota reached') return responseFor(new AdviceError(429, message.slice(12), 'RATE_LIMITED'));
       if (message.startsWith('BAD_PARAMS:')) return responseFor(new AdviceError(422, 'Invalid native advice request', 'VALIDATION_ERROR'));
     }
     return responseFor(error);

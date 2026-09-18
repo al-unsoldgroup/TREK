@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { adviceActionSchema, adviceFeedbackWriteSchema, adviceShareConfigSchema, adviceReadActionSchema, adviceOwnerWriteSchema, advicePhotoResultSchema } from './plugin-share.schema';
+import { adviceActionSchema, adviceFeedbackWriteSchema, adviceShareConfigSchema, adviceReadActionSchema, adviceOwnerWriteSchema, advicePhotoResultSchema,
+  advicePlacesMetadataBatchActionSchema, advicePlacesMetadataBatchResultV2Schema } from './plugin-share.schema';
 import type { AdviceShareConfig } from './plugin-share.types';
 const config: AdviceShareConfig = {
   version: 1, publicTitle: 'Japan',
@@ -37,6 +38,14 @@ describe('advice wire contracts', () => {
   it('requires the reviewed feedback response envelope', () => {
     expect(adviceFeedbackWriteSchema.safeParse({ version: 1, kind: 'vote.set', data: {}, extra: true }).success).toBe(false);
     expect(adviceFeedbackWriteSchema.safeParse({ version: 1, kind: 'vote.set', data: {} }).success).toBe(true);
+  });
+  it('bounds and deduplicates batched place metadata contracts', () => {
+    const action = { version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:2'] };
+    expect(advicePlacesMetadataBatchActionSchema.safeParse({ ...action, version: 1 }).success).toBe(true);
+    expect(adviceActionSchema.safeParse({ ...action, version: 1 }).success).toBe(true);
+    expect(advicePlacesMetadataBatchActionSchema.safeParse({ ...action, version: 1, placeKeys: ['p:1', 'p:1'] }).success).toBe(false);
+    expect(advicePlacesMetadataBatchActionSchema.safeParse({ ...action, version: 1, placeKeys: Array.from({ length: 9 }, (_, i) => `p:${i + 1}`) }).success).toBe(false);
+    expect(advicePlacesMetadataBatchResultV2Schema.safeParse({ places: [{ placeKey: 'p:1', primaryType: 'Museum' }] }).success).toBe(true);
   });
   it('bounds publication and requires booleans', () => {
     expect(adviceOwnerWriteSchema.safeParse({ config, expectedRevision: 0, enabled: 1, expiresInDays: 90 }).success).toBe(false);
