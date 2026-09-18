@@ -1,13 +1,13 @@
 import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, HttpException, NotFoundException, Optional, Param, Post, Put, Req, Res, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { ADVICE_PLUGIN_ID, advicePublicActionSchema, adviceReadResultV2Schema, adviceWriteResponseV2Schema, advicePlacesResolveResultV2Schema, adviceFeedbackReadSchema, adviceFeedbackWriteSchema, advicePlacesAutocompleteResultSchema, advicePlacesResolveResultSchema, advicePlacesMetadataResultSchema, advicePhotoResultSchema, idParamSchema } from '@trek/shared';
+import { ADVICE_PLUGIN_ID, advicePublicActionSchema, adviceReadResultV2Schema, adviceWriteResponseV2Schema, advicePlacesResolveResultV2Schema, adviceFeedbackReadSchema, adviceFeedbackWriteSchema, advicePlacesAutocompleteResultSchema, advicePlacesResolveResultSchema, advicePlacesMetadataResultSchema, advicePlacesMetadataBatchResultSchema, advicePhotoResultSchema, idParamSchema } from '@trek/shared';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
 import type { User } from '../../types';
 import { PluginRuntimeService } from '../plugins/plugin-runtime.service';
 import { PluginSharesService, ADVICE_COOKIE } from './plugin-shares.service';
-import { GooglePlacesProvider } from './google-places.provider';
+import { GooglePlacesProvider, GooglePlacesRateLimitException } from './google-places.provider';
 import { AdviceActionDto, AdviceConfigDto, AdviceOwnerWriteDto, AdviceRevisionDto, AdviceSessionDto } from './plugin-shares.dto';
 import { adviceMapTileResultSchema } from '@trek/shared';
 import { AdviceMapProvider } from './advice-map.provider';
@@ -66,9 +66,13 @@ export class PluginSharePublicController {
     this.shares.requireOrigin(req.get('origin'), req.get('sec-fetch-site'));
     const credential = this.shares.credential(req.get('cookie'));
     const csrfToken = req.get('x-trek-advice-csrf');
-    const principal = action.kind === 'map.tile' || action.kind === 'places.metadata'
+    const mediaUnits = action.kind === 'places.metadata.batch' ? action.placeKeys.length : 1;
+    const principal = action.kind === 'map.tile' || action.kind === 'places.metadata' || action.kind === 'places.metadata.batch'
       ? this.shares.authorizeMedia(token, credential, csrfToken)
       : this.shares.authorize(token, credential, csrfToken);
+    if (action.kind === 'places.metadata.batch') {
+      for (let unit = 1; unit < mediaUnits; unit++) this.shares.authorizeMedia(token, credential, csrfToken);
+    }
     if (!this.runtime.isActive(ADVICE_PLUGIN_ID) || !this.runtime.grantsOf(ADVICE_PLUGIN_ID).has('share:guest')) throw new NotFoundException('Invalid or expired link');
     const count = this.inflight.get(principal.shareId) ?? 0;
     if (count >= 4) { res.set('Retry-After', '5'); throw new HttpException('Advice request limit reached', 429); }
@@ -86,9 +90,15 @@ export class PluginSharePublicController {
             : await (this.places ?? unavailableProvider()).resolveAction(principal, action)
           : action.kind === 'places.metadata'
             ? await (this.places ?? unavailableProvider()).metadata(principal, { ...action, version: 1 })
+            : action.kind === 'places.metadata.batch'
+              ? await (this.places ?? unavailableProvider()).metadataBatch(principal, { ...action, version: 1 })
             : await this.runtime.invokePublicShare(principal, action);
     }
-    catch (error) { if (error instanceof HttpException) throw error; throw new ServiceUnavailableException('Advice temporarily unavailable'); }
+    catch (error) {
+      if (error instanceof GooglePlacesRateLimitException) res.set('Retry-After', String(error.retryAfterSeconds));
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException('Advice temporarily unavailable');
+    }
     finally {
       const remaining = this.inflight.get(principal.shareId)! - 1;
       if (remaining) this.inflight.set(principal.shareId, remaining); else this.inflight.delete(principal.shareId);
@@ -99,6 +109,7 @@ export class PluginSharePublicController {
       : action.kind === 'places.autocomplete' ? advicePlacesAutocompleteResultSchema.safeParse((result as { data?: unknown }).data)
         : action.kind === 'places.resolve' ? (action.version === 2 ? advicePlacesResolveResultV2Schema : advicePlacesResolveResultSchema).safeParse((result as { data?: unknown }).data)
           : action.kind === 'places.metadata' ? advicePlacesMetadataResultSchema.safeParse((result as { data?: unknown }).data)
+            : action.kind === 'places.metadata.batch' ? advicePlacesMetadataBatchResultSchema.safeParse((result as { data?: unknown }).data)
             : (action.version === 2 ? adviceWriteResponseV2Schema : adviceFeedbackWriteSchema).safeParse(result);
     if (!parsed.success) throw new ServiceUnavailableException('Advice temporarily unavailable');
     if (action.kind === 'session.erase') {
@@ -108,10 +119,14 @@ export class PluginSharePublicController {
       this.shares.completeGuestErasure(principal);
       res.clearCookie(ADVICE_COOKIE, { secure: true, httpOnly: true, sameSite: 'strict', path: this.shares.cookiePath(token) });
     }
-    if (action.kind === 'places.autocomplete' || action.kind === 'places.resolve' || action.kind === 'places.metadata' || action.kind === 'map.tile') {
+    if (action.kind === 'places.autocomplete' || action.kind === 'places.resolve' || action.kind === 'places.metadata' || action.kind === 'places.metadata.batch' || action.kind === 'map.tile') {
       if (action.version === 2 && action.kind === 'places.metadata') {
         const { placeType, ...data } = advicePlacesMetadataResultSchema.parse(parsed.data);
         return { version: 2, kind: action.kind, data: { ...data, ...(placeType ? { primaryType: placeType } : {}) } };
+      }
+      if (action.version === 2 && action.kind === 'places.metadata.batch') {
+        return { version: 2, kind: action.kind, data: { places: advicePlacesMetadataBatchResultSchema.parse(parsed.data).places.map(({ placeType, ...place }) =>
+          ({ ...place, ...(placeType ? { primaryType: placeType } : {}) })) } };
       }
       return { version: action.version, kind: action.kind, data: parsed.data };
     }
@@ -128,7 +143,11 @@ export class PluginSharePublicController {
       const result = await (this.places ?? unavailableProvider()).photo(principal, handle);
       this.shares.validatePrincipal(principal);
       return advicePhotoResultSchema.parse(result);
-    } catch (error) { if (error instanceof HttpException) throw error; throw new ServiceUnavailableException('Advice temporarily unavailable'); }
+    } catch (error) {
+      if (error instanceof GooglePlacesRateLimitException) res.set('Retry-After', String(error.retryAfterSeconds));
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException('Advice temporarily unavailable');
+    }
   }
 }
 

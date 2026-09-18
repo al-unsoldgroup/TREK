@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import Sqlite from 'better-sqlite3';
-import { GooglePlacesProvider, type GooglePlacesFetch } from '../../../src/nest/plugin-shares/google-places.provider';
+import { GooglePlacesProvider, GooglePlacesRateLimitException, type GooglePlacesFetch } from '../../../src/nest/plugin-shares/google-places.provider';
 import { PluginSharePublicController } from '../../../src/nest/plugin-shares/plugin-shares.controller';
+import { PluginSharesRpc } from '../../../src/nest/plugin-shares/plugin-shares.rpc';
 import type { PublicSharePrincipal } from '../../../src/nest/plugins/protocol/envelope';
 import type { OwnerAdvicePrincipal } from '../../../src/nest/plugin-shares/plugin-shares.service';
 
@@ -96,6 +97,51 @@ describe('published place metadata', () => {
     expect(runtime.invokePublicShare).not.toHaveBeenCalled();
   });
 
+  it('charges every item in a metadata batch to the guest media quota', async () => {
+    const shares = { requireOrigin: vi.fn(), credential: vi.fn(), authorize: vi.fn(), authorizeMedia: vi.fn(() => principal), validatePrincipal: vi.fn() };
+    const runtime = { isActive: () => true, grantsOf: () => new Set(['share:guest']), invokePublicShare: vi.fn() };
+    const places = { metadataBatch: vi.fn(async () => ({ version: 1, kind: 'places.metadata.batch', data: {
+      places: [{ placeKey: 'p:1' }, { placeKey: 'p:2' }, { placeKey: 'p:3' }],
+    } })) };
+    const controller = new PluginSharePublicController(shares as never, runtime as never, places as never);
+    const action = { version: 1 as const, kind: 'places.metadata.batch' as const, placeKeys: ['p:1', 'p:2', 'p:3'] };
+
+    await expect(controller.action('private-token', action, { get: () => undefined } as never, { set: vi.fn() } as never))
+      .resolves.toEqual({ version: 1, kind: action.kind, data: { places: [{ placeKey: 'p:1' }, { placeKey: 'p:2' }, { placeKey: 'p:3' }] } });
+    expect(shares.authorizeMedia).toHaveBeenCalledTimes(3);
+    expect(places.metadataBatch).toHaveBeenCalledOnce();
+    expect(runtime.invokePublicShare).not.toHaveBeenCalled();
+  });
+
+  it('routes an owner metadata batch through the passive native provider path', async () => {
+    const owner: OwnerAdvicePrincipal = { kind: 'adviceOwner', pluginId: 'trip-advice', tripId: 41, userId: 7, shareId: 'share-a', sessionId: 'owner:41:7', guestId: 'owner:41:7', epoch: 2, preview: false };
+    const shares = { ownerPrincipal: vi.fn(() => owner), validateProviderPrincipal: vi.fn() };
+    const places = { metadataBatch: vi.fn(async () => ({ version: 1, kind: 'places.metadata.batch', data: {
+      places: [{ placeKey: 'p:1', placeType: 'Museum' }, { placeKey: 'p:2' }],
+    } })) };
+    const rpc = new PluginSharesRpc(shares as never, places as never);
+    const result = await rpc.ownerNativeAction({ tripId: 41, action: { version: 2, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:2'] } },
+      { pluginId: 'trip-advice', actingUserId: 7 } as never);
+
+    expect(shares.ownerPrincipal).toHaveBeenCalledWith(41, 7, true);
+    expect(places.metadataBatch).toHaveBeenCalledWith(owner, { version: 1, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:2'] });
+    expect(result).toEqual({ providerResult: { version: 2, kind: 'places.metadata.batch', data: {
+      places: [{ placeKey: 'p:1', primaryType: 'Museum' }, { placeKey: 'p:2' }],
+    } } });
+  });
+
+  it('exposes the bounded upstream Retry-After through the public action response', async () => {
+    const shares = { requireOrigin: vi.fn(), credential: vi.fn(), authorizeMedia: vi.fn(() => principal), validatePrincipal: vi.fn() };
+    const runtime = { isActive: () => true, grantsOf: () => new Set(['share:guest']) };
+    const places = { metadata: vi.fn(async () => { throw new GooglePlacesRateLimitException(17); }) };
+    const res = { set: vi.fn() };
+    const controller = new PluginSharePublicController(shares as never, runtime as never, places as never);
+
+    await expect(controller.action('private-token', { version: 1, kind: 'places.metadata', placeKey: 'p:1' },
+      { get: () => undefined } as never, res as never)).rejects.toMatchObject({ status: 429 });
+    expect(res.set).toHaveBeenCalledWith('Retry-After', '17');
+  });
+
   it('returns transient Google type and photo handles only for a published native place', async () => {
     Object.assign(process.env, baseEnv);
     const shares = sharesFixture();
@@ -110,6 +156,87 @@ describe('published place metadata', () => {
     expect(JSON.stringify(result)).not.toContain('places/google-one/photos');
     await expect(service.photo({ ...principal, guestId: 'other-guest' }, result.data.photoHandle!)).rejects.toMatchObject({ status: 422 });
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the legacy single metadata request timeout at five seconds', async () => {
+    Object.assign(process.env, baseEnv);
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    const shares = { ...sharesFixture(), snapshot: () => ({ cities: [], stays: [], shortlists: [{ see: [{ key: 'p:1', googlePlaceId: 'google-one' }], eat: [] }] }) };
+    const service = new GooglePlacesProvider(dbFixture() as never, shares as never,
+      async () => response({ id: 'google-one', displayName: { text: 'One' } }));
+
+    await service.metadata(principal, { version: 1, kind: 'places.metadata', placeKey: 'p:1' });
+
+    expect(timeout).toHaveBeenCalledOnce();
+    expect(timeout).toHaveBeenCalledWith(5000);
+    timeout.mockRestore();
+  });
+
+  it('resolves one projection and one upstream detail call per unique Google place in a batch', async () => {
+    Object.assign(process.env, baseEnv);
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    const snapshot = vi.fn(() => ({ cities: [], stays: [], shortlists: [{ see: [
+      { key: 'p:1', googlePlaceId: 'google-one' }, { key: 'p:2', googlePlaceId: 'google-one' },
+    ], eat: [{ key: 'p:3', googlePlaceId: 'google-two' }] }] }));
+    const shares = { ...sharesFixture(), snapshot };
+    const fetcher = vi.fn<GooglePlacesFetch>(async url => {
+      const id = decodeURIComponent(String(url).split('/v1/places/')[1]!.split('?')[0]!);
+      return response({ id, displayName: { text: id }, primaryTypeDisplayName: { text: `${id} type` } });
+    });
+    const service = new GooglePlacesProvider(dbFixture() as never, shares as never, fetcher);
+
+    const result = await service.metadataBatch(principal, { version: 1, kind: 'places.metadata.batch', placeKeys: ['p:2', 'p:3', 'p:1'] });
+
+    expect(result.data.places).toEqual([
+      { placeKey: 'p:2', placeType: 'google-one type' },
+      { placeKey: 'p:3', placeType: 'google-two type' },
+      { placeKey: 'p:1', placeType: 'google-one type' },
+    ]);
+    expect(snapshot).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.map(call => String(call[0]))).toEqual([
+      expect.stringContaining('/v1/places/google-one?'), expect.stringContaining('/v1/places/google-two?'),
+    ]);
+    expect(timeout).toHaveBeenCalledTimes(2);
+    expect(timeout).toHaveBeenCalledWith(750);
+    timeout.mockRestore();
+  });
+
+  it('returns an empty per-place presentation after an isolated detail failure and continues the batch', async () => {
+    Object.assign(process.env, baseEnv);
+    const shares = { ...sharesFixture(), snapshot: () => ({ cities: [], stays: [], shortlists: [{ see: [
+      { key: 'p:1', googlePlaceId: 'google-one' }, { key: 'p:2', googlePlaceId: 'google-two' },
+    ], eat: [] }] }) };
+    const fetcher = vi.fn<GooglePlacesFetch>(async url => String(url).includes('google-one')
+      ? new Response('', { status: 503 })
+      : response({ id: 'google-two', displayName: { text: 'Two' }, primaryTypeDisplayName: { text: 'Museum' } }));
+    const service = new GooglePlacesProvider(dbFixture() as never, shares as never, fetcher);
+
+    await expect(service.metadataBatch(principal, { version: 1, kind: 'places.metadata.batch', placeKeys: ['p:1', 'p:2'] }))
+      .resolves.toMatchObject({ data: { places: [{ placeKey: 'p:1' }, { placeKey: 'p:2', placeType: 'Museum' }] } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('honors a bounded Google Retry-After cooldown without retries or extra budget charges', async () => {
+    Object.assign(process.env, baseEnv);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-18T12:00:00Z'));
+    const usage = new Map<string, number>();
+    const shares = { ...sharesFixture(), snapshot: () => ({ cities: [], stays: [], shortlists: [{ see: [{ key: 'p:1', googlePlaceId: 'google-one' }], eat: [] }] }) };
+    const fetcher = vi.fn<GooglePlacesFetch>()
+      .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'Retry-After': '172800' } }))
+      .mockResolvedValueOnce(response({ id: 'google-one', displayName: { text: 'Place' } }));
+    const service = new GooglePlacesProvider(dbFixture(usage) as never, shares as never, fetcher);
+    const action = { version: 1 as const, kind: 'places.metadata' as const, placeKey: 'p:1' };
+
+    await expect(service.metadata(principal, action)).rejects.toMatchObject({ status: 429, retryAfterSeconds: 172800 });
+    await expect(service.metadata(principal, action)).rejects.toMatchObject({ status: 429 });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(usage.get('share-a:details')).toBe(1);
+    vi.advanceTimersByTime(172_800_000);
+    await expect(service.metadata(principal, action)).resolves.toMatchObject({ data: { placeKey: 'p:1' } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(usage.get('share-a:details')).toBe(2);
   });
 
   it('preserves the disabled provider gate for metadata', async () => {

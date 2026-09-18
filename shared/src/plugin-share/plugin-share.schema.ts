@@ -86,6 +86,10 @@ export const advicePlacesAutocompleteActionSchema = z.strictObject({ version: z.
   cityId: key.max(80), category, input: actionText(200).refine(v => v.length >= 2, 'input must contain at least two characters'), locale: actionText(35) });
 export const advicePlacesResolveActionSchema = z.strictObject({ version: z.literal(1), kind: z.literal('places.resolve'), searchId: uuid, predictionId: actionText(160) });
 export const advicePlacesMetadataActionSchema = z.strictObject({ version: z.literal(1), kind: z.literal('places.metadata'), placeKey: z.string().regex(/^p:[1-9][0-9]*$/) });
+const metadataPlaceKeys = z.array(z.string().regex(/^p:[1-9][0-9]*$/)).min(1).max(8);
+export const advicePlacesMetadataBatchActionSchema = z.strictObject({ version: z.literal(1), kind: z.literal('places.metadata.batch'),
+  placeKeys: metadataPlaceKeys })
+  .refine(value => new Set(value.placeKeys).size === value.placeKeys.length, 'Duplicate place key');
 export const adviceMapTileActionSchema = z.strictObject({ version: z.literal(1), kind: z.literal('map.tile'), dayKey: z.string().regex(/^d:[1-9][0-9]*$/),
   z: z.number().int().min(2).max(17), x: z.number().int().min(0), y: z.number().int().min(0) }).refine(value => value.x < 2 ** value.z && value.y < 2 ** value.z, 'Invalid tile');
 export const adviceMapTileResultSchema = z.strictObject({ mimeType: z.literal('image/png'), bytesBase64: z.string().max(350000) });
@@ -98,7 +102,8 @@ export const adviceSessionEraseActionSchema = z.strictObject({ version: z.litera
 export const adviceActionSchema = z.discriminatedUnion('kind', [adviceReadActionSchema, adviceVoteActionSchema,
   adviceCommentCreateActionSchema, adviceCommentDeleteActionSchema, advicePlacesAutocompleteActionSchema,
   advicePlacesResolveActionSchema, adviceSuggestionCreateActionSchema, adviceSuggestionWithdrawActionSchema,
-  adviceSessionEraseActionSchema, advicePlacesMetadataActionSchema, adviceSuggestionUpdateActionSchema, adviceMapTileActionSchema]);
+  adviceSessionEraseActionSchema, advicePlacesMetadataActionSchema, advicePlacesMetadataBatchActionSchema,
+  adviceSuggestionUpdateActionSchema, adviceMapTileActionSchema]);
 export const adviceInvocationSchema = z.strictObject({ version: z.literal(1), scope: z.strictObject({
   shareId: uuid, guestId: nonEmptyString.max(128), epoch: z.number().int().positive(),
 }), action: adviceActionSchema });
@@ -140,6 +145,9 @@ export const adviceActionV2Schema = z.discriminatedUnion('kind', [
   adviceCommentCreateActionSchema.extend({ version: z.literal(2), anchor: adviceCommentAnchorV2Schema.optional() }),
   adviceCommentDeleteActionSchema.extend({ version: z.literal(2) }), advicePlacesAutocompleteActionSchema.extend({ version: z.literal(2) }),
   advicePlacesResolveActionSchema.extend({ version: z.literal(2) }), advicePlacesMetadataActionSchema.extend({ version: z.literal(2) }),
+  z.strictObject({ version: z.literal(2), kind: z.literal('places.metadata.batch'),
+    placeKeys: metadataPlaceKeys })
+    .refine(value => new Set(value.placeKeys).size === value.placeKeys.length, 'Duplicate place key'),
   adviceSuggestionCreateActionSchema.extend({ version: z.literal(2) }),
   adviceSuggestionUpdateActionSchema.extend({ version: z.literal(2), dayKey: nativeDayKey.nullable().optional() }),
   adviceSuggestionWithdrawActionSchema.extend({ version: z.literal(2) }), adviceSessionEraseActionSchema.extend({ version: z.literal(2) }),
@@ -181,7 +189,10 @@ export const advicePlacesResolveResultSchema = z.strictObject({
 });
 export const advicePlacesMetadataResultSchema = z.strictObject({ placeKey: z.string().regex(/^p:[1-9][0-9]*$/), placeType: actionText(200).optional(), photoHandle: actionText(160).optional() });
 export const advicePlacesMetadataResultV2Schema = z.strictObject({ placeKey: nativePlaceKey, primaryType: actionText(200).optional(), photoHandle: actionText(160).optional() });
+export const advicePlacesMetadataBatchResultSchema = z.strictObject({ places: z.array(advicePlacesMetadataResultSchema).max(8) });
+export const advicePlacesMetadataBatchResultV2Schema = z.strictObject({ places: z.array(advicePlacesMetadataResultV2Schema).max(8) });
 export type AdvicePlacesMetadataResultV2 = z.infer<typeof advicePlacesMetadataResultV2Schema>;
+export type AdvicePlacesMetadataBatchResultV2 = z.infer<typeof advicePlacesMetadataBatchResultV2Schema>;
 export const advicePhotoResultSchema = z.strictObject({
   state: z.enum(['available', 'unavailable']), mimeType: z.string().regex(/^image\/(?:jpeg|png|webp)$/).nullable(),
   bytesBase64: z.string().max(750000).nullable(), authors: z.array(photoAuthor).max(20),
@@ -208,7 +219,7 @@ export const adviceFeedbackReadSchema = z.strictObject({ projection: adviceProje
   myComments: z.array(adviceCommentSchema).max(50), nextCommentsCursor: z.string().max(256).nullable() });
 const adviceResponseData = z.record(z.string(), z.unknown());
 export const adviceFeedbackWriteSchema = z.strictObject({ version: z.literal(1), kind: z.enum(['vote.set', 'comment.create', 'comment.delete',
-  'places.autocomplete', 'places.resolve', 'places.metadata', 'map.tile', 'suggestion.create', 'suggestion.update', 'suggestion.withdraw', 'session.erase']), data: adviceResponseData,
+  'places.autocomplete', 'places.resolve', 'places.metadata', 'places.metadata.batch', 'map.tile', 'suggestion.create', 'suggestion.update', 'suggestion.withdraw', 'session.erase']), data: adviceResponseData,
   vote: adviceVoteSchema.optional(), duplicate: z.strictObject({ placeKey: actionText(160), cityId: key, category }).optional() });
 export const advicePlacesResolveResultV2Schema = advicePlacesResolveResultSchema.extend({
   place: advicePlacesResolveResultSchema.shape.place.omit({ placeType: true }).extend({
@@ -283,6 +294,8 @@ export type AdvicePlacesAutocompleteAction = z.infer<typeof advicePlacesAutocomp
 export type AdvicePlacesResolveAction = z.infer<typeof advicePlacesResolveActionSchema>;
 export type AdvicePlacesMetadataAction = z.infer<typeof advicePlacesMetadataActionSchema>;
 export type AdvicePlacesMetadataResult = z.infer<typeof advicePlacesMetadataResultSchema>;
+export type AdvicePlacesMetadataBatchAction = z.infer<typeof advicePlacesMetadataBatchActionSchema>;
+export type AdvicePlacesMetadataBatchResult = z.infer<typeof advicePlacesMetadataBatchResultSchema>;
 export type AdviceMapTileAction = z.infer<typeof adviceMapTileActionSchema>;
 export type AdviceMapTileResult = z.infer<typeof adviceMapTileResultSchema>;
 export type AdvicePlacePrediction = z.infer<typeof advicePlacesAutocompleteResultSchema>['suggestions'][number];
@@ -347,6 +360,7 @@ type AdviceActionChecklist =
   | z.infer<typeof adviceSuggestionWithdrawActionSchema>
   | z.infer<typeof adviceSessionEraseActionSchema>
   | z.infer<typeof advicePlacesMetadataActionSchema>
+  | z.infer<typeof advicePlacesMetadataBatchActionSchema>
   | z.infer<typeof adviceMapTileActionSchema>
   | z.infer<typeof adviceSuggestionUpdateActionSchema>;
 export const ADVICE_ACTION_PARITY: [
@@ -361,6 +375,7 @@ export const ADVICE_ACTION_PARITY: [
   Equal<AdviceSuggestionWithdrawAction, Extract<AdviceAction, { kind: 'suggestion.withdraw' }>>,
   Equal<AdviceSessionEraseAction, Extract<AdviceAction, { kind: 'session.erase' }>>,
   Equal<AdvicePlacesMetadataAction, Extract<AdviceAction, { kind: 'places.metadata' }>>,
+  Equal<AdvicePlacesMetadataBatchAction, Extract<AdviceAction, { kind: 'places.metadata.batch' }>>,
   Equal<AdviceMapTileAction, Extract<AdviceAction, { kind: 'map.tile' }>>,
   Equal<AdviceSuggestionUpdateAction, Extract<AdviceAction, { kind: 'suggestion.update' }>>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true, true];
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true];

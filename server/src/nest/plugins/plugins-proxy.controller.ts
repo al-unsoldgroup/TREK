@@ -22,6 +22,13 @@ import { Public } from '../auth/public.decorator';
 // passthrough; every reply is forced to nosniff + attachment below. fetch-based
 // consumers (the plugin's own client) are unaffected — fetch ignores both.
 const SAFE_RESPONSE_HEADERS = new Set(['content-type', 'cache-control']);
+const MAX_RETRY_AFTER_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000);
+
+function safeRetryAfter(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^(?:0|[1-9][0-9]{0,12})$/.test(value)) return null;
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) && seconds <= MAX_RETRY_AFTER_SECONDS ? value : null;
+}
 
 // Inbound header allowlist for `auth:false` routes (webhooks). A plugin can verify a
 // provider's signature, but ONLY over an explicit allowlist that NEVER carries an
@@ -157,7 +164,12 @@ export class PluginsProxyController {
       }
 
       for (const [k, v] of Object.entries(headers)) {
-        if (SAFE_RESPONSE_HEADERS.has(k.toLowerCase())) res.setHeader(k, v);
+        const lower = k.toLowerCase();
+        if (SAFE_RESPONSE_HEADERS.has(lower)) res.setHeader(k, v);
+        else if (lower === 'retry-after') {
+          const safe = safeRetryAfter(v);
+          if (safe !== null) res.setHeader('Retry-After', safe);
+        }
       }
       // Never let a non-redirect reply render as a document at TREK's origin
       // (that would run plugin script at our real origin, outside the sandbox).

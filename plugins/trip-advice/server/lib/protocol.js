@@ -134,6 +134,14 @@ function validateAction(action) {
     assert(/^p:[1-9][0-9]*$/.test(text(action.placeKey, 'placeKey', 160)), 'placeKey is invalid');
     return action;
   }
+  if (kind === 'places.metadata.batch') {
+    exact(action, ['version', 'kind', 'placeKeys'], 'action');
+    assert(action.version === 2, 'places.metadata.batch requires action.version 2');
+    assert(Array.isArray(action.placeKeys) && action.placeKeys.length >= 1 && action.placeKeys.length <= 8, 'placeKeys must contain 1-8 items');
+    for (const placeKey of action.placeKeys) assert(typeof placeKey === 'string' && /^p:[1-9][0-9]*$/.test(placeKey), 'placeKey is invalid');
+    assert(new Set(action.placeKeys).size === action.placeKeys.length, 'placeKeys must be unique');
+    return action;
+  }
   if (kind === 'map.tile') {
     exact(action, ['version', 'kind', 'dayKey', 'z', 'x', 'y'], 'action');
     assert(action.version === 2, 'map.tile requires action.version 2');

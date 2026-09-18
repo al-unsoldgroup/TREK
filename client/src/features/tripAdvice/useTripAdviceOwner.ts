@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   adviceNativeOwnerResponseSchema,
   adviceMapTileResultSchema,
@@ -7,8 +7,7 @@ import {
   advicePhotoResultSchema,
   advicePlacesAutocompleteResultSchema,
   advicePlacesResolveResultV2Schema,
-  advicePlacesMetadataResultV2Schema,
-  type AdvicePlacesMetadataResultV2,
+  advicePlacesMetadataBatchResultV2Schema,
   type AdviceCommentAnchorV2,
   adviceReadResultV2Schema,
   adviceWriteResponseV2Schema,
@@ -19,6 +18,7 @@ import {
   type AdviceShareConfigV2,
 } from '@trek/shared'
 import { pluginsApi } from '../../api/client'
+import { createPlaceMetadataBatcher } from './placeMetadataBatcher'
 import type { AdviceSuggestionInput, AdviceSuggestionUpdateInput, RecommendationContext, TripAdviceController, VisibilityField } from './tripAdvice.types'
 
 const PLUGIN_ID = 'trip-advice'
@@ -46,7 +46,6 @@ export function useTripAdviceOwner(tripId: number): TripAdviceController {
   const [feedback, setFeedback] = useState<AdviceReadResultV2 | null>(null)
   const citySession = useRef(crypto.randomUUID())
   const active = useRef(0)
-  const metadataCache = useRef(new Map<string, Promise<AdvicePlacesMetadataResultV2>>())
 
   const load = useCallback(async () => {
     const current = ++active.current
@@ -67,7 +66,6 @@ export function useTripAdviceOwner(tripId: number): TripAdviceController {
   }, [action])
 
   useEffect(() => {
-    metadataCache.current.clear()
     setLoading(true); setError(null)
     void load().catch(caught => { setError(detail(caught, 'Trip advice could not be loaded.')); setLoading(false) })
     return () => { active.current++ }
@@ -200,16 +198,12 @@ export function useTripAdviceOwner(tripId: number): TripAdviceController {
     if (!('data' in result)) throw new Error('Invalid map response.')
     return adviceMapTileResultSchema.parse(result.data)
   }, [action])
-  const metadata = useCallback((placeKey: string) => {
-    const existing = metadataCache.current.get(placeKey)
-    if (existing) return existing
-    const request = action({ version: 2, kind: 'places.metadata', placeKey }).then(result => {
-      if (!('data' in result)) throw new Error('Invalid place metadata response.')
-      return advicePlacesMetadataResultV2Schema.parse(result.data)
-    })
-    metadataCache.current.set(placeKey, request)
-    return request
-  }, [action])
+  const metadataBatcher = useMemo(() => createPlaceMetadataBatcher(async placeKeys => {
+    const result = await action({ version: 2, kind: 'places.metadata.batch', placeKeys })
+    if (!('data' in result)) throw new Error('Invalid place metadata response.')
+    return advicePlacesMetadataBatchResultV2Schema.parse(result.data)
+  }), [action])
+  const metadata = useCallback((placeKey: string) => metadataBatcher.get(placeKey), [metadataBatcher])
 
   return {
     mode: 'owner',

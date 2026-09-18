@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TripAdviceSurface from './TripAdviceSurface'
 import type { TripAdviceController } from './tripAdvice.types'
@@ -150,11 +150,18 @@ describe('native Trip Advice', () => {
     expect(controller.owner.setVisibility).toHaveBeenCalledWith('hiddenIdeaKeys', 's:22222222-2222-4222-8222-222222222222')
   })
   it('loads missing Google type through the bounded place metadata controller', async () => {
-    vi.stubGlobal('IntersectionObserver', undefined)
+    let reveal: ((entries: IntersectionObserverEntry[]) => void) | undefined
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: (entries: IntersectionObserverEntry[]) => void) { reveal = callback }
+      observe() {}
+      disconnect() {}
+    })
     const controller = controllerFixture()
     controller.metadata = vi.fn().mockResolvedValue({ placeKey: 'p:1', primaryType: 'Botanical garden' })
     controller.projection!.shortlists = [{ cityId: 'tokyo', eat: [], see: [{ key: 'p:1', title: 'Garden', category: 'see', cityId: 'tokyo', locality: 'Tokyo', countryCode: 'JP', googlePlaceId: 'google', mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Garden' }] }]
     render(<TripAdviceSurface controller={controller} />)
+    expect(controller.metadata).not.toHaveBeenCalled()
+    act(() => reveal?.([{ isIntersecting: true } as IntersectionObserverEntry]))
     await screen.findByText('Botanical garden · Tokyo · Under consideration')
     expect(controller.metadata).toHaveBeenCalledWith('p:1')
   })
