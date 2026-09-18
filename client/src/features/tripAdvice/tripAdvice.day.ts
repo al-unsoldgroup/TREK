@@ -9,3 +9,8 @@ export function dayMapPlaces(controller: TripAdviceController, cityId: string, d
   const shortlist = controller.projection?.shortlists.find(list => list.cityId === cityId)
   return [...new Map([...day.schedule.map(row => row.place), ...(shortlist?.see || []), ...(shortlist?.eat || [])].map(place => [place.key, place])).values()]
 }
+
+export function dayMapFitPlaces(places: AdvicePlaceView[], scheduledKeys: ReadonlySet<string>): AdvicePlaceView[] {
+  const scheduled = places.filter(place => scheduledKeys.has(place.key))
+  return scheduled.length ? scheduled : places
+}

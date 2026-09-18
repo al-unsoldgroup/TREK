@@ -4,13 +4,27 @@ import { GridLayer, latLngBounds, type Coords, type DoneCallback } from 'leaflet
 import { adviceMapTileResultSchema } from '@trek/shared'
 import { TripAdviceVotes } from './TripAdvicePlaceRow'
 import type { AdvicePlaceView, TripAdviceController } from './tripAdvice.types'
+import { dayMapFitPlaces } from './tripAdvice.day'
 
-function Resize({ expanded }: { expanded: boolean }) { const map = useMap(); useEffect(() => { map.invalidateSize() }, [map, expanded]); return null }
+function Resize({ expanded }: { expanded: boolean }) {
+  const map = useMap()
+  useEffect(() => {
+    const wrapper = map.getContainer().closest('.ta-map')
+    const invalidate = () => map.invalidateSize()
+    invalidate()
+    if (!wrapper) return
+    const afterResize = (event: Event) => { if (event.target === wrapper && (event as TransitionEvent).propertyName === 'height') invalidate() }
+    wrapper.addEventListener('transitionend', afterResize)
+    return () => wrapper.removeEventListener('transitionend', afterResize)
+  }, [map, expanded])
+  return null
+}
+function paddedBounds(points: [number, number][]) { return latLngBounds(points).pad(0.25) }
 function FitBounds({ coordinateKey }: { coordinateKey: string }) {
   const map = useMap()
   useEffect(() => {
     const points = coordinateKey.split(';').map(pair => pair.split(',').map(Number) as [number, number])
-    map.fitBounds(latLngBounds(points), { padding: [25, 25], maxZoom: 14 })
+    map.fitBounds(paddedBounds(points), { maxZoom: 14 })
   }, [coordinateKey, map])
   return null
 }
@@ -49,10 +63,11 @@ export default function TripAdviceMap({ controller, places, scheduledKeys, dayKe
   useEffect(() => { if (!container.current) return; if (!globalThis.IntersectionObserver) { setVisible(true); return } const observer = new IntersectionObserver(entries => setVisible(entries.some(entry => entry.isIntersecting))); observer.observe(container.current); return () => observer.disconnect() }, [hasCoordinates])
   const located = [...new Map(places.filter(place => typeof place.lat === 'number' && typeof place.lng === 'number').map(place => [place.key, place])).values()]
   if (!located.length) return null
-  const bounds = latLngBounds(located.map(place => [place.lat!, place.lng!]))
-  const coordinateKey = located.map(place => `${place.lat},${place.lng}`).join(';')
+  const fitPlaces = dayMapFitPlaces(located, scheduledKeys)
+  const bounds = paddedBounds(fitPlaces.map(place => [place.lat!, place.lng!]))
+  const coordinateKey = fitPlaces.map(place => `${place.lat},${place.lng}`).join(';')
   return <div ref={container} className="ta-map" data-expanded={expanded}>
-    {visible && <MapContainer bounds={bounds} boundsOptions={{ padding: [25, 25], maxZoom: 14 }} minZoom={2} maxZoom={17} scrollWheelZoom={false}>
+    {visible && <MapContainer bounds={bounds} boundsOptions={{ maxZoom: 14 }} minZoom={2} maxZoom={17} scrollWheelZoom={false}>
       <MediatedTiles controller={controller} dayKey={dayKey} />
       <FitBounds coordinateKey={coordinateKey} />
       <Resize expanded={expanded} />
