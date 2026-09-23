@@ -1,6 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from '@nestjs/common';
 import type { Response } from 'express';
 import { MulterError } from 'multer';
+import { captureException } from '../../telemetry/posthog';
 
 /**
  * Normalises every Nest exception to TREK's legacy error envelope so migrated
@@ -34,6 +35,7 @@ export class TrekExceptionFilter implements ExceptionFilter {
     //    destroy the socket so the connection doesn't hang open.
     if (res.headersSent) {
       console.error('Unhandled error after headers sent:', exception);
+      captureException(exception);
       res.destroy();
       return;
     }
@@ -64,11 +66,13 @@ export class TrekExceptionFilter implements ExceptionFilter {
         const raw = obj.message ?? obj.error;
         const message =
           status < 500 ? (Array.isArray(raw) ? raw.join(', ') : String(raw ?? 'Error')) : 'Internal server error';
+        if (status >= 500) captureException(exception);
         res.status(status).json({ error: message });
         return;
       }
 
       const message = status < 500 ? String(body ?? 'Error') : 'Internal server error';
+      if (status >= 500) captureException(exception);
       res.status(status).json({ error: message });
       return;
     }
@@ -78,7 +82,10 @@ export class TrekExceptionFilter implements ExceptionFilter {
     //    status = err.statusCode || err.status || 500; 4xx exposes err.message.
     const err = exception as { statusCode?: number; status?: number; message?: unknown } | null;
     const status = (err && (err.statusCode || err.status)) || 500;
-    if (status >= 500) console.error('Unhandled error:', exception);
+    if (status >= 500) {
+      console.error('Unhandled error:', exception);
+      captureException(exception);
+    }
     const message = status < 500 ? String(err?.message ?? 'Error') : 'Internal server error';
     res.status(status).json({ error: message });
   }

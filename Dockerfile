@@ -23,6 +23,12 @@ COPY client/package.json ./client/
 RUN npm ci --workspace=client
 COPY --from=shared-builder /app/shared/dist ./shared/dist
 COPY client/ ./client/
+# Baked into the bundle as import.meta.env.VITE_GIT_SHA — the PostHog `release`
+# tag on every client-side exception. Vite only inlines VITE_* vars that exist
+# in the environment at build time, so this has to be a build ARG, not an
+# ENV set after the build like the runtime-stage APP_VERSION below.
+ARG GIT_SHA=unknown
+ENV VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build --workspace=client
 
 # ── Stage 3: server ──────────────────────────────────────────────────────────
@@ -110,6 +116,12 @@ ENV NODE_USE_ENV_PROXY=1
 ENV PORT=3000
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
+# The PostHog `release` tag on every server-side exception (posthog-node capture
+# calls in bootstrap.ts / trek-exception.filter.ts). Same commit as the client's
+# VITE_GIT_SHA baked in above, so a regression can be traced to one deploy from
+# either side.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 
 EXPOSE 3000
 

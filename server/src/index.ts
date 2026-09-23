@@ -22,6 +22,7 @@ const tmpDir = path.join(__dirname, '../data/tmp');
 if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
 import { getAppUrl, getMcpSafeUrl, readEnv } from './app-config';
+import { captureExceptionImmediate, shutdown as shutdownPostHog } from './telemetry/posthog';
 
 const PORT = readEnv().app.port;
 const HOST = readEnv().app.host;
@@ -137,8 +138,11 @@ function shutdown(signal: string): void {
     // handles that and still exits rather than hanging or throwing.
     server,
     // nestApp.close() stops every cron via the scheduling registrar's shutdown
-    // hook, and tears the plugin supervisor's forked children down.
-    closeNestApp: async () => { await nestApp?.close(); },
+    // hook, and tears the plugin supervisor's forked children down. Flushing
+    // PostHog's queued events rides along on the same awaited promise rather
+    // than getting its own ShutdownDeps field, since it needs no special
+    // ordering relative to the rest of this step.
+    closeNestApp: async () => { await Promise.all([nestApp?.close(), shutdownPostHog()]); },
     getWsClients: () => getServer()?.clients ?? null,
     closeMcpSessions,
     closeDb: () => { require('./db/database').closeDb(); },
@@ -155,3 +159,16 @@ function shutdown(signal: string): void {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// PostHog error tracking — a no-op without POSTHOG_API_KEY (see telemetry/posthog.ts).
+// Registering these listeners at all suppresses Node's default crash-on-uncaught
+// behaviour, so both handlers reproduce it explicitly (log + exit 1) — this must
+// change nothing about how the process dies, only report it first.
+process.on('uncaughtException', (err) => {
+  console.error('Fatal: uncaught exception', err);
+  captureExceptionImmediate(err).finally(() => process.exit(1));
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Fatal: unhandled rejection', reason);
+  captureExceptionImmediate(reason).finally(() => process.exit(1));
+});
