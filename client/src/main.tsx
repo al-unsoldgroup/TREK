@@ -36,6 +36,7 @@ import { startConnectivityProbe } from './sync/connectivity'
 import { requestPersistentStorage } from './sync/persistentStorage'
 import ErrorBoundary, { RootErrorFallback } from './components/shared/ErrorBoundary'
 import { installGlobalErrorHandlers } from './utils/globalErrorHandlers'
+import { init as initPostHog } from './telemetry/posthog'
 
 maybeInstallTouchDragPolyfill()
 startConnectivityProbe()
@@ -43,6 +44,8 @@ startConnectivityProbe()
 requestPersistentStorage()
 // Event handlers and async code never reach a boundary; this is where they land.
 installGlobalErrorHandlers()
+// No-op without VITE_POSTHOG_KEY — see telemetry/posthog.ts.
+initPostHog()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

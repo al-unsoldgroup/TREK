@@ -2,6 +2,7 @@ import React from 'react'
 import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { isChunkLoadError, reloadOnceForChunk } from '../../utils/chunkReload'
+import { captureException } from '../../telemetry/posthog'
 
 /**
  * The app had none of these, so a single throw during render unmounted the whole
@@ -59,6 +60,8 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
 
   componentDidCatch(error: unknown, info: React.ErrorInfo) {
     console.error(`[ErrorBoundary:${this.props.boundaryId}]`, error, info.componentStack)
+    // window.onerror never sees this — the boundary caught it first.
+    captureException(error)
     this.props.onError?.(error, info)
 
     // A chunk that 404s can't be retried — React.lazy keeps the rejected promise,

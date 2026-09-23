@@ -44,6 +44,8 @@ export function deriveApp(raw: RawEnv) {
     host: raw.HOST,
     /** Raw APP_VERSION — fallbacks differ per site ('0.0.0' vs package.json vs semver-validated); each keeps its own. */
     appVersion: raw.APP_VERSION,
+    /** The commit this image was built from (Dockerfile ARG GIT_SHA). Used as the PostHog `release` tag so an error can be traced to one deploy. Unset on a bare source checkout. */
+    gitSha: raw.GIT_SHA,
     /** Raw APP_URL — trailing-slash stripping differs per site (feeds strips one, notifications strips all). */
     appUrl: raw.APP_URL,
     tz: raw.TZ,
@@ -248,6 +250,9 @@ export function deriveIntegrations(raw: RawEnv) {
     overpassUrl: raw.OVERPASS_URL,
     overpassTimeoutMs: positiveNumberOr(raw.OVERPASS_TIMEOUT_MS, 12000),
     kitineraryExtractorPath: raw.KITINERARY_EXTRACTOR_PATH,
+    /** Optional — no key, no PostHog client (see server/src/telemetry/posthog.ts). Public API key, safe to default in .env.example. */
+    posthogApiKey: raw.POSTHOG_API_KEY?.trim(),
+    posthogHost: stripTrailingSlashes(raw.POSTHOG_HOST?.trim() || 'https://us.i.posthog.com'),
     /**
      * One ceiling for a model call, replacing the three per-client constants
      * that used to disagree. The default is deliberately generous: heavier
