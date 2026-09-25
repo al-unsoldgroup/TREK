@@ -5,11 +5,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const captureException = vi.fn();
 const captureExceptionImmediate = vi.fn().mockResolvedValue(undefined);
 const _shutdown = vi.fn().mockResolvedValue(undefined);
-const PostHogCtor = vi.fn().mockImplementation(() => ({
+const PostHogCtor = vi.fn().mockImplementation(function () { return {
   captureException,
   captureExceptionImmediate,
   _shutdown,
-}));
+}; });
 
 vi.mock('posthog-node', () => ({ PostHog: PostHogCtor }));
 
