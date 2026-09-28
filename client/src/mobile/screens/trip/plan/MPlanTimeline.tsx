@@ -85,7 +85,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
     (dayId != null
       ? (anchor === 'assignment' ? daySchedule.byAssignment[dayId]?.[id] : daySchedule.byReservation[dayId]?.[id])
       : undefined
-    )?.map(si => <PlanScheduleRow key={`${si.pluginId}:${si.id}`} item={si} />)
+    )?.map(si => <PlanScheduleRow key={`${si.pluginId}:${si.id}`} item={si} onOpenPluginTab={planner.openPluginTab} />)
 
   // Selecting the place is enough — the place inspector sheet opens off the
   // planner's selection, same contract as map marker taps.
@@ -188,7 +188,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
         {tl.hotelLegs.top && (
           <HotelConnRow seg={tl.hotelLegs.top.seg} name={tl.hotelLegs.top.name} placement="top" />
         )}
-        {dayId != null && daySchedule.byPosition[dayId]?.start.map(si => <PlanScheduleRow key={`${si.pluginId}:${si.id}`} item={si} />)}
+        {dayId != null && daySchedule.byPosition[dayId]?.start.map(si => <PlanScheduleRow key={`${si.pluginId}:${si.id}`} item={si} onOpenPluginTab={planner.openPluginTab} />)}
 
         {day && tl.rows.map(row => {
           switch (row.kind) {
@@ -259,7 +259,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
           }
         })}
 
-        {dayId != null && daySchedule.byPosition[dayId]?.end.map(si => <PlanScheduleRow key={`${si.pluginId}:${si.id}`} item={si} />)}
+        {dayId != null && daySchedule.byPosition[dayId]?.end.map(si => <PlanScheduleRow key={`${si.pluginId}:${si.id}`} item={si} onOpenPluginTab={planner.openPluginTab} />)}
         {tl.hotelLegs.bottom && (
           <HotelConnRow seg={tl.hotelLegs.bottom.seg} name={tl.hotelLegs.bottom.name} placement="bottom" />
         )}

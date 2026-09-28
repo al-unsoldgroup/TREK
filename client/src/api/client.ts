@@ -800,6 +800,9 @@ export interface PluginDayScheduleItem {
   position?: 'start' | 'end';
   minutes?: number; label: string;
   tone: 'default' | 'success' | 'warn' | 'danger';
+  /** The row opens the plugin's trip tab at this day when tapped (only `true` survives
+   * the server; the client also requires the plugin to have a trip-page tab). */
+  openTab?: true;
 }
 
 /** The colours a dayTintProvider plugin puts into one day card, so leg membership is

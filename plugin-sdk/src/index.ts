@@ -723,6 +723,9 @@ export interface DayScheduleContribution {
   minutes?: number;        // planned time, 1..1440 — shown and totalled
   label: string;           // short text (≤120 chars)
   tone?: ContributionTone;
+  /** Tapping the row opens your trip-page tab with `trek:context.dayId` set to this
+   * row's day. Ignored (plain row) when the plugin has no trip-page tab. */
+  openTab?: boolean;
 }
 export interface DayScheduleProvider {
   /** Return schedule contributions for a trip's days. Runs with the current user

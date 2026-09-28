@@ -32,6 +32,9 @@ export interface DayScheduleItem {
   minutes?: number;
   label: string;
   tone: Tone;
+  /** Tapping the row opens the plugin's trip tab at this day. Honoured by the client
+   * only when the plugin has a trip-page tab to open. */
+  openTab?: true;
 }
 
 const TONES: ReadonlySet<string> = new Set(['default', 'success', 'warn', 'danger']);
@@ -70,6 +73,8 @@ function normalize(pluginId: string, tripDayIds: ReadonlySet<number>, raw: unkno
       ...(minutes !== undefined ? { minutes } : {}),
       label,
       tone: TONES.has(it.tone as string) ? (it.tone as Tone) : 'default',
+      // Strictly `true`: a truthy string or number is not a request to open anything.
+      ...(it.openTab === true ? { openTab: true as const } : {}),
     });
   }
   return out;

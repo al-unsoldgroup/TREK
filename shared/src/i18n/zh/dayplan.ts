@@ -124,5 +124,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': '添加 {date}',
   'dayplan.addDatedDayHint': '旅行延长一天，到 {date} 为止。',
   'dayplan.tripExtended': '已添加一天。旅行延长一天，现在于 {date} 结束。',
+  'dayplan.pluginScheduleOpen': '{label}（在 {name} 中打开）',
 };
 export default dayplan;

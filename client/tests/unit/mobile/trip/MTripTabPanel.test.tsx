@@ -4,7 +4,7 @@ import type { MTabScreenProps } from '../../../../src/mobile/screens/trip/tabs/t
 import { buildPlanner, buildShell } from '../../../helpers/mobileTrip'
 import { render, screen } from '../../../helpers/render'
 
-// FE-MOB-TABPANEL-001 to FE-MOB-TABPANEL-010
+// FE-MOB-TABPANEL-001 to FE-MOB-TABPANEL-011
 
 /** Each tab is stubbed so the routing itself is what gets asserted. */
 function stub(name: string) {
@@ -20,8 +20,8 @@ vi.mock('../../../../src/mobile/screens/trip/tabs/MFilesTab', () => ({ default: 
 vi.mock('../../../../src/mobile/screens/trip/tabs/MCollabTab', () => ({ default: stub('collab') }))
 vi.mock('../../../../src/mobile/screens/trip/tabs/MListsTab', () => ({ default: stub('lists') }))
 vi.mock('../../../../src/components/Plugins/PluginFrame', () => ({
-  default: ({ pluginId, tripId, fill, surface }: { pluginId: string; tripId: string | null; fill?: boolean; surface?: string }) => (
-    <div data-testid="plugin-frame" data-plugin={pluginId} data-trip={String(tripId)} data-fill={String(!!fill)} data-surface={surface} />
+  default: ({ pluginId, tripId, dayId, fill, surface }: { pluginId: string; tripId: string | null; dayId?: string | null; fill?: boolean; surface?: string }) => (
+    <div data-testid="plugin-frame" data-plugin={pluginId} data-trip={String(tripId)} data-day={String(dayId)} data-fill={String(!!fill)} data-surface={surface} />
   ),
 }))
 
@@ -95,6 +95,11 @@ describe('MTripTabPanel', () => {
   it('FE-MOB-TABPANEL-009: keeps a plugin id that itself contains a colon intact', () => {
     renderTab('plugin:acme:maps')
     expect(screen.getByTestId('plugin-frame')).toHaveAttribute('data-plugin', 'acme:maps')
+  })
+
+  it('FE-MOB-TABPANEL-011: hands the plugin the day a schedule row opened its tab at', () => {
+    renderTab('plugin:visual', { pluginTabDayId: 7 })
+    expect(screen.getByTestId('plugin-frame')).toHaveAttribute('data-day', '7')
   })
 
   it('FE-MOB-TABPANEL-010: an unbuilt tab falls back to the empty scroll body', () => {

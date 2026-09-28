@@ -127,5 +127,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': 'Thêm {date}',
   'dayplan.addDatedDayHint': 'Kéo dài chuyến đi thêm một ngày, đến {date}.',
   'dayplan.tripExtended': 'Đã thêm ngày. Chuyến đi giờ kết thúc vào {date}, muộn hơn một ngày.',
+  'dayplan.pluginScheduleOpen': '{label} (mở trong {name})',
 };
 export default dayplan;

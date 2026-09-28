@@ -127,5 +127,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': '{date} ekle',
   'dayplan.addDatedDayHint': 'Seyahati bir gün uzatır. Yeni son gün: {date}.',
   'dayplan.tripExtended': 'Gün eklendi. Seyahat bir gün uzadı, yeni son gün: {date}.',
+  'dayplan.pluginScheduleOpen': '{label} ({name} içinde aç)',
 };
 export default dayplan;

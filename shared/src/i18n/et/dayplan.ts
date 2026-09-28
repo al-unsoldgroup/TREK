@@ -129,5 +129,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': 'Lisa {date}',
   'dayplan.addDatedDayHint': 'Lisab kuupäeva {date} ja pikendab reisi ühe päeva võrra.',
   'dayplan.tripExtended': 'Päev lisatud. Reis lõpeb nüüd kuupäeval {date}, üks päev hiljem.',
+  'dayplan.pluginScheduleOpen': '{label} (ava: {name})',
 };
 export default dayplan;

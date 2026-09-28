@@ -159,6 +159,7 @@ const dayplan: TranslationStrings = {
     '{date} tarixini əlavə edir və səyahəti bir gün uzadır.',
   'dayplan.tripExtended':
     'Gün əlavə edildi. Səyahət artıq bir gün sonra, {date} tarixində bitir.',
+  'dayplan.pluginScheduleOpen': '{label} ({name} içində aç)',
 };
 
 export default dayplan;

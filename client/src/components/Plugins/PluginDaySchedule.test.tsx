@@ -1,7 +1,9 @@
-// FE-W4PDS-001 to FE-W4PDS-013
+// FE-W4PDS-001 to FE-W4PDS-024
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
-import { render, screen } from '../../../tests/helpers/render'
+import { render, screen, fireEvent } from '../../../tests/helpers/render'
+import { usePluginStore, type ActivePlugin } from '../../store/pluginStore'
+import { TranslationProvider } from '../../i18n/TranslationContext'
 import type { PluginDayScheduleItem } from '../../api/client'
 
 const daySchedule = vi.fn(async (_tripId: number | string) => ({ items: [] as PluginDayScheduleItem[] }))
@@ -10,7 +12,7 @@ vi.mock('../../api/client', () => ({
   pluginsApi: { daySchedule: (tripId: number | string) => daySchedule(tripId) },
 }))
 
-import { usePluginDaySchedule, formatScheduleMinutes, PluginDayScheduleRow, dayTintBackground, dayTinted } from './PluginDaySchedule'
+import { usePluginDaySchedule, useScheduleRowOpen, formatScheduleMinutes, PluginDayScheduleRow, dayTintBackground, dayTinted } from './PluginDaySchedule'
 
 function item(overrides: Partial<PluginDayScheduleItem> = {}): PluginDayScheduleItem {
   return { pluginId: 'ev', id: 'i1', dayId: 1, label: 'Charging', tone: 'default', ...overrides }
@@ -202,5 +204,44 @@ describe('PluginDayScheduleRow', () => {
 
     const odd = render(<PluginDayScheduleRow item={item({ tone: 'nope' as PluginDayScheduleItem['tone'] })} />)
     expect((odd.container.querySelector('svg') as SVGElement).style.color).toBe('rgb(79, 70, 229)')
+  })
+})
+
+describe('openTab rows', () => {
+  const plugin = (type: ActivePlugin['type']) => ({ id: 'ev', name: 'Visual', type, icon: null }) as ActivePlugin
+  beforeEach(() => usePluginStore.setState({ plugins: [plugin('trip-page')] }))
+
+  it('FE-W4PDS-021: useScheduleRowOpen opens the plugin tab at the row\'s day', () => {
+    const open = vi.fn()
+    const { result } = renderHook(() => useScheduleRowOpen(item({ openTab: true, dayId: 4, minutes: 5 }), open), { wrapper: TranslationProvider })
+
+    result.current!.onClick()
+    expect(open).toHaveBeenCalledWith('ev', 4)
+    expect(result.current!['aria-label']).toBe('5 min · Charging (open in Visual)')
+  })
+
+  it('FE-W4PDS-022: useScheduleRowOpen stays null without the flag, a handler or a trip-page tab', () => {
+    const open = vi.fn()
+    expect(renderHook(() => useScheduleRowOpen(item(), open)).result.current).toBeNull()
+    expect(renderHook(() => useScheduleRowOpen(item({ openTab: true }))).result.current).toBeNull()
+    usePluginStore.setState({ plugins: [plugin('widget')] })
+    expect(renderHook(() => useScheduleRowOpen(item({ openTab: true }), open)).result.current).toBeNull()
+    usePluginStore.setState({ plugins: [] })
+    expect(renderHook(() => useScheduleRowOpen(item({ openTab: true }), open)).result.current).toBeNull()
+  })
+
+  it('FE-W4PDS-023: PluginDayScheduleRow renders an openTab row as a button that opens the tab', () => {
+    const open = vi.fn()
+    render(<PluginDayScheduleRow item={item({ openTab: true, dayId: 2, label: '1 image in Visual' })} onOpenPluginTab={open} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /1 image in Visual/ }))
+    expect(open).toHaveBeenCalledWith('ev', 2)
+  })
+
+  it('FE-W4PDS-024: PluginDayScheduleRow stays a plain row when the plugin did not ask', () => {
+    render(<PluginDayScheduleRow item={item({ label: 'Plain' })} onOpenPluginTab={vi.fn()} />)
+
+    expect(screen.getByText('Plain')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })

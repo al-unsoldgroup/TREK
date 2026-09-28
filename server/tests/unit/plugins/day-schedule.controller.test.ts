@@ -81,6 +81,18 @@ describe('DayScheduleController', () => {
     expect(out[0].minutes).toBeUndefined();
   });
 
+  it('passes openTab through only when it is literally true', async () => {
+    const { c } = controller(() => [
+      item({ id: 'yes', openTab: true }),
+      item({ id: 'str', openTab: 'true' }),
+      item({ id: 'num', openTab: 1 }),
+      item({ id: 'none' }),
+    ]);
+    const out = (await c.get('1', req(5))).items;
+    expect(out.map(i => [i.id, i.openTab])).toEqual([['yes', true], ['str', undefined], ['num', undefined], ['none', undefined]]);
+    expect(Object.keys(out[3])).not.toContain('openTab');
+  });
+
   it('caps items at 60 per provider and skips a failing provider', async () => {
     const many = Array.from({ length: 80 }, (_, i) => item({ id: `s${i}` }));
     const { c } = controller((id) => (id === 'bad' ? (() => { throw new Error('boom'); })() : many), ['good', 'bad']);

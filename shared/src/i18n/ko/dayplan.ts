@@ -126,5 +126,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': '{date} 추가',
   'dayplan.addDatedDayHint': '여행을 하루 늘려 {date}까지로 만듭니다.',
   'dayplan.tripExtended': '날짜를 추가했습니다. 여행이 하루 늘어나 이제 {date}에 끝납니다.',
+  'dayplan.pluginScheduleOpen': '{label} ({name}에서 열기)',
 };
 export default dayplan;

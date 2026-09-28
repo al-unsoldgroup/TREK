@@ -36,6 +36,7 @@ export default function MTripTabPanel({ planner, shell, tab }: MTripTabPanelProp
         <PluginFrame
           pluginId={tab.slice('plugin:'.length)}
           tripId={planner.tripId != null ? String(planner.tripId) : null}
+          dayId={planner.pluginTabDayId != null ? String(planner.pluginTabDayId) : null}
           fill
           surface="trip-tab"
           className="h-full w-full [color-scheme:light]"

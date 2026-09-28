@@ -1,4 +1,4 @@
-// FE-TP-HOOK-001 to FE-TP-HOOK-163
+// FE-TP-HOOK-001 to FE-TP-HOOK-163, FE-TP-HOOK-020b
 import React from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { TranslationProvider } from '../../i18n/TranslationContext'
@@ -495,6 +495,26 @@ describe('useTripPlanner — tabs', () => {
     act(() => { result.current.handleTabChange('buchungen') })
     expect(result.current.activeTab).toBe('plan')
     expect(sessionStorage.getItem('trip-tab-42')).toBe('plan')
+  })
+
+  it('FE-TP-HOOK-020b: openPluginTab opens the plugin tab at a day; any other tab change clears the day', async () => {
+    usePluginStore.setState({
+      plugins: [{ id: 'visual', name: 'Visual', type: 'trip-page', icon: null, tripPage: {} }] as never,
+      loaded: true,
+    })
+    seedTrip()
+
+    const { result } = await renderPlanner()
+    const open = result.current.openPluginTab
+
+    act(() => { result.current.openPluginTab('visual', 7) })
+    expect(result.current.activeTab).toBe('plugin:visual')
+    expect(result.current.pluginTabDayId).toBe(7)
+    expect(result.current.openPluginTab).toBe(open)
+
+    act(() => { result.current.handleTabChange('plan') })
+    act(() => { result.current.handleTabChange('plugin:visual') })
+    expect(result.current.pluginTabDayId).toBeNull()
   })
 
   it('FE-TP-HOOK-021: a saved plugin tab survives until the plugin feed has loaded', async () => {

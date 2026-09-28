@@ -127,5 +127,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': 'Adicionar {date}',
   'dayplan.addDatedDayHint': 'Adiciona {date} e estende a viagem em um dia.',
   'dayplan.tripExtended': 'Dia adicionado. A viagem agora termina em {date}, um dia depois.',
+  'dayplan.pluginScheduleOpen': '{label} (abrir em {name})',
 };
 export default dayplan;

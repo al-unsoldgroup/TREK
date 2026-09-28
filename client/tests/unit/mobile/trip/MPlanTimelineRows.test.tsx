@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '../../../helpers/render'
 import { useSettingsStore } from '../../../../src/store/settingsStore'
 import { isBlurred } from '../../../helpers/bookingCodeBlur'
+import { usePluginStore, type ActivePlugin } from '../../../../src/store/pluginStore'
 import {
   ConnRow, HotelConnRow, NoteRow, PlaceRow, PlanScheduleRow, ReorderStack, TransitRow, TransportRow,
 } from '../../../../src/mobile/screens/trip/plan/MPlanTimelineRows'
@@ -9,7 +10,7 @@ import type { TransitMeta, TransportEntry } from '../../../../src/mobile/screens
 import type { PluginDayScheduleItem } from '../../../../src/api/client'
 import type { Assignment, DayNote, Place, Reservation, RouteSegment, TranslationFn } from '../../../../src/types'
 
-// FE-MOB-PLROW-001 to FE-MOB-PLROW-044
+// FE-MOB-PLROW-001 to FE-MOB-PLROW-046
 
 // Same echo strategy as tests/helpers/mobileTrip: assertions stay on keys, not copy.
 const t: TranslationFn = (key, params) =>
@@ -430,6 +431,21 @@ describe('PlanScheduleRow', () => {
 
     expect(container.textContent).toBe('Charging stop')
     expect(container.querySelector('svg')).toHaveStyle({ color: '#4F46E5' })
+  })
+  it('FE-MOB-PLROW-045: an openTab row of a trip-page plugin is a button that opens its tab at the day', () => {
+    usePluginStore.setState({ plugins: [{ id: 'ev', name: 'Visual', type: 'trip-page', icon: null } as ActivePlugin] })
+    const open = vi.fn()
+    render(<PlanScheduleRow item={item({ openTab: true })} onOpenPluginTab={open} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Charging stop/ }))
+    expect(open).toHaveBeenCalledWith('ev', 2)
+  })
+
+  it('FE-MOB-PLROW-046: without a trip-page tab the openTab row stays plain', () => {
+    usePluginStore.setState({ plugins: [] })
+    render(<PlanScheduleRow item={item({ openTab: true })} onOpenPluginTab={vi.fn()} />)
+
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })
 

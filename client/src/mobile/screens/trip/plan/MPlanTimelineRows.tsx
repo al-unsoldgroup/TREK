@@ -14,7 +14,7 @@ import { splitNoteTime } from '../lib/dayNotes'
 import type { DragRowProps } from './useMPlanDragReorder'
 import type { TransitLegDisplay } from '../../../../components/Planner/transitDisplay'
 import type { Assignment, DayNote, Place, Reservation, RouteSegment, TranslationFn } from '../../../../types'
-import { formatScheduleMinutes } from '../../../../components/Plugins/PluginDaySchedule'
+import { formatScheduleMinutes, useScheduleRowOpen, type OpenPluginTab } from '../../../../components/Plugins/PluginDaySchedule'
 import type { PluginDayScheduleItem } from '../../../../api/client'
 
 /**
@@ -492,11 +492,12 @@ const SCHEDULE_TONE_COLORS: Record<string, string> = {
   default: '#4F46E5', success: '#10b981', warn: '#f59e0b', danger: '#ef4444',
 }
 
-export function PlanScheduleRow({ item }: { item: PluginDayScheduleItem }) {
+export function PlanScheduleRow({ item, onOpenPluginTab }: { item: PluginDayScheduleItem; onOpenPluginTab?: OpenPluginTab }) {
   const color = SCHEDULE_TONE_COLORS[item.tone] ?? SCHEDULE_TONE_COLORS.default
   const minutes = item.minutes != null ? formatScheduleMinutes(item.minutes) : null
-  return (
-    <div className="mt-[5px] flex items-center gap-2 py-px">
+  const open = useScheduleRowOpen(item, onOpenPluginTab)
+  const inner = (
+    <>
       <span className="h-px w-4 shrink-0 bg-[color:var(--m-rowbr)]" />
       <span className="inline-flex min-w-0 items-center gap-[3px] font-geist text-[0.59375rem] font-semibold text-m-faint">
         <Zap size={10} strokeWidth={2} style={{ color }} className="shrink-0" />
@@ -504,8 +505,13 @@ export function PlanScheduleRow({ item }: { item: PluginDayScheduleItem }) {
         <span className="truncate">{item.label}</span>
       </span>
       <span className="h-px flex-1 bg-[color:var(--m-rowbr)]" />
-    </div>
+    </>
   )
+  const cls = 'mt-[5px] flex items-center gap-2 py-px'
+  // Same shape as ConnRow: a tappable row is a full-width button, otherwise a div.
+  return open
+    ? <button type="button" {...open} className={`${cls} w-full`}>{inner}</button>
+    : <div className={cls}>{inner}</div>
 }
 
 // ── b4b) Accommodation bookend leg (hotel → first stop / last stop → hotel) ──

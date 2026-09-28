@@ -76,6 +76,10 @@ const data = await trek.invoke('/status')   // calls your own route, host-proxie
 trek.notify('success', 'Saved')
 ```
 
+A `trip-page` tab can be opened at a day: return `openTab: true` on a
+`dayScheduleProvider` row and a tap on that row switches to your tab with
+`ctx.dayId` set to the row's day (`null` when the tab was opened from the tab bar).
+
 ### Keep UI state for this browser tab
 
 The opaque frame cannot use browser storage directly. The bridge provides

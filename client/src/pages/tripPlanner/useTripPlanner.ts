@@ -279,16 +279,29 @@ export function useTripPlanner() {
     }
   }, [activeTab, enabledAddons, addonsLoaded, tripPluginIds, pluginsLoaded])
 
+  // The day a dayScheduleProvider row (`openTab`) handed to its plugin's tab, passed
+  // to the frame as trek:context.dayId. Any other tab change clears it, so opening
+  // the tab from the tab bar behaves exactly as it did before rows could open it.
+  const [pluginTabDayId, setPluginTabDayId] = useState<number | null>(null)
+
   const handleTabChange = (rawTabId: string): void => {
     // A core tab a plugin replaced is gone from the bar, but a programmatic jump
     // (e.g. onNavigateToFiles) could still target it and render a dead panel with
     // no active pill — fall back to the plan view like the invalid-tab guard does.
     const tabId = replacedTabs.has(rawTabId) ? 'plan' : rawTabId
     setActiveTab(tabId)
+    setPluginTabDayId(null)
     sessionStorage.setItem(`trip-tab-${tripId}`, tabId)
     if (tabId === 'finanzplan') tripActions.loadBudgetItems?.(tripId)
     if (tabId === 'dateien' && (!files || files.length === 0)) tripActions.loadFiles?.(tripId)
   }
+  const handleTabChangeRef = useRef(handleTabChange)
+  handleTabChangeRef.current = handleTabChange
+  // Stable, so the memoized day-plan sidebar does not re-render for it.
+  const openPluginTab = useCallback((pluginId: string, dayId: number) => {
+    handleTabChangeRef.current(`plugin:${pluginId}`)
+    setPluginTabDayId(dayId)
+  }, [])
 
   // handleTabChange is where a tab's lazy load and its session memory happen, and
   // the tab we *start* on never goes through it — neither a ?tab= deep link nor a
@@ -2852,7 +2865,7 @@ export function useTripPlanner() {
     dawarichTrailShown, toggleDawarichTrail, dawarichTrail, dawarichHiddenDates, dawarichEnabled: !!enabledAddons.dawarich,
     followTrack, roadtripViaCounts,
     allowedFileTypes, tripMembers, setTripMembers, refreshMembers, loadAccommodations,
-    TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
+    TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange, openPluginTab, pluginTabDayId,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed,
     leftHidden, rightHidden, toggleLeft, toggleRight, narrowPanels,
     startResizeLeft, startResizeRight,

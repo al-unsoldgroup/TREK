@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Zap } from 'lucide-react'
 import { pluginsApi, type PluginDayScheduleItem, type PluginDayTint } from '../../api/client'
+import { useTranslation } from '../../i18n'
+import { usePluginStore } from '../../store/pluginStore'
 
 /**
  * Host-rendered rows for the `dayScheduleProvider` plugin hook — time
@@ -149,16 +151,45 @@ export function formatScheduleMinutes(minutes: number): string {
   return h > 0 ? `${h} h ${m} min` : `${m} min`
 }
 
+/** Switches the trip to a plugin's tab and hands it a day (via `trek:context.dayId`). */
+export type OpenPluginTab = (pluginId: string, dayId: number) => void
+
+/** The button props for a schedule row that opens its plugin's trip tab, or null when
+ * the row stays plain: the plugin did not ask (`openTab`), the host offers no way to
+ * switch tabs, or the plugin has no trip-page tab to open (every trip-page plugin gets
+ * one). Shared by the desktop and phone rows so both honour the flag identically. */
+export function useScheduleRowOpen(
+  item: PluginDayScheduleItem,
+  onOpenPluginTab?: OpenPluginTab,
+): { onClick: () => void; 'aria-label': string } | null {
+  const { t } = useTranslation()
+  const plugin = usePluginStore(s => s.getById(item.pluginId))
+  if (!item.openTab || !onOpenPluginTab || plugin?.type !== 'trip-page') return null
+  const label = item.minutes != null ? `${formatScheduleMinutes(item.minutes)} · ${item.label}` : item.label
+  return {
+    onClick: () => onOpenPluginTab(item.pluginId, item.dayId),
+    'aria-label': t('dayplan.pluginScheduleOpen', { label, name: plugin.name }),
+  }
+}
+
+const ROW_STYLE = { display: 'flex', alignItems: 'center', gap: 6, padding: '3px 14px', fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))', color: 'var(--text-muted)', lineHeight: 1.3 } as const
+const BUTTON_RESET = { width: '100%', background: 'none', border: 'none', margin: 0, fontFamily: 'inherit', textAlign: 'start', cursor: 'pointer' } as const
+
 /** One contributed row — a slim line in the timeline, styled like the route
- * connectors so it reads as schedule information, not as an itinerary item. */
-export function PluginDayScheduleRow({ item }: { item: PluginDayScheduleItem }) {
+ * connectors so it reads as schedule information, not as an itinerary item. A row
+ * whose plugin asked for it (`openTab`) is a button that opens the plugin's tab. */
+export function PluginDayScheduleRow({ item, onOpenPluginTab }: { item: PluginDayScheduleItem; onOpenPluginTab?: OpenPluginTab }) {
   const color = TONE_COLORS[item.tone] ?? TONE_COLORS.default
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 14px', fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))', color: 'var(--text-muted)', lineHeight: 1.3 }}>
+  const open = useScheduleRowOpen(item, onOpenPluginTab)
+  const inner = (
+    <>
       <Zap size={11} strokeWidth={2} style={{ color, flexShrink: 0 }} />
       {item.minutes != null && <span style={{ fontWeight: 600, flexShrink: 0 }}>{formatScheduleMinutes(item.minutes)}</span>}
       {item.minutes != null && <span style={{ opacity: 0.4 }}>·</span>}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
-    </div>
+    </>
   )
+  return open
+    ? <button type="button" {...open} style={{ ...ROW_STYLE, ...BUTTON_RESET }}>{inner}</button>
+    : <div style={ROW_STYLE}>{inner}</div>
 }

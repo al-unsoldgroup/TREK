@@ -124,5 +124,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDayHint': 'เพิ่ม {date} และขยายการเดินทางออกไปหนึ่งวัน',
   'dayplan.tripExtended': 'เพิ่มวันแล้ว ตอนนี้การเดินทางสิ้นสุดวันที่ {date} ช้ากว่าเดิมหนึ่งวัน',
   'dayplan.addPlaceHere': "เพิ่มสถานที่ในวันนี้",
+  'dayplan.pluginScheduleOpen': '{label} (เปิดใน {name})',
 };
 export default dayplan;

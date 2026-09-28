@@ -128,5 +128,6 @@ const dayplan: TranslationStrings = {
   'dayplan.addDatedDay': '{date} hozzáadása',
   'dayplan.addDatedDayHint': 'Egy nappal meghosszabbítja az utazást. Új utolsó nap: {date}.',
   'dayplan.tripExtended': 'Nap hozzáadva. Az utazás egy nappal tovább tart, utolsó napja most: {date}.',
+  'dayplan.pluginScheduleOpen': '{label} (megnyitás itt: {name})',
 };
 export default dayplan;
