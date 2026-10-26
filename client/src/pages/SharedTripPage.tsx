@@ -1,4 +1,7 @@
 import { Map, MessageCircle, PackageCheck, Ticket, Wallet } from 'lucide-react';
+import PublicPluginFrame from '../components/Plugins/PublicPluginFrame';
+import TripAdviceSurface from '../features/tripAdvice/TripAdviceSurface';
+import { useTripAdviceSession } from '../features/tripAdvice/useTripAdviceSession';
 import { useTranslation } from '../i18n';
 import { useSharedTrip } from './sharedTrip/useSharedTrip';
 import { SharedTripErrorScreen } from './sharedTrip/SharedTripErrorScreen';
@@ -16,11 +19,17 @@ import { SharedPlanView } from './sharedTrip/SharedPlanView';
 import { SharedBookingsView } from './sharedTrip/SharedBookingsView';
 import { SharedChatView, SharedCostsView, SharedPackingView } from './sharedTrip/SharedListsViews';
 
+function NativeTripAdviceGuest({ token }: { token: string }) {
+  return <TripAdviceSurface controller={useTripAdviceSession(token)} />;
+}
+
 export default function SharedTripPage() {
   const { t, locale } = useTranslation();
   // Page = wiring container: share fetch + view state live in the hook.
   const {
     data,
+    bootstrap,
+    token,
     error,
     retry,
     retrying,
@@ -36,6 +45,15 @@ export default function SharedTripPage() {
     showLangPicker,
     setShowLangPicker,
   } = useSharedTrip();
+
+  if (bootstrap && token) {
+    if (bootstrap.version === 2) return <NativeTripAdviceGuest token={token} />;
+    return (
+      <div className="h-screen w-full overflow-hidden bg-surface">
+        <PublicPluginFrame token={token} bootstrap={bootstrap} />
+      </div>
+    );
+  }
 
   if (error) return <SharedTripErrorScreen reason={error} retrying={retrying} onRetry={retry} />;
   if (!data) return <SharedLoading />;

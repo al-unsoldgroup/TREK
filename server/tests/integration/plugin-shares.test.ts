@@ -1,0 +1,686 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import request from 'supertest';
+import cookieParser from 'cookie-parser';
+import { Test } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
+import type { INestApplication } from '@nestjs/common';
+
+vi.mock('../../src/db/database', async () => {
+  const { createSnapshotTestDb, buildDbMock } = await import('../helpers/db-mock');
+  return buildDbMock(createSnapshotTestDb());
+});
+
+import { db as testDb } from '../../src/db/database';
+import { EntityManager } from '@mikro-orm/core';
+import { createTestOrm, type TestOrm } from '../helpers/test-orm';
+import { AdviceRateLimiter, PluginShareDb } from '../../src/nest/plugin-shares/plugin-share-db';
+import { PluginShareProjectionService } from '../../src/nest/plugin-shares/plugin-share-projection.service';
+import { PluginSharesService, ADVICE_COOKIE } from '../../src/nest/plugin-shares/plugin-shares.service';
+import { PluginShareLifecycleService } from '../../src/nest/plugin-shares/plugin-share-lifecycle.service';
+import { PluginShareOwnerController, PluginSharePublicController } from '../../src/nest/plugin-shares/plugin-shares.controller';
+import { PluginRuntimeService } from '../../src/nest/plugins/plugin-runtime.service';
+import { SharedController } from '../../src/nest/share/share.controller';
+import { ShareService } from '../../src/nest/share/share.service';
+import { StorageService } from '../../src/nest/storage/storage.service';
+import { GlobalAuthGuard } from '../../src/nest/auth-core/global-auth.guard';
+import { ZodValidationPipe } from '../../src/nest/common/zod-validation.pipe';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { validateBodyContracts } from '../../src/nest/common/validate-body-contracts';
+import { validateRouteGuards, PUBLIC_ROUTE_ALLOW_LIST } from '../../src/nest/common/validate-route-guards';
+import { createUser, createTrip, createDay, createPlace, createDayAssignment, createCategory } from '../helpers/factories';
+import { authCookie } from '../helpers/auth';
+import type { AdviceReadResult, AdviceShareConfig } from '@trek/shared';
+import { adviceShareConfigV2Schema, adviceProjectionSchema, adviceProjectionV2Schema, adviceBootstrapSchema } from '@trek/shared';
+import type { PublicSharePrincipal } from '../../src/nest/plugins/protocol/envelope';
+import type { User } from '../../src/types';
+
+const db = new PluginShareDb();
+const permission = vi.spyOn(db, 'checkPermission');
+const limiter = new AdviceRateLimiter();
+const projection = new PluginShareProjectionService(db);
+const shares = new PluginSharesService(db, projection, limiter);
+const invoke = vi.fn(async (principal: PublicSharePrincipal): Promise<unknown> => ({
+  projection: shares.snapshot(principal), feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
+}));
+const legacyRead = vi.fn();
+let app: INestApplication;
+let orm: TestOrm;
+let tripId: number;
+let owner: User;
+let config: AdviceShareConfig;
+let assignmentId: number;
+let categoryId: number;
+let scheduledPlaceId: number;
+let shortlistPlaceId: number;
+let dayId: number;
+let returnDay: number;
+const ownerPath = () => `/api/trips/${tripId}/share-link/plugins/trip-advice`;
+const publicPath = (token: string) => `/api/shared/${token}/plugins/trip-advice`;
+const origin = { Origin: 'https://trek.example.test', 'Sec-Fetch-Site': 'same-origin' };
+
+beforeAll(async () => {
+  orm = await createTestOrm(testDb);
+  void db.connection; // creates the local advice tables on the snapshot handle
+  const module = await Test.createTestingModule({
+    controllers: [PluginShareOwnerController, PluginSharePublicController, SharedController],
+    providers: [
+      { provide: PluginSharesService, useValue: shares },
+      { provide: PluginRuntimeService, useValue: { isActive: () => true, grantsOf: () => new Set(['share:guest']), invokePublicShare: invoke } },
+      { provide: ShareService, useValue: { getSharedTripData: legacyRead, getSharedPlacePhotoKey: () => null } },
+      { provide: StorageService, useValue: {} },
+      { provide: EntityManager, useValue: orm.em },
+    ],
+  }).compile();
+  app = module.createNestApplication();
+  app.use(cookieParser());
+  app.useGlobalGuards(new GlobalAuthGuard(new Reflector(), orm.em));
+  app.useGlobalPipes(new ZodValidationPipe());
+  app.useGlobalFilters(new TrekExceptionFilter());
+  await app.init();
+});
+beforeEach(() => {
+  vi.stubEnv('TREK_PUBLIC_ADVICE_ENABLED', 'true'); vi.stubEnv('TREK_PLUGINS_ENABLED', 'true'); vi.stubEnv('APP_URL', origin.Origin);
+  // The v5 snapshot seeds default categories (Hotel first); the fixture expects none, as v4's unseeded DB had.
+  testDb.exec('DELETE FROM trips; DELETE FROM users; DELETE FROM plugins; DELETE FROM plugin_share_lifecycle_outbox; DELETE FROM categories;');
+  orm.clear(); limiter.reset(); permission.mockReturnValue(true); legacyRead.mockReset().mockReturnValue(null); invoke.mockClear();
+  owner = createUser(testDb).user as User;
+  tripId = createTrip(testDb, owner.id).id;
+  categoryId = createCategory(testDb).id;
+  dayId = createDay(testDb, tripId, { date: '2026-10-09' }).id;
+  returnDay = createDay(testDb, tripId, { date: '2026-10-23' }).id;
+  scheduledPlaceId = createPlace(testDb, tripId).id;
+  shortlistPlaceId = createPlace(testDb, tripId).id;
+  assignmentId = createDayAssignment(testDb, dayId, scheduledPlaceId).id;
+  db.run('UPDATE places SET notes = ?, reservation_notes = ?, phone = ?, website = ? WHERE trip_id = ?', 'PRIVATE-CANARY', 'PRIVATE-CANARY', 'PRIVATE-CANARY', 'https://private.invalid', tripId);
+  db.run('UPDATE days SET notes = ? WHERE trip_id = ?', 'PRIVATE-CANARY', tripId);
+  db.run('UPDATE day_assignments SET assignment_time = ?, notes = ? WHERE id = ?', '12:30', 'PRIVATE-CANARY', assignmentId);
+  db.run(`INSERT INTO plugins (id, name, enabled, status, permissions, granted_permissions, capabilities)
+    VALUES ('trip-advice', 'Trip advice', 1, 'active', '["share:guest"]', '["share:guest"]', '{"publicShare":{"version":1,"entry":"guest.html"}}')`);
+  config = { version: 1, publicTitle: 'Public Japan',
+    cities: [{ id: 'tokyo', label: 'Tokyo', countryCodes: ['JP'], bounds: { south: 35, north: 36, west: 139, east: 140 } }],
+    stays: [{ id: 'first', cityId: 'tokyo', dayIds: [dayId] }, { id: 'return', cityId: 'tokyo', dayIds: [returnDay] }],
+    schedule: [{ assignmentId, publicTitle: 'Museum', category: 'see' }],
+    shortlist: [{ placeId: shortlistPlaceId, cityId: 'tokyo', category: 'eat', publicTitle: 'Cafe', locality: 'Tokyo', countryCode: 'JP' }],
+  };
+});
+afterAll(async () => { await app.close(); await orm.close(); testDb.close(); vi.unstubAllEnvs(); });
+const publish = () => shares.write(tripId, owner, { config, expectedRevision: 0, enabled: true, expiresInDays: 10 });
+
+describe('advice authority and public HTTP', () => {
+  it('locks native v2 contracts without confusing the v1 bootstrap', () => {
+    expect(adviceShareConfigV2Schema.parse({ version: 2, showNotes: false, hiddenCityKeys: [], hiddenDayKeys: [], hiddenNoteDayKeys: [], hiddenPlaceKeys: [], hiddenIdeaKeys: [], addedCities: [] }).version).toBe(2);
+    expect(adviceShareConfigV2Schema.safeParse({ version: 2, showNotes: true, cities: [] }).success).toBe(false);
+    expect(adviceBootstrapSchema.safeParse({ kind: 'plugin-share', version: 2, title: 'Native trip', expiresAt: '2026-10-09T00:00:00.000Z', plugin: { id: 'trip-advice', protocolVersion: 2, surface: 'native' } }).success).toBe(true);
+    expect(adviceBootstrapSchema.safeParse({ kind: 'plugin-share', version: 2, title: 'Mixed trip', expiresAt: '2026-10-09T00:00:00.000Z', plugin: { id: 'trip-advice', protocolVersion: 2, entry: 'guest.html', surface: 'native' } }).success).toBe(false);
+  });
+  it('migrates v1 visibility to native exceptions without revealing excluded trip content or notes', () => {
+    const native = projection.migrateV1(tripId, config);
+    const before = projection.build(tripId, config);
+    const after = adviceProjectionV2Schema.parse(projection.buildV2(tripId, native));
+    const visible = (value: { stays: Array<{ days: Array<{ key: string; schedule: Array<{ key: string }> }> }>; shortlists: Array<{ see: Array<{ key: string }>; eat: Array<{ key: string }> }> }) => ({
+      days: value.stays.flatMap(stay => stay.days.map(day => day.key)).sort(),
+      schedule: value.stays.flatMap(stay => stay.days.flatMap(day => day.schedule.map(row => row.key))).sort(),
+      ideas: value.shortlists.flatMap(list => [...list.see, ...list.eat].map(place => place.key)).sort(),
+    });
+    expect(visible(after)).toEqual(visible(before));
+    const withoutFirstDay = adviceProjectionV2Schema.parse(projection.buildV2(tripId, { ...native, hiddenDayKeys: [`d:${dayId}`] }));
+    expect(withoutFirstDay.stays.flatMap(stay => stay.days).find(day => day.key === `d:${returnDay}`)?.dayNumber).toBe(2);
+    expect(native.showNotes).toBe(false);
+    expect(JSON.stringify(after)).not.toContain('PRIVATE-CANARY');
+  });
+  it('keeps legacy presentation until an explicit hash-bound upgrade and preserves token and feedback identity', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, scheduledPlaceId);
+    db.run('INSERT INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)', scheduledPlaceId, 'JP', 'JP-13', 'Tokyo');
+    const link = publish();
+    const legacy = shares.bootstrap(link.token);
+    const preview = shares.ownerNative(tripId, owner.id);
+    expect(preview.legacy).toBe(true);
+    expect(shares.bootstrap(link.token)).toEqual(legacy);
+    const ownerPreview = shares.ownerPrincipal(tripId, owner.id, true);
+    expect(ownerPreview.preview).toBe(true);
+    expect(shares.providerSnapshot(ownerPreview)).toMatchObject({ version: 2, title: 'Test Trip 3' });
+    const providerCities = shares.providerCities(ownerPreview);
+    const previewCityIds = new Set(shares.providerSnapshot(ownerPreview).cities.map(city => city.id));
+    expect(providerCities.length).toBeGreaterThan(0);
+    expect(providerCities.every(city => previewCityIds.has(city.id))).toBe(true);
+    expect(shares.bootstrap(link.token)).toEqual(legacy);
+    const input = { expectedRevision: link.revision, config: preview.draftConfig, enabled: true, expiresInDays: 10 };
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, input)).toThrow('Review the native advice upgrade');
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, { ...input, upgradeToV2: { expectedLegacyHash: '0'.repeat(64) } })).toThrow('Review the native advice upgrade');
+    db.run('UPDATE day_assignments SET assignment_time = ? WHERE id = ?', '13:30', assignmentId);
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, { ...input, upgradeToV2: { expectedLegacyHash: preview.upgradeRevision } })).toThrow('Review the native advice upgrade');
+    const refreshed = shares.ownerNative(tripId, owner.id);
+    const upgraded = shares.ownerNativeConfigure(tripId, owner.id, { ...input, upgradeToV2: { expectedLegacyHash: refreshed.upgradeRevision } });
+    expect(upgraded.config?.token).toBe(link.token);
+    expect(upgraded.config?.shareId).toBe(link.shareId);
+    expect(upgraded.legacy).toBe(false);
+    expect(shares.bootstrap(link.token).version).toBe(2);
+    expect(() => shares.ownerNativeConfigure(tripId, owner.id, input)).toThrow('Advice configuration changed');
+  });
+  it('binds private native provider authority to its owner and configuration revision without a guest session', () => {
+    const draft = shares.ownerNative(tripId, owner.id);
+    const saved = shares.ownerNativeConfigure(tripId, owner.id, { expectedRevision: 0, config: draft.draftConfig, enabled: false, expiresInDays: 10 });
+    const principal = shares.ownerPrincipal(tripId, owner.id);
+    expect(principal.kind).toBe('adviceOwner');
+    expect(principal.preview).toBe(false);
+    expect(testDb.prepare('SELECT COUNT(*) AS count FROM plugin_share_sessions').get()).toEqual({ count: 0 });
+    expect(shares.providerSnapshot(principal).version).toBe(2);
+    expect(() => shares.bootstrap(saved.config!.token)).toThrow();
+    shares.ownerNativeConfigure(tripId, owner.id, { expectedRevision: saved.config!.revision, config: draft.draftConfig, enabled: false, expiresInDays: 10 });
+    expect(() => shares.validateProviderPrincipal(principal)).toThrow('Advice configuration changed');
+    const other = createUser(testDb).user as User;
+    expect(() => shares.ownerPrincipal(tripId, other.id)).toThrow('Trip not found');
+  });
+  it('withholds explicitly hidden suggestion keys without exposing the exception list', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    const draft = shares.ownerNative(tripId, owner.id);
+    const hidden = 's:11111111-1111-4111-8111-111111111111';
+    const visible = 's:22222222-2222-4222-8222-222222222222';
+    const saved = shares.ownerNativeConfigure(tripId, owner.id, { expectedRevision: 0, config: { ...draft.draftConfig, hiddenIdeaKeys: [hidden] }, enabled: true, expiresInDays: 10 });
+    const session = shares.session(saved.config!.token, undefined, 'hidden-idea-test');
+    const principal = shares.authorize(saved.config!.token, session.credential, session.csrfToken);
+    expect(shares.filterSuggestionKeys(principal, [hidden, visible])).toEqual([visible]);
+    expect(JSON.stringify(shares.snapshot(principal))).not.toContain(hidden);
+  });
+  it('preserves guest identity across native visibility autosaves and revokes it on disable', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    const draft = shares.ownerNative(tripId, owner.id);
+    const saved = shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: 0, config: draft.draftConfig, enabled: true, expiresInDays: 10,
+    });
+    const guest = shares.session(saved.config!.token, undefined, 'native-autosave');
+    const before = shares.authorize(saved.config!.token, guest.credential, guest.csrfToken);
+    const updated = shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: saved.config!.revision,
+      config: { ...draft.draftConfig, hiddenDayKeys: [`d:${dayId}`] },
+      enabled: true,
+      expiresInDays: 10,
+    });
+    const after = shares.authorize(updated.config!.token, guest.credential, guest.csrfToken);
+    expect(after.guestId).toBe(before.guestId);
+    expect(after.epoch).toBe(before.epoch + 1);
+    shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: updated.config!.revision, config: updated.draftConfig, enabled: false, expiresInDays: 10,
+    });
+    expect(() => shares.authorize(updated.config!.token, guest.credential, guest.csrfToken)).toThrow();
+  });
+  it('separates bounded passive media reads from the unchanged feedback budget', () => {
+    const link = publish();
+    const guest = shares.session(link.token, undefined, 'media-limit-test');
+    expect(() => shares.authorizeMedia(link.token, guest.credential, 'wrong-csrf')).toThrow();
+    for (let index = 0; index < 120; index++) shares.authorizeMedia(link.token, guest.credential, guest.csrfToken);
+    expect(() => shares.authorizeMedia(link.token, guest.credential, guest.csrfToken)).toThrow('Advice request limit reached');
+    for (let index = 0; index < 30; index++) shares.authorize(link.token, guest.credential, guest.csrfToken);
+    expect(() => shares.authorize(link.token, guest.credential, guest.csrfToken)).toThrow('Advice request limit reached');
+  });
+  it('caps passive media reads across guests on the same share', () => {
+    const link = publish();
+    for (let guestIndex = 0; guestIndex < 5; guestIndex++) {
+      const guest = shares.session(link.token, undefined, `media-guest-${guestIndex}`);
+      for (let index = 0; index < 120; index++) shares.authorizeMedia(link.token, guest.credential, guest.csrfToken);
+    }
+    const sixth = shares.session(link.token, undefined, 'media-guest-6');
+    expect(() => shares.authorizeMedia(link.token, sixth.credential, sixth.csrfToken)).toThrow('Advice request limit reached');
+    expect(() => shares.authorize(link.token, sixth.credential, sixth.csrfToken)).not.toThrow();
+  });
+  it('keeps day notes private by default and publishes only selected day text after explicit opt-in', () => {
+    db.run('UPDATE days SET notes = ? WHERE id = ?', 'Day intent', dayId);
+    db.run('INSERT INTO day_notes (day_id, trip_id, text) VALUES (?, ?, ?)', dayId, tripId, 'Walk slowly through the gardens');
+    const hiddenDay = createDay(testDb, tripId, { date: '2026-10-11' }).id;
+    db.run('INSERT INTO day_notes (day_id, trip_id, text) VALUES (?, ?, ?)', hiddenDay, tripId, 'HIDDEN-DAY-NOTE');
+    expect(JSON.stringify(projection.build(tripId, config))).not.toMatch(/Day intent|gardens|HIDDEN-DAY-NOTE/);
+    const shown = projection.build(tripId, { ...config, displayNotes: true });
+    expect(shown.stays[0]?.days[0]?.notes).toEqual([{ text: 'Day intent' }, { text: 'Walk slowly through the gardens' }]);
+    expect(JSON.stringify(shown)).not.toContain('HIDDEN-DAY-NOTE');
+    expect(JSON.stringify(shown)).not.toMatch(/reservation_notes|phone|website/);
+  });
+  it('keeps the note opt-in when rebuilding automatic trip presets', () => {
+    db.run('UPDATE days SET notes = ? WHERE id = ?', 'Automatic day intent', dayId);
+    const preset = projection.preset(tripId);
+    expect(JSON.stringify(projection.build(tripId, { ...preset, displayNotes: true }))).toContain('Automatic day intent');
+    expect(JSON.stringify(projection.build(tripId, { ...preset, displayNotes: false }))).not.toContain('Automatic day intent');
+  });
+  it('includes valid map coordinates only on authorized published places', () => {
+    db.run('UPDATE places SET lat = ?, lng = ? WHERE id = ?', 35.7, 139.7, scheduledPlaceId);
+    db.run('UPDATE places SET lat = NULL, lng = NULL WHERE id = ?', shortlistPlaceId);
+    const shown = projection.build(tripId, config);
+    expect(shown.stays[0]?.days[0]?.schedule[0]?.place.coordinates).toEqual({ lat: 35.7, lng: 139.7 });
+    expect(shown.shortlists[0]?.eat[0]?.coordinates).toBeUndefined();
+    const hidden = projection.build(tripId, { ...config, schedule: [] });
+    expect(JSON.stringify(hidden)).not.toContain('35.7');
+  });
+  it('keeps unlocated saved places in Elsewhere without adding a fictitious city', () => {
+    db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE trip_id = ?', tripId);
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Museum, Tokyo, Japan', scheduledPlaceId);
+    const preset = projection.preset(tripId);
+    expect(preset.cities.map(city => city.label)).toEqual(['Tokyo']);
+    expect(preset.shortlist[0]?.cityId).toBe('elsewhere');
+    const result = projection.build(tripId, preset);
+    const elsewhere = result.shortlists.find(list => list.cityId === 'elsewhere')!;
+    const place = [...elsewhere.see, ...elsewhere.eat][0]!;
+    expect(place.key).toBe(`p:${shortlistPlaceId}`);
+    expect(new URL(place.mapsUrl).searchParams.get('query')).toBe(place.title);
+  });
+  it('keeps a day-trip place location separate from the main city of its day', () => {
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE trip_id = ?', 'Place, Tokyo, Japan', tripId);
+    const secondTokyo = createPlace(testDb, tripId, { name: 'Tokyo museum' }).id;
+    const hakone = createPlace(testDb, tripId, { name: 'Hakone garden' }).id;
+    for (const [id, address] of [[secondTokyo, 'Museum, Tokyo, Japan'], [hakone, 'Garden, Hakone, Japan']] as const) {
+      db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', address, id);
+      createDayAssignment(testDb, dayId, id);
+    }
+    const preset = projection.preset(tripId);
+    const result = projection.build(tripId, preset);
+    expect(preset.cities.find(city => city.id === result.stays[0]?.cityId)?.label).toBe('Tokyo');
+    const place = result.stays[0]?.days[0]?.schedule.find(row => row.place.key === `p:${hakone}`)?.place;
+    expect(place?.locality).toBe('Hakone');
+    expect(new URL(place!.mapsUrl).searchParams.get('query')).toBe('Hakone garden Hakone JP');
+  });
+  it.each(['Tokyo', 'Osaka'])('hides country-less %s addresses using native location evidence instead of creating district cities', city => {
+    db.run('UPDATE places SET lat = NULL, lng = NULL WHERE trip_id = ?', tripId);
+    db.run('UPDATE places SET address = ? WHERE id = ?', `Place, ${city}, Japan`, scheduledPlaceId);
+    if (city === 'Tokyo') db.run('INSERT INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)', scheduledPlaceId, 'JP', 'JP-13', 'Tokyo');
+    db.run('UPDATE places SET address = ? WHERE id = ?', city === 'Tokyo' ? '1 Street, Chuo City, Ginza, Tokyo 104-0061' : '1 Street, Chuo Ward, Osaka', shortlistPlaceId);
+    const preset = projection.preset(tripId);
+    expect(preset.cities.map(city => city.label)).toEqual([city]);
+    expect(preset.shortlist[0]?.countryCode).toBe('JP');
+    const hidden = { cityIds: [preset.cities[0]!.id], dayIds: [], placeIds: [], assignmentIds: [] };
+    expect(projection.preset(tripId, hidden).shortlist).toEqual([]);
+  });
+  it('groups country-first Japanese addresses with existing cities and ignores unknown day votes', () => {
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Japan, 〒104-0061 Tokyo, Chuo City, Ginza, 1-2-3', scheduledPlaceId);
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Place, Tokyo, Japan', shortlistPlaceId);
+    for (let index = 0; index < 2; index++) {
+      const unknown = createPlace(testDb, tripId).id;
+      db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE id = ?', unknown);
+      createDayAssignment(testDb, dayId, unknown);
+    }
+    const preset = projection.preset(tripId);
+    const tokyo = preset.cities.filter(city => city.label === 'Tokyo');
+    expect(tokyo).toHaveLength(1);
+    expect(tokyo[0]?.countryCodes).toEqual(['JP']);
+    expect(preset.cities.some(city => city.label === 'Ginza')).toBe(false);
+    expect(preset.stays[0]?.cityId).toBe(tokyo[0]?.id);
+  });
+  it('refreshes the public bootstrap title from the native trip for automatic shares', () => {
+    const preset = projection.preset(tripId);
+    const link = shares.write(tripId, owner, { config: preset, expectedRevision: 0, enabled: true, expiresInDays: 10 });
+    db.run('UPDATE trips SET title = ? WHERE id = ?', 'Renamed Japan trip', tripId);
+    expect(shares.bootstrap(link.token).title).toBe('Renamed Japan trip');
+  });
+  it('uses a native stay city for an unlocated day without exposing accommodation details', () => {
+    db.run('UPDATE places SET address = NULL, lat = NULL, lng = NULL WHERE id = ?', scheduledPlaceId);
+    db.run('UPDATE places SET address = ?, lat = NULL, lng = NULL WHERE id = ?', 'Museum, Hakone, Japan', shortlistPlaceId);
+    const checkout = createDay(testDb, tripId, { date: '2026-10-10' }).id;
+    const hotel = createPlace(testDb, tripId, { name: 'PRIVATE-CANARY Hotel' }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'PRIVATE-STREET, Hakone, Kanagawa, 250-0408 Japan', hotel);
+    db.run('INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, confirmation, notes) VALUES (?, ?, ?, ?, ?, ?)', tripId, hotel, dayId, checkout, 'PRIVATE-CONFIRMATION', 'PRIVATE-NOTES');
+    const preset = projection.preset(tripId);
+    const city = preset.cities.find(city => city.id === preset.stays[0]?.cityId);
+    expect(city?.label).toBe('Hakone');
+    expect(JSON.stringify(projection.build(tripId, preset))).not.toMatch(/PRIVATE-/);
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([shortlistPlaceId]);
+  });
+  it('hides a whole city and new places there while leaving other cities included', () => {
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
+    const kyoto = createPlace(testDb, tripId, { name: 'Kyoto temple', lat: 35.01, lng: 135.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Temple, Kyoto, Japan', kyoto);
+    const tokyo = projection.preset(tripId).cities.find(city => city.label === 'Tokyo')!;
+    const added = createPlace(testDb, tripId, { name: 'New Tokyo cafe', lat: 35.68, lng: 139.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Cafe, Tokyo, Japan', added);
+    const hidden = { cityIds: [tokyo.id], dayIds: [], placeIds: [], assignmentIds: [] };
+    const preset = projection.preset(tripId, hidden);
+    expect(preset.cities.map(city => city.label)).toEqual(['Kyoto']);
+    expect(preset.stays).toEqual([]);
+    expect(preset.schedule).toEqual([]);
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([kyoto]);
+    expect(projection.build(tripId, preset).cities.map(city => city.label)).toEqual(['Kyoto']);
+  });
+  it('excludes native logistics categories without requiring a linked reservation', () => {
+    for (const name of ['Hotel', 'Accommodation', 'Transport', 'Airport']) {
+      const category = createCategory(testDb, { name });
+      const place = createPlace(testDb, tripId, { name: `PRIVATE-${name}` });
+      db.run('UPDATE places SET category_id = ? WHERE id = ?', category.id, place.id);
+      createDayAssignment(testDb, dayId, place.id);
+    }
+    expect(JSON.stringify(projection.candidates(tripId))).not.toContain('PRIVATE-');
+    expect(projection.preset(tripId).schedule).toHaveLength(1);
+  });
+  it('keeps obvious untagged accommodation and transfer entries out of automatic and legacy projections', () => {
+    for (const name of ['Sample Hotel', 'Ryokan Stay (Hakone)', 'Tokyo Station — Baggage Lockers', 'Tokyo Station — Retrieve Bags & Board Train', 'International Airport']) {
+      const place = createPlace(testDb, tripId, { name }).id;
+      db.run('UPDATE places SET category_id = NULL WHERE id = ?', place);
+      const assignment = createDayAssignment(testDb, dayId, place).id;
+      config.schedule.push({ assignmentId: assignment, publicTitle: name, category: 'see' });
+    }
+    expect(projection.candidates(tripId).schedule).toHaveLength(1);
+    expect(projection.preset(tripId).schedule).toHaveLength(1);
+    expect(projection.build(tripId, config).stays[0]?.days[0]?.schedule).toHaveLength(1);
+  });
+  it('builds automatic cities and return stays from the trip with everything eligible included', () => {
+    db.run('UPDATE trips SET title = ? WHERE id = ?', 'Japan trip', tripId);
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
+    const middleDay = createDay(testDb, tripId, { date: '2026-10-10' }).id;
+    const kyoto = createPlace(testDb, tripId, { name: 'Kyoto temple', lat: 35.01, lng: 135.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Temple, Kyoto, Japan', kyoto);
+    createDayAssignment(testDb, middleDay, kyoto);
+    const returnDay = db.get<{ id: number }>('SELECT id FROM days WHERE trip_id = ? AND date = ?', tripId, '2026-10-23')!.id;
+    createDayAssignment(testDb, returnDay, scheduledPlaceId);
+    const preset = projection.preset(tripId);
+    expect(preset.publicTitle).toBe('Japan trip');
+    expect(preset.cities.map(city => city.label).sort()).toEqual(['Kyoto', 'Tokyo']);
+    const labels = new Map(preset.cities.map(city => [city.id, city.label]));
+    expect(preset.stays.map(stay => labels.get(stay.cityId))).toEqual(['Tokyo', 'Kyoto', 'Tokyo']);
+    expect(preset.schedule).toHaveLength(3);
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([shortlistPlaceId]);
+    expect(JSON.stringify(preset)).not.toContain('PRIVATE-CANARY');
+  });
+  it('applies hide exceptions without excluding new native places or exposing private logistics', () => {
+    db.run('UPDATE places SET address = ?, lat = ?, lng = ? WHERE trip_id = ?', 'Place, Tokyo, Japan', 35.68, 139.76, tripId);
+    const hotel = createPlace(testDb, tripId, { name: 'PRIVATE-HOTEL' }).id;
+    db.run("INSERT INTO reservations (trip_id, place_id, title, type) VALUES (?, ?, 'PRIVATE-HOTEL', 'hotel')", tripId, hotel);
+    const added = createPlace(testDb, tripId, { name: 'New cafe', lat: 35.01, lng: 135.76 }).id;
+    db.run('UPDATE places SET address = ? WHERE id = ?', 'Cafe, Kyoto, Japan', added);
+    const preset = projection.preset(tripId, { placeIds: [shortlistPlaceId], cityIds: [], dayIds: [], assignmentIds: [] });
+    expect(preset.shortlist.map(place => place.placeId)).toEqual([added]);
+    expect(preset.schedule).toHaveLength(1);
+    expect(JSON.stringify(preset)).not.toContain('PRIVATE-HOTEL');
+  });
+  it('returns owner-only setup candidates before a share exists without leaking private fields', () => {
+    const otherOwner = createUser(testDb).user as User;
+    const otherTrip = createTrip(testDb, otherOwner.id).id;
+    createPlace(testDb, otherTrip, { name: 'OTHER-TRIP-CANARY' });
+    const result = shares.ownerCandidates(tripId, owner.id);
+    expect(result.days).toContainEqual({ id: dayId, date: '2026-10-09' });
+    expect(result.schedule).toEqual([expect.objectContaining({ assignmentId, dayId, placeId: scheduledPlaceId })]);
+    expect(result.shortlist).toEqual([expect.objectContaining({ placeId: shortlistPlaceId })]);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE-CANARY');
+    expect(JSON.stringify(result)).not.toContain('OTHER-TRIP-CANARY');
+    expect(shares.getOwner(tripId, owner)).toBeNull();
+    expect(() => shares.ownerCandidates(tripId, otherOwner.id)).toThrow('Trip not found');
+    permission.mockReturnValue(false);
+    expect(() => shares.ownerCandidates(tripId, owner.id)).toThrow('No permission');
+  });
+  it('satisfies route and body ratchets for the assembled controllers', () => {
+    const ids = ['SharedController.read', 'SharedController.placePhotoBytes', 'PluginSharePublicController.session', 'PluginSharePublicController.action', 'PluginSharePublicController.photo'];
+    expect(PUBLIC_ROUTE_ALLOW_LIST).toEqual(expect.arrayContaining(ids));
+    expect(() => validateRouteGuards(app, ids, [])).not.toThrow();
+    expect(() => validateBodyContracts(app, [])).not.toThrow();
+  });
+  it('requires member authentication and the real share_manage permission; checks revisions', async () => {
+    await request(app.getHttpServer()).get(ownerPath()).expect(401);
+    permission.mockReturnValue(false);
+    await request(app.getHttpServer()).get(ownerPath()).set('Cookie', authCookie(owner.id)).expect(403);
+    expect(permission).toHaveBeenCalledWith('share_manage', owner.role, owner.id, owner.id, false);
+    permission.mockReturnValue(true);
+    const body = { config, expectedRevision: 0, enabled: true, expiresInDays: 10 };
+    await request(app.getHttpServer()).put(ownerPath()).set({ ...origin, Origin: `${origin.Origin}:443` }).set('Cookie', authCookie(owner.id)).send(body).expect(200);
+    await request(app.getHttpServer()).put(ownerPath()).set('Cookie', authCookie(owner.id)).send(body).expect(409);
+  });
+  it('separates bootstrap from legacy projection and refuses legacy tokens on advice', async () => {
+    const link = publish();
+    expect(db.get('SELECT 1 FROM share_tokens WHERE token = ?', link.token)).toBeUndefined();
+    const result = await request(app.getHttpServer()).get(`/api/shared/${link.token}`).expect(200);
+    expect(result.body.plugin).toEqual({ id: 'trip-advice', entry: 'guest.html', protocolVersion: 1 });
+    expect(result.headers['cache-control']).toBe('no-store'); expect(legacyRead).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).post(`${publicPath('L'.repeat(32))}/session`).set(origin).send({}).expect(404);
+    await request(app.getHttpServer()).get(`/api/shared/${link.token}/place-photo/${shortlistPlaceId}/bytes`).expect(204);
+    await request(app.getHttpServer()).get('/api/shared/legacy-token').expect(404);
+    expect(legacyRead).toHaveBeenCalledWith('legacy-token');
+  });
+  it('mints only same-origin scoped cookies and never delegates member identity', async () => {
+    const link = publish();
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).send({}).expect(403);
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).set({ ...origin, Origin: 'https://evil.test' }).send({}).expect(403);
+    const session = await request(app.getHttpServer()).post(`${publicPath(link.token)}/session`).set({ ...origin, Origin: `${origin.Origin}:443` }).send({}).expect(200);
+    const cookie = session.headers['set-cookie'][0];
+    expect(cookie).toContain('HttpOnly'); expect(cookie).toContain('Secure'); expect(cookie).toContain('SameSite=Strict'); expect(cookie).toContain(`Path=${publicPath(link.token)}`);
+    const credentials = `${cookie.split(';')[0]}; ${authCookie(owner.id)}`;
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin).set('Cookie', credentials).send({ version: 1, kind: 'read' }).expect(403);
+    const result = await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin).set('Cookie', credentials)
+      .set('X-Trek-Advice-CSRF', session.body.csrfToken).send({ version: 1, kind: 'read' }).expect(200);
+    expect(invoke.mock.calls[0]![0]).toMatchObject({ kind: 'publicShare', pluginId: 'trip-advice' });
+    expect(invoke.mock.calls[0]![0]).not.toHaveProperty('actingUserId');
+    expect(JSON.stringify(result.body)).not.toMatch(/PRIVATE-CANARY|private.invalid|confirmation_number|reservation_notes|user_id/);
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin).set('Cookie', credentials)
+      .set('X-Trek-Advice-CSRF', session.body.csrfToken).send({ version: 1, kind: 'read', actingUserId: owner.id }).expect(400);
+  });
+  it('preserves session identity across reloads and rejects cross-share/ambiguous cookies', () => {
+    const a = publish(); const first = shares.session(a.token, undefined, '127.0.0.1');
+    expect(shares.session(a.token, first.credential, '127.0.0.1')).toEqual(first);
+    expect(() => shares.credential(`${ADVICE_COOKIE}=${first.credential}; ${ADVICE_COOKIE}=${first.credential}`)).toThrow();
+    const other = createTrip(testDb, owner.id).id;
+    const b = shares.write(other, owner, { expectedRevision: 0, enabled: true, expiresInDays: 10, config: { ...config, stays: [], schedule: [], shortlist: [] } });
+    expect(() => shares.authorize(b.token, first.credential, first.csrfToken)).toThrow();
+    expect(db.get<{ credential_hash: string }>('SELECT credential_hash FROM plugin_share_sessions')!.credential_hash).not.toBe(first.credential);
+  });
+  it('revokes old sessions on rotation, config change, disable and expiry', () => {
+    const link = publish(); const s = shares.session(link.token, undefined, 'ip');
+    const principal = shares.authorize(link.token, s.credential, s.csrfToken);
+    const rotated = shares.revoke(tripId, owner, link.revision, true);
+    expect(rotated.token).not.toBe(link.token);
+    expect(() => shares.validatePrincipal(principal)).toThrow();
+    expect(() => shares.bootstrap(link.token)).toThrow();
+    const current = shares.session(rotated.token, undefined, 'ip');
+    const live = shares.authorize(rotated.token, current.credential, current.csrfToken);
+    shares.write(tripId, owner, { config, expectedRevision: rotated.revision, enabled: false, expiresInDays: 10 });
+    expect(() => shares.validatePrincipal(live)).toThrow();
+    db.run('UPDATE plugin_share_links SET enabled = 1, expires_at = ?', '2000-01-01T00:00:00.000Z');
+    expect(() => shares.bootstrap(rotated.token)).toThrow();
+  });
+
+  it('rotates a native v2 advice link without parsing it as a legacy config', () => {
+    db.run('UPDATE plugins SET capabilities = ? WHERE id = ?', JSON.stringify({ publicShare: { version: 2, surface: 'native' } }), 'trip-advice');
+    const draft = shares.ownerNative(tripId, owner.id).draftConfig;
+    const configured = shares.ownerNativeConfigure(tripId, owner.id, {
+      expectedRevision: 0,
+      enabled: true,
+      expiresInDays: 30,
+      config: draft,
+    });
+
+    const rotated = shares.revoke(tripId, owner, configured.config!.revision, true);
+
+    expect(rotated.token).not.toBe(configured.config!.token);
+    expect(rotated.revision).toBe(configured.config!.revision + 1);
+    expect(rotated.config.version).toBe(2);
+    expect(db.get('SELECT COUNT(*) AS count FROM plugin_share_sessions WHERE share_id = ?', configured.config!.shareId)).toEqual({ count: 0 });
+  });
+  it.each(['configuration', 'rotation'] as const)('preserves feedback on %s changes while revoking guest authority', change => {
+    const link = publish();
+    const guest = shares.session(link.token, undefined, 'preserve-feedback');
+    const principal = shares.authorize(link.token, guest.credential, guest.csrfToken);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const managed = new PluginSharesService(db, projection, limiter, lifecycle);
+    const updated = change === 'rotation'
+      ? managed.revoke(tripId, owner, link.revision, true)
+      : managed.write(tripId, owner, { config: { ...config, publicTitle: 'Updated public title' }, expectedRevision: link.revision, enabled: true, expiresInDays: 10 });
+    expect(updated.revision).toBe(link.revision + 1);
+    expect(() => managed.validatePrincipal(principal)).toThrow();
+    expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([]);
+  });
+  it.each(['disable', 'delete'] as const)('applies the approved cleanup policy for explicit %s', change => {
+    const link = publish();
+    const lifecycle = new PluginShareLifecycleService(db);
+    const managed = new PluginSharesService(db, projection, limiter, lifecycle);
+    if (change === 'delete') managed.revoke(tripId, owner, link.revision, false);
+    else managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 10 });
+    expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual(change === 'delete' ? [{ method: 'purge' }] : []);
+  });
+  it.each(['expiry', 'disable'] as const)('automatically queues cleanup exactly 90 days after %s without a guest request', async reason => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const link = publish();
+      const lifecycle = new PluginShareLifecycleService(db);
+      const managed = new PluginSharesService(db, projection, limiter, lifecycle);
+      if (reason === 'expiry') db.run('UPDATE plugin_share_links SET expires_at = ? WHERE id = ?', new Date(now).toISOString(), link.shareId);
+      else managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 10 });
+      expect(() => managed.bootstrap(link.token)).toThrow();
+      clock.mockReturnValue(now + 90 * 86400000 - 1);
+      await lifecycle.flush();
+      expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([]);
+      clock.mockReturnValue(now + 90 * 86400000);
+      await lifecycle.flush();
+      await lifecycle.flush();
+      expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+    } finally { clock.mockRestore(); }
+  });
+  it('does not extend retention when an already disabled link is saved again', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const link = publish();
+      const lifecycle = new PluginShareLifecycleService(db);
+      const managed = new PluginSharesService(db, projection, limiter, lifecycle);
+      const disabled = managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: false, expiresInDays: 90 });
+      clock.mockReturnValue(now + 60 * 86400000);
+      managed.write(tripId, owner, { config, expectedRevision: disabled.revision, enabled: false, expiresInDays: 90 });
+      clock.mockReturnValue(now + 90 * 86400000);
+      await lifecycle.flush();
+      expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+    } finally { clock.mockRestore(); }
+  });
+  it('queues overdue feedback before an owner reopens an expired link', () => {
+    const link = publish();
+    db.run('UPDATE plugin_share_links SET expires_at = ? WHERE id = ?', new Date(Date.now() - 91 * 86400000).toISOString(), link.shareId);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const managed = new PluginSharesService(db, projection, limiter, lifecycle);
+    managed.write(tripId, owner, { config, expectedRevision: link.revision, enabled: true, expiresInDays: 10 });
+    expect(db.all('SELECT method FROM plugin_share_lifecycle_outbox WHERE share_id = ?', link.shareId)).toEqual([{ method: 'purge' }]);
+    expect(() => managed.bootstrap(link.token)).toThrow();
+  });
+  it('revokes erased guest credentials server-side while preserving another guest session', async () => {
+    const link = publish();
+    const erased = shares.session(link.token, undefined, 'erase-ip');
+    const other = shares.session(link.token, undefined, 'other-ip');
+    invoke.mockResolvedValueOnce({ version: 1, kind: 'session.erase', data: { erased: true } });
+    const result = await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin)
+      .set('Cookie', `${ADVICE_COOKIE}=${erased.credential}`).set('X-Trek-Advice-CSRF', erased.csrfToken)
+      .send({ version: 1, kind: 'session.erase', requestId: '11111111-1111-4111-8111-111111111111' }).expect(200);
+    expect(result.headers['set-cookie'][0]).toContain(`${ADVICE_COOKIE}=;`);
+    expect(() => shares.authorize(link.token, erased.credential, erased.csrfToken)).toThrow();
+    expect(() => shares.authorize(link.token, other.credential, other.csrfToken)).not.toThrow();
+  });
+  it('keeps the guest session when erasure is not acknowledged', async () => {
+    const link = publish();
+    const session = shares.session(link.token, undefined, 'erase-ip');
+    invoke.mockResolvedValueOnce({ version: 1, kind: 'session.erase', data: { erased: false } });
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin)
+      .set('Cookie', `${ADVICE_COOKIE}=${session.credential}`).set('X-Trek-Advice-CSRF', session.csrfToken)
+      .send({ version: 1, kind: 'session.erase', requestId: '11111111-1111-4111-8111-111111111111' }).expect(503);
+    expect(() => shares.authorize(link.token, session.credential, session.csrfToken)).not.toThrow();
+  });
+  it('durably queues residual guest cleanup with server-side revocation', () => {
+    const link = publish();
+    const session = shares.session(link.token, undefined, 'erase-ip');
+    const principal = shares.authorize(link.token, session.credential, session.csrfToken);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const lifecycleShares = new PluginSharesService(db, projection, limiter, lifecycle);
+    lifecycleShares.completeGuestErasure(principal);
+    expect(() => shares.validatePrincipal(principal)).toThrow();
+    expect(db.all('SELECT method, share_id, guest_id FROM plugin_share_lifecycle_outbox')).toEqual([
+      { method: 'erase_guest', share_id: principal.shareId, guest_id: principal.guestId },
+    ]);
+  });
+  it('discards a result completed after share revocation', async () => {
+    const link = publish(); const session = shares.session(link.token, undefined, 'ip');
+    invoke.mockImplementationOnce(async principal => {
+      const result: AdviceReadResult = {
+        projection: adviceProjectionSchema.parse(shares.snapshot(principal)), feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
+      };
+      shares.revoke(tripId, owner, link.revision, false);
+      return result;
+    });
+    await request(app.getHttpServer()).post(`${publicPath(link.token)}/actions`).set(origin)
+      .set('Cookie', `${ADVICE_COOKIE}=${session.credential}`).set('X-Trek-Advice-CSRF', session.csrfToken)
+      .send({ version: 1, kind: 'read' }).expect(404);
+  });
+  it('cascades link and session authority on trip deletion', () => {
+    const link = publish(); const s = shares.session(link.token, undefined, 'ip');
+    const principal = shares.authorize(link.token, s.credential, s.csrfToken);
+    db.run('DELETE FROM trips WHERE id = ?', tripId);
+    expect(db.get('SELECT 1 FROM plugin_share_links')).toBeUndefined();
+    expect(db.get('SELECT 1 FROM plugin_share_sessions')).toBeUndefined();
+    expect(() => shares.validatePrincipal(principal)).toThrow();
+  });
+  it('durably records cascading trip cleanup until the addon acknowledges it', async () => {
+    const link = publish();
+    db.run('DELETE FROM trips WHERE id = ?', tripId);
+    expect(db.all('SELECT method, share_id, guest_id FROM plugin_share_lifecycle_outbox')).toEqual([
+      { method: 'purge', share_id: link.shareId, guest_id: '' },
+    ]);
+    const lifecycle = new PluginShareLifecycleService(db);
+    const invokeLifecycle = vi.fn().mockResolvedValue({ ok: true });
+    lifecycle.bind(invokeLifecycle);
+    await vi.waitFor(() => expect(invokeLifecycle).toHaveBeenCalledWith('invoke.publicShare.purge', { shareId: link.shareId }));
+    expect(db.all('SELECT * FROM plugin_share_lifecycle_outbox')).toEqual([]);
+  });
+  it('fails closed on flag, plugin disable, grant withdrawal and malformed capability', () => {
+    const link = publish();
+    for (const value of ['', 'false', 'garbage']) { vi.stubEnv('TREK_PUBLIC_ADVICE_ENABLED', value); expect(() => shares.bootstrap(link.token)).toThrow(); }
+    vi.stubEnv('TREK_PUBLIC_ADVICE_ENABLED', 'true');
+    db.run("UPDATE plugins SET granted_permissions = '[]'"); expect(() => shares.bootstrap(link.token)).toThrow();
+    db.run("UPDATE plugins SET granted_permissions = '[\"share:guest\"]', enabled = 0"); expect(() => shares.bootstrap(link.token)).toThrow();
+    db.run("UPDATE plugins SET enabled = 1, capabilities = '{}'"); expect(() => shares.bootstrap(link.token)).toThrow();
+  });
+  it('limits anonymous session minting without growing unbounded key maps', () => {
+    const link = publish();
+    for (let i = 0; i < 5; i++) shares.session(link.token, undefined, 'same-ip');
+    expect(() => shares.session(link.token, undefined, 'same-ip')).toThrow();
+    const small = new AdviceRateLimiter();
+    expect(small.check('b', 'a', 5, 1000, 1, 1)).toBe(true);
+    expect(small.check('b', 'b', 5, 1000, 1, 1)).toBe(false);
+    expect(small.check('b', 'b', 5, 1000, 1001, 1)).toBe(true);
+  });
+});
+
+describe('native advice projection', () => {
+  it('imports an accepted suggestion once under the owner and immutable identity', () => {
+    const input = {
+      tripId, externalKey: 'share-id/suggestion-id', expectedPayloadHash: 'a'.repeat(64),
+      place: { name: 'Accepted place', googlePlaceId: 'google-accepted', address: 'Tokyo', categoryId },
+    };
+    const first = shares.importSuggestion(tripId, owner.id, input);
+    const retry = shares.importSuggestion(tripId, owner.id, input);
+    expect(first).toEqual({ placeId: retry.placeId, created: true });
+    expect(retry.created).toBe(false);
+    expect(db.all('SELECT * FROM plugin_place_imports')).toHaveLength(1);
+    expect(db.all('SELECT * FROM day_assignments WHERE place_id = ?', first.placeId)).toHaveLength(0);
+    expect(() => shares.importSuggestion(tripId, owner.id, { ...input, expectedPayloadHash: 'b'.repeat(64) })).toThrow('Import identity was reused');
+  });
+
+  it('keeps a single shortlist across return stays and empty days; times do not imply booked', () => {
+    const result = projection.build(tripId, config, true);
+    expect(result.stays).toHaveLength(2); expect(result.stays[1]!.days[0]!.schedule).toEqual([]);
+    expect(result.shortlists.filter(s => s.cityId === 'tokyo')).toHaveLength(1);
+    expect(result.shortlists.at(-1)!.cityId).toBe('elsewhere');
+    expect(result.stays[0]!.days[0]!.schedule[0]).toMatchObject({ time: '12:30', booked: false });
+    expect(result.shortlists[0]!.eat[0]!.mapsUrl).toContain('api=1');
+    expect(result.shortlists[0]!.eat[0]!.mapsUrl).not.toContain('query_place_id');
+  });
+  it('uses only live confirmed reservation records for booking badges', () => {
+    db.run("INSERT INTO reservations (trip_id, assignment_id, title, status, type, confirmation_number) VALUES (?, ?, 'PRIVATE-CANARY', 'confirmed', 'activity', 'PRIVATE-CANARY')", tripId, assignmentId);
+    const booked = () => projection.build(tripId, config).stays[0]!.days[0]!.schedule[0]!.booked;
+    expect(booked()).toBe(true);
+    db.run("UPDATE reservations SET ingest_state = 'staged'"); expect(booked()).toBe(false);
+    db.run("UPDATE reservations SET ingest_state = 'live', status = 'cancelled'"); expect(booked()).toBe(false);
+  });
+  it('rejects cross-trip IDs, excludes lodging and stops voting after scheduling', () => {
+    const other = createTrip(testDb, owner.id).id;
+    const place = createPlace(testDb, other).id;
+    expect(() => projection.build(tripId, { ...config, shortlist: [{ ...config.shortlist[0]!, placeId: place }] }, true)).toThrow();
+    db.run("INSERT INTO reservations (trip_id, place_id, title, type) VALUES (?, ?, 'PRIVATE-CANARY', 'hotel')", tripId, shortlistPlaceId);
+    expect(() => projection.build(tripId, config, true)).toThrow();
+    expect(projection.build(tripId, config).shortlists[0]!.eat).toEqual([]);
+    db.run('DELETE FROM reservations');
+    createDayAssignment(testDb, dayId, shortlistPlaceId);
+    expect(projection.build(tripId, config).shortlists[0]!.eat).toEqual([]);
+  });
+  it('excludes native accommodation places even without reservation rows', () => {
+    db.run('INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id) VALUES (?, ?, ?, ?)', tripId, shortlistPlaceId, dayId, dayId);
+    expect(() => projection.build(tripId, config, true)).toThrow();
+    expect(projection.build(tripId, config).shortlists[0]!.eat).toEqual([]);
+  });
+});

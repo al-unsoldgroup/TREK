@@ -1,4 +1,5 @@
 import {
+  type PublicSharePrincipal,
   HOOK_PERMISSION,
   KNOWN_METHODS,
   METHOD_PERMISSION,
@@ -186,9 +187,9 @@ export class PluginRpcRegistry {
    * instead of a silent override.
    */
   bindInto(
-    map: Map<string, (params: Record<string, unknown>, actingUserId: number | undefined) => unknown>,
+    map: Map<string, (params: Record<string, unknown>, actingUserId: number | undefined, publicShare?: PublicSharePrincipal) => unknown>,
     granted: ReadonlySet<string>,
-    makeCtx: (actingUserId: number | undefined) => PluginRpcContext,
+    makeCtx: (actingUserId: number | undefined, publicShare?: PublicSharePrincipal) => PluginRpcContext,
   ): void {
     for (const bound of this.bound) {
       const entry = bound.entry;
@@ -203,7 +204,7 @@ export class PluginRpcRegistry {
       const handler = (bound.instance as Record<string, (...args: unknown[]) => unknown>)[entry.methodName].bind(
         bound.instance,
       );
-      map.set(entry.method, (params, actingUserId) => handler(params, makeCtx(actingUserId)));
+      map.set(entry.method, (params, actingUserId, publicShare) => handler(params, makeCtx(actingUserId, publicShare)));
     }
   }
 

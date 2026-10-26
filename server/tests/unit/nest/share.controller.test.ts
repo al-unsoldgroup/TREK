@@ -8,6 +8,9 @@ import type { Response } from 'express';
 import { PassThrough } from 'node:stream';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import type { PluginSharesService } from '../../../src/nest/plugin-shares/plugin-shares.service';
+const adviceStub = { ownsToken: () => false } as unknown as PluginSharesService;
+
 // Only the shared place-photo proxy consumes storage.
 const getStream = vi.fn();
 const storageStub = { getStream } as unknown as StorageService;
@@ -147,6 +150,7 @@ describe('SharedController', () => {
         new SharedController(
           svc({ getSharedTripData: vi.fn().mockReturnValue(null) } as Partial<ShareService>),
           storageStub,
+          adviceStub,
         ).read('bad'),
       ),
     ).toEqual({ status: 404, body: { error: 'Invalid or expired link' } });
@@ -154,6 +158,7 @@ describe('SharedController', () => {
       await new SharedController(
         svc({ getSharedTripData: vi.fn().mockReturnValue({ trip: { id: 9 } }) } as Partial<ShareService>),
         storageStub,
+          adviceStub,
       ).read('tok'),
     ).toEqual({ trip: { id: 9 } });
   });
@@ -205,6 +210,7 @@ describe('SharedController', () => {
       return new SharedController(
         svc({ getSharedPlacePhotoKey: vi.fn().mockReturnValue(key) } as Partial<ShareService>),
         storageStub,
+        adviceStub,
       );
     }
 

@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "A kiválasztott utazási adatok olvasása egy engedélyezett tanácsadási linken keresztül",
+  'admin.plugins.perm.share:publish': "Tanácsadási linkek beállítása az utazás tulajdonosának",
   'admin.notifications.title': 'Értesítések',
   'admin.notifications.hint': 'Válasszon értesítési csatornát. Egyszerre csak egy lehet aktív.',
   'admin.notifications.none': 'Kikapcsolva',

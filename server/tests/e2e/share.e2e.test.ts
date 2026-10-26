@@ -38,6 +38,7 @@ vi.mock('../../src/db/database', async () => {
   const db = createSnapshotTestDb();
   return {
     db,
+    getRawConnection: () => db,
     isOwner: () => false,
     getPlaceWithTags: () => null,
     closeDb: () => {},

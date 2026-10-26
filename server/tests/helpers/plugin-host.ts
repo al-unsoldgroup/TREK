@@ -68,6 +68,10 @@ import { HostSurfaceRpc } from '../../src/nest/plugins/host/rpc/host-surface.rpc
 import { MetaRpc } from '../../src/nest/plugins/host/rpc/meta.rpc';
 import { PluginOAuthService } from '../../src/nest/plugins/oauth/plugin-oauth.service';
 import { PluginHooks } from '../../src/nest/plugins/plugin-hooks.service';
+import { AdviceRateLimiter, PluginShareDb } from '../../src/nest/plugin-shares/plugin-share-db';
+import { PluginShareProjectionService } from '../../src/nest/plugin-shares/plugin-share-projection.service';
+import { PluginSharesRpc } from '../../src/nest/plugin-shares/plugin-shares.rpc';
+import { PluginSharesService } from '../../src/nest/plugin-shares/plugin-shares.service';
 import { PluginRuntimeService } from '../../src/nest/plugins/plugin-runtime.service';
 import { PluginUserSettingsService } from '../../src/nest/plugins/plugin-user-settings.service';
 import type { PluginRegistryService } from '../../src/nest/plugins/registry/registry.service';
@@ -214,6 +218,7 @@ export async function createPluginRpcHostParts(
   // `budgetFor` calls now take `PluginCapabilityAuditRepository`, not a raw connection.
   const pluginAuditRepo = (await sharedTestOrm(db)).repo(PluginCapabilityAudit);
   const permissions = new PermissionsService(await createTestAppSettingsRepo(db), await createTestUnitOfWork(db));
+  const shares = new PluginSharesService(new PluginShareDb(), new PluginShareProjectionService(new PluginShareDb()), new AdviceRateLimiter());
   const exchangeRates = new ExchangeRatesService();
   const realtime = new RealtimeService();
   const budget = new BudgetService(
@@ -554,6 +559,7 @@ export async function createPluginRpcHostParts(
   const guards = new PluginGuards(await createTestTripsRepo(db), permissions, addons, usersRepo);
 
   const controllers: object[] = [
+    new PluginSharesRpc(shares),
     new TagsRpc(new TagsService(await createTestTagsRepo(db))),
     new CategoriesRpc(new CategoriesService(await createTestCategoriesRepo(db))),
     new WeatherRpc(new WeatherService()),
@@ -642,7 +648,7 @@ export async function createPluginRpcHostParts(
   ];
   const registry = createTestPluginRegistry(controllers);
   return {
-    factory: new PluginRpcHostFactory(pluginAuditRepo, registry as unknown as PluginRpcRegistryService),
+    factory: new PluginRpcHostFactory(pluginAuditRepo, registry as unknown as PluginRpcRegistryService, shares),
     controllers,
   };
 }

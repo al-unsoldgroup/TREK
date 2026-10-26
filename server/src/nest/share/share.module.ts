@@ -20,6 +20,9 @@ import { ShareMcp } from './share.mcp';
 import { ShareService } from './share.service';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { Module } from '@nestjs/common';
+import { PluginSharesModule } from '../plugin-shares/plugin-shares.module';
+import { SharedPageController } from './shared-page.controller';
+import { SharedPageService } from './shared-page.service';
 
 // `MikroOrmModule.forFeature([Reservations, ...])` registers every repository
 // `ShareService`'s `@InjectRepository` constructor params need (Plan 3d Task 4
@@ -30,6 +33,7 @@ import { Module } from '@nestjs/common';
 // for the same reason).
 @Module({
   imports: [
+    PluginSharesModule,
     McpSharedModule,
     SettingsModule,
     PermissionsModule,
@@ -50,7 +54,7 @@ import { Module } from '@nestjs/common';
       CollabMessages,
     ]),
   ],
-  controllers: [TripShareController, SharedController],
-  providers: [ShareService, ShareMcp],
+  controllers: [TripShareController, SharedController, SharedPageController],
+  providers: [ShareService, ShareMcp, SharedPageService],
 })
 export class ShareModule {}

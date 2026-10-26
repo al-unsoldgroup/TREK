@@ -66,6 +66,7 @@ export interface ManifestCapabilities {
   settingsUi?: boolean;
   widget?: { title?: string; defaultSize?: string; slot?: 'sidebar' | 'hero' | 'place-detail' | 'day-detail' | 'reservation-detail' };
   tripPage?: { replaces?: string[]; position?: number };
+  publicShare?: { version: 1; entry: 'guest.html' } | { version: 2; surface: 'native' };
   notificationChannel?: { title?: string; events?: string[] };
   routeProfiles?: Array<{ id: string; label: string; icon?: string }>;
   /** Chips in the trip map's Explore places pill, answered by the poiCategoryProvider
@@ -280,6 +281,7 @@ export function validateManifest(raw: unknown): ValidationResult {
   const capabilities = (m.capabilities ?? undefined) as {
     widget?: { slot?: unknown };
     tripPage?: { replaces?: unknown; position?: unknown };
+    publicShare?: unknown;
     notificationChannel?: { title?: unknown; events?: unknown };
     routeProfiles?: unknown;
     poiCategories?: unknown;
@@ -288,6 +290,14 @@ export function validateManifest(raw: unknown): ValidationResult {
     emits?: unknown;
     settingsUi?: unknown;
   } | undefined;
+  if (capabilities?.publicShare !== undefined) {
+    const p = capabilities.publicShare;
+    const capability = p && typeof p === 'object' && !Array.isArray(p) ? p as Record<string, unknown> : null;
+    const legacy = capability?.version === 1 && capability.entry === 'guest.html' && Object.keys(capability).every(k => k === 'version' || k === 'entry');
+    const native = capability?.version === 2 && capability.surface === 'native' && Object.keys(capability).every(k => k === 'version' || k === 'surface');
+    if (!legacy && !native) errors.push('Invalid publicShare capability');
+    if (m.id !== 'trip-advice' || !permissions.includes('share:guest')) errors.push('publicShare requires trip-advice and share:guest');
+  }
   if (capabilities?.settingsUi !== undefined && typeof capabilities.settingsUi !== 'boolean') {
     errors.push('capabilities.settingsUi must be a boolean');
   }

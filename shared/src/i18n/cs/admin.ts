@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "Číst vybrané údaje o cestě přes aktivovaný odkaz pro rady",
+  'admin.plugins.perm.share:publish': "Nastavovat odkazy s radami pro vlastníka cesty",
   'admin.notifications.title': 'Oznámení',
   'admin.notifications.hint': 'Vyberte kanál oznámení. Současně může být aktivní pouze jeden.',
   'admin.notifications.none': 'Vypnuto',

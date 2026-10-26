@@ -2,9 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '../../tests/helpers/render';
 import { Routes, Route } from 'react-router';
 import { http, HttpResponse } from 'msw';
-import { AxiosError } from 'axios';
 import { server } from '../../tests/helpers/msw/server';
-import { shareApi } from '../api/client';
+import { publicShareApi } from '../api/publicPluginShare';
 import { resetAllStores, seedStore } from '../../tests/helpers/store';
 import { buildSettings } from '../../tests/helpers/factories';
 import { useSettingsStore } from '../store/settingsStore';
@@ -75,6 +74,46 @@ beforeEach(() => {
 });
 
 describe('SharedTripPage', () => {
+  it('FE-USG215-SHARED-001: branches on an advice bootstrap before rendering the legacy snapshot', async () => {
+    server.use(
+      http.get('/api/shared/advice-token', () => HttpResponse.json({
+        kind: 'plugin-share',
+        version: 1,
+        plugin: { id: 'trip-advice', entry: 'guest.html', protocolVersion: 1 },
+        title: 'Japan together',
+        expiresAt: '2026-09-10T00:00:00.000Z',
+      })),
+    );
+
+    renderSharedTrip('advice-token');
+
+    const frame = await screen.findByTitle('Japan together');
+    expect(frame).toHaveAttribute('src', expect.stringContaining('/plugin-frame/trip-advice/guest.html'));
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+  });
+
+  it('USG-227 renders a version 2 advice link natively without an iframe', async () => {
+    server.use(
+      http.get('/api/shared/native-advice-token', () => HttpResponse.json({
+        kind: 'plugin-share', version: 2,
+        plugin: { id: 'trip-advice', surface: 'native', protocolVersion: 2 },
+        title: 'Japan together', expiresAt: '2026-09-20T00:00:00.000Z',
+      })),
+      http.post('/api/shared/native-advice-token/plugins/trip-advice/session', () => HttpResponse.json({
+        csrfToken: 'csrf-token', expiresAt: '2026-09-20T00:00:00.000Z',
+      })),
+      http.post('/api/shared/native-advice-token/plugins/trip-advice/actions', () => HttpResponse.json({
+        projection: { version: 2, revision: 'a'.repeat(64), title: 'Japan together', cities: [], stays: [], shortlists: [] },
+        feedbackRevision: 0, votes: [], myPendingSuggestions: [], myComments: [], nextCommentsCursor: null,
+      })),
+    );
+
+    renderSharedTrip('native-advice-token');
+
+    expect(await screen.findByRole('heading', { name: 'Japan together' })).toBeInTheDocument();
+    expect(document.querySelector('iframe')).toBeNull();
+  });
+
   describe('FE-PAGE-SHARED-001: Renders without authentication', () => {
     it('renders loading spinner without any auth state', async () => {
       // Use a token that will delay or we just check initial state before response
@@ -1732,9 +1771,9 @@ describe('SharedTripPage', () => {
     });
 
     it('keeps the link when the request times out', async () => {
-      // What axios rejects with once its 8s deadline passes: no response at all.
-      const timeout = new AxiosError('timeout of 8000ms exceeded', AxiosError.ECONNABORTED);
-      const spy = vi.spyOn(shareApi, 'getSharedTrip').mockRejectedValueOnce(timeout);
+      // The public share transport is fetch, not axios: a timed-out request rejects with no response at all.
+      const timeout = new DOMException('The operation timed out.', 'TimeoutError');
+      const spy = vi.spyOn(publicShareApi, 'getEntry').mockRejectedValueOnce(timeout);
       renderSharedTrip('test-token');
 
       await waitFor(() => expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument());

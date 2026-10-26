@@ -7,8 +7,10 @@
 
 /** Mirrors the published package's constant — bumped on any breaking API change. */
 export { PLUGIN_API_VERSION } from '../protocol/envelope';
+import type { AdviceNativeImportResult, AdviceOwnerCandidates, AdviceOwnerConfig, AdviceProjection, AdvicePublicShareContext, AdviceResolvedSelection, AdviceShareInvocation } from '../protocol/public-share';
 
 export interface PluginContext {
+  publicShare: AdvicePublicShareContext;
   readonly id: string;
   /** `scope:'instance'` settings, secrets decrypted, frozen at activation; a field nobody
    * set resolves to its manifest `default` (settings-defaults.ts). */
@@ -739,6 +741,11 @@ export interface McpToolProvider {
 }
 
 export interface PluginDefinition {
+  publicShare?: {
+    handle(input: AdviceShareInvocation, ctx: PluginContext): Promise<unknown>;
+    purge?(input: { shareId: string }, ctx: PluginContext): Promise<void>;
+    eraseGuest?(input: { shareId: string; guestId: string }, ctx: PluginContext): Promise<void>;
+  };
   onLoad?(ctx: PluginContext): Promise<void> | void;
   onUnload?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
@@ -813,10 +820,36 @@ export interface ChildTransport {
 export function createPluginContext(
   id: string,
   config: Record<string, unknown>,
-  t: ChildTransport,
+  transport: ChildTransport,
   invocationId?: string,
 ): PluginContext {
+  // Bind EVERY RPC, including db/open methods, to this invocation. Previously
+  // only member-specific calls carried _inv, which would bypass public restrictions.
+  const t: ChildTransport = {
+    emit: (topic, data) => transport.emit(topic, data),
+    rpc: (method, params) => transport.rpc(method, invocationId === undefined ? params : { ...params, _inv: invocationId }),
+  };
   return {
+    publicShare: {
+      filterSuggestionKeys: (input) => t.rpc('publicShare.filterSuggestionKeys', input) as Promise<string[]>,
+      snapshot: () => t.rpc('publicShare.snapshot', {}) as Promise<AdviceProjection>,
+      resolveSelection: (input) => t.rpc('publicShare.resolveSelection', input) as Promise<AdviceResolvedSelection>,
+      owner: {
+        getNative: (input) => t.rpc('publicShare.owner.getNative', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['getNative']>>,
+        configureNative: (input) => t.rpc('publicShare.owner.configureNative', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['configureNative']>>,
+        previewNative: (input) => t.rpc('publicShare.owner.previewNative', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['previewNative']>>,
+        nativeAction: (input) => t.rpc('publicShare.owner.nativeAction', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['nativeAction']>>,
+        resolveNativeSelection: (input) => t.rpc('publicShare.owner.resolveNativeSelection', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['resolveNativeSelection']>>,
+        nativePhoto: (input) => t.rpc('publicShare.owner.nativePhoto', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['nativePhoto']>>,
+        cityAutocomplete: (input) => t.rpc('publicShare.owner.cityAutocomplete', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['cityAutocomplete']>>,
+        cityResolve: (input) => t.rpc('publicShare.owner.cityResolve', input) as ReturnType<NonNullable<AdvicePublicShareContext['owner']['cityResolve']>>,
+        getConfig: (input) => t.rpc('publicShare.owner.getConfig', input) as Promise<AdviceOwnerConfig | null>,
+        getCandidates: (input) => t.rpc('publicShare.owner.getCandidates', input) as Promise<AdviceOwnerCandidates>,
+        preview: (input) => t.rpc('publicShare.owner.preview', input) as Promise<AdviceProjection>,
+        configure: (input) => t.rpc('publicShare.owner.configure', input) as Promise<AdviceOwnerConfig>,
+        importSuggestion: (input) => t.rpc('publicShare.owner.importSuggestion', { ...input }) as Promise<AdviceNativeImportResult>,
+      },
+    },
     id,
     config: Object.freeze({ ...config }),
     settings: {

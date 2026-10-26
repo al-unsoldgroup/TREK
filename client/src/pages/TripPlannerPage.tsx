@@ -22,6 +22,8 @@ import { BookingDetailPopup } from '../components/Planner/bookings/BookingDetail
 import BookingImportModal from '../components/Planner/BookingImportModal'
 import AirTrailImportModal from '../components/Planner/AirTrailImportModal'
 import PluginFrame from '../components/Plugins/PluginFrame'
+import TripAdviceSurface from '../features/tripAdvice/TripAdviceSurface'
+import { useTripAdviceOwner } from '../features/tripAdvice/useTripAdviceOwner'
 import ErrorBoundary from '../components/shared/ErrorBoundary'
 import { getDayBookendHotels } from '../utils/dayOrder'
 import { dayWeatherAnchor } from '../utils/dayWeather'
@@ -51,6 +53,10 @@ import { useTouchDragBridge } from '../hooks/useTouchDragBridge'
 import PanelResizeHandle from '../components/Planner/PanelResizeHandle'
 import TourGpxDropZone from '../components/Tours/TourGpxDropZone'
 import { tripHelpScreen } from './tripPlanner/tripHelpScreen'
+
+function NativeTripAdviceOwner({ tripId }: { tripId: number }) {
+  return <TripAdviceSurface controller={useTripAdviceOwner(tripId)} />
+}
 
 export default function TripPlannerPage(): React.ReactElement | null {
   // ViewportRoute in App.tsx picks the branch now, so the phone screen is a
@@ -786,8 +792,10 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
         {activeTab === 'journal' && <LazyPanel id="journal"><TripJournalPanel journeyId={journalId} /></LazyPanel>}
 
         {activeTab.startsWith('plugin:') && (
-          <div style={{ position: 'absolute', top: 0, insetInline: 0, bottom: 'var(--bottom-nav-h)', overflow: 'hidden' }}>
-            <PluginFrame pluginId={activeTab.slice('plugin:'.length)} tripId={String(tripId)} dayId={pluginTabDayId != null ? String(pluginTabDayId) : null} fill surface="trip-tab" className="w-full h-full" />
+          <div style={{ position: 'absolute', top: 0, insetInline: 0, bottom: 'var(--bottom-nav-h)', overflow: 'auto' }}>
+            {activeTab === 'plugin:trip-advice'
+              ? <NativeTripAdviceOwner tripId={tripId} />
+              : <PluginFrame pluginId={activeTab.slice('plugin:'.length)} tripId={String(tripId)} dayId={pluginTabDayId != null ? String(pluginTabDayId) : null} fill surface="trip-tab" className="w-full h-full" />}
           </div>
         )}
       </div>

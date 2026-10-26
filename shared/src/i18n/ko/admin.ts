@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "활성화된 조언 링크를 통해 선택한 여행 데이터 읽기",
+  'admin.plugins.perm.share:publish': "여행 소유자를 위한 조언 링크 구성",
   'admin.notifications.title': '알림',
   'admin.notifications.hint': '알림 채널을 하나 선택하세요. 한 번에 하나만 활성화할 수 있습니다.',
   'admin.notifications.none': '비활성화',

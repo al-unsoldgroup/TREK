@@ -1,3 +1,4 @@
+import type { PublicSharePrincipal } from '../protocol/envelope';
 import { readEnv } from '../../../app-config';
 import { SNAPSHOT_GRANT, type PluginEventMeta } from '../../../plugin-event-sink';
 import { traceEntry } from '../../audit/entry-trace.logger';
@@ -78,7 +79,7 @@ interface Supervised {
   mcpTools: string[]; // MCP tool names the plugin reported implementing at load
   subscriptions: Array<{ plugin: string; event: string }>; // other-plugin events it listens to
   pending: Map<string, Pending>; // host→child invokes awaiting a response
-  invocations: Map<string, number | undefined>; // reqId -> acting user of that invoke (undefined = no user, e.g. a job)
+  invocations: Map<string, { actingUserId?: number; publicShare?: PublicSharePrincipal; publicShareLifecycle?: boolean }>;
   rpcLimiter: RpcRateLimiter; // caps this plugin's ctx.* call rate + concurrency (host-loop DoS guard)
   logLimiter: TokenBucket; // caps this plugin's log/stderr volume (host-loop DoS guard, separate from rpcLimiter)
   droppedLogs: number; // count of log lines dropped by logLimiter since the last one got through
@@ -483,9 +484,18 @@ export class PluginSupervisor {
     id: string,
     method: string,
     params: Record<string, unknown>,
-    opts: { timeoutMs?: number; actingUserId?: number } = {},
+    opts: { timeoutMs?: number; actingUserId?: number; publicShare?: PublicSharePrincipal; publicShareLifecycle?: boolean } = {},
   ): Promise<unknown> {
     const { timeoutMs = 30_000, actingUserId } = opts;
+    if ((method === 'invoke.publicShare' || method === 'invoke.publicShare.purge' || method === 'invoke.publicShare.eraseGuest') &&
+      !opts.publicShare && !opts.publicShareLifecycle) return Promise.reject(new Error('Public share principal required'));
+    if (opts.publicShareLifecycle && (actingUserId !== undefined || id !== 'trip-advice' ||
+      !['invoke.publicShare.purge', 'invoke.publicShare.eraseGuest'].includes(method))) {
+      return Promise.reject(new Error('Invalid public share lifecycle invocation'));
+    }
+    if (opts.publicShare && (actingUserId !== undefined || id !== opts.publicShare.pluginId || method !== 'invoke.publicShare')) {
+      return Promise.reject(new Error('Invalid public share invocation'));
+    }
     const sup = this.running.get(id);
     if (!sup || sup.status !== 'active' || !sup.child) {
       return Promise.reject(new Error(`plugin ${id} is not active`));
@@ -499,10 +509,16 @@ export class PluginSupervisor {
       }, timeoutMs);
       timer.unref?.();
       sup.pending.set(reqId, { resolve, reject, timer });
-      // The child echoes this reqId as `_inv` on its trip reads; the host resolves
-      // the acting user from here, so the plugin cannot name an arbitrary user.
-      sup.invocations.set(reqId, actingUserId);
-      sup.child!.send({ k: 'req', id: reqId, method, params: { ...params, _inv: reqId } } satisfies Envelope);
+      // The child receives this reqId as its invocation-context id and adds `_inv`
+      // only to plugin→host RPC calls. Keep host→child params untouched: plugin
+      // handlers own their documented payload schemas and must not see host
+      // bookkeeping fields.
+      sup.invocations.set(reqId, {
+        actingUserId,
+        publicShare: opts.publicShare ? Object.freeze({ ...opts.publicShare }) : undefined,
+        publicShareLifecycle: opts.publicShareLifecycle,
+      });
+      sup.child!.send({ k: 'req', id: reqId, method, params } satisfies Envelope);
     });
   }
 
@@ -633,7 +649,7 @@ export class PluginSupervisor {
         return;
       }
       const inv = req.params as { _inv?: unknown } | undefined;
-      const actingUserId = typeof inv?._inv === 'string' ? sup.invocations.get(inv._inv) : undefined;
+      const authority = typeof inv?._inv === 'string' ? sup.invocations.get(inv._inv) : undefined;
       try {
         // The single choke point every plugin RPC passes through (D6): wrap it here,
         // not inside rpc-host.ts::dispatch, so the context also spans plugin-guards'
@@ -652,6 +668,23 @@ export class PluginSupervisor {
         // the dispatch never runs without a context, full stop, regardless of
         // what those other switches do. The three hand-built test doubles
         // that dispatch through this path now pass a thunk (`sharedTestOrm`).
+        if (inv?._inv !== undefined && !authority) {
+          sup.child?.send({ k: 'res', id: req.id, ok: false, error: { code: 'RESOURCE_FORBIDDEN', message: 'Expired or unknown invocation' } } satisfies RpcError);
+          return;
+        }
+        // The context passed to onLoad has no invocation id. It may perform its
+        // one-time setup while the child is starting, but must become inert once
+        // the plugin is active: otherwise a public handler can retain that ctx
+        // and turn its untagged DB RPC into an unrestricted own-DB request.
+        // A retained startup context is dangerous only while a public-share
+        // invocation is live: it would otherwise escape that invocation's
+        // guest/share confinement. Ordinary non-public plugin work retains the
+        // established userless own-DB behavior.
+        const publicInvocationIsLive = [...sup.invocations.values()].some(invocation => invocation.publicShare !== undefined);
+        if (inv?._inv === undefined && sup.status !== 'starting' && publicInvocationIsLive) {
+          sup.child?.send({ k: 'res', id: req.id, ok: false, error: { code: 'RESOURCE_FORBIDDEN', message: 'Invocation authority is required' } } satisfies RpcError);
+          return;
+        }
         const orm = this.resolveOrm?.();
         if (!orm) {
           // task-6-rereview.md §5 RULING: the child's `pending` map
@@ -676,7 +709,9 @@ export class PluginSupervisor {
         const res = await traceEntry(
           'rpc',
           `${sup.id} ${req.method}`,
-          () => withRequestContext(orm, () => sup.rpcHost.dispatch(req, actingUserId)),
+          () => withRequestContext(orm, () => authority?.publicShare
+            ? sup.rpcHost.dispatch(req, undefined, authority.publicShare)
+            : sup.rpcHost.dispatch(req, authority?.actingUserId)),
           { refusal: (answer) => ('error' in answer ? `${answer.error.code} ${answer.error.message}` : null) },
         );
         sup.child?.send(res);

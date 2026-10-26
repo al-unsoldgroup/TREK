@@ -116,6 +116,7 @@ export interface McpToolCapability {
 }
 
 export interface PluginCapabilities {
+  publicShare?: { version: 1; entry: 'guest.html' } | { version: 2; surface: 'native' };
   widget?: WidgetCapability;
   tripPage?: TripPageCapability;
   notificationChannel?: NotificationChannelCapability;
@@ -235,6 +236,9 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
   if (badOutbound !== undefined) throw new ManifestError(`invalid http:outbound host "${badOutbound}"`);
 
   const capabilities = parseCapabilities(m.capabilities);
+  if (capabilities.publicShare && (id !== 'trip-advice' || !permissions.includes('share:guest'))) {
+    throw new ManifestError('publicShare requires trip-advice and share:guest');
+  }
   // Declared tools without the grant that runs them would sit in the admin's
   // consent screen looking live and never appear on the MCP server. Same shape
   // as the SDK's notificationChannel and routeProfiles cross-checks.
@@ -353,6 +357,14 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
   if (!raw || typeof raw !== 'object') return {};
   const c = raw as Record<string, unknown>;
   const out: PluginCapabilities = {};
+  if (c.publicShare !== undefined) {
+    const p = c.publicShare;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) throw new ManifestError('Invalid publicShare capability');
+    const capability = p as Record<string, unknown>;
+    if (capability.version === 1 && capability.entry === 'guest.html' && Object.keys(capability).every(k => k === 'version' || k === 'entry')) out.publicShare = { version: 1, entry: 'guest.html' };
+    else if (capability.version === 2 && capability.surface === 'native' && Object.keys(capability).every(k => k === 'version' || k === 'surface')) out.publicShare = { version: 2, surface: 'native' };
+    else throw new ManifestError('Invalid publicShare capability');
+  }
   if (c.widget && typeof c.widget === 'object') {
     const w = c.widget as Record<string, unknown>;
     const slot = optStr(w.slot);

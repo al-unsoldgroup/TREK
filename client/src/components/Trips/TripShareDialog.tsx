@@ -1,4 +1,9 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router'
+import { apiClient } from '../../api/client'
+import { usePluginStore } from '../../store/pluginStore'
+import { copyText } from '../../utils/clipboard'
+import { useToast } from '../shared/Toast'
 import { Check, Copy, Crown, Link2, LogOut, Pencil, Plus, Settings, Trash2, UserMinus, UserPlus, UserRound, Users } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import CustomSelect from '../shared/CustomSelect'
@@ -103,6 +108,7 @@ function OpenDialog({ onClose, tripId, tripTitle, onMembersChanged }: TripShareD
             <AreaPanel area={panelOf('sharing')} shown={current.id === 'sharing'} titled>
               <PublicLink tripId={tripId} />
               <InviteLink tripId={tripId} />
+              <AdviceShareEntry tripId={tripId} onClose={onClose} />
             </AreaPanel>
           )}
           {journalSection && (
@@ -448,6 +454,61 @@ function InviteLink({ tripId }: { tripId: number }) {
       ) : (
         <AddRowButton onClick={() => void link.create()} disabled={link.busy}>{t('trip.invite.create')}</AddRowButton>
       )}
+    </LinkCard>
+  )
+}
+
+/**
+ * Advice publication is configured by the installed trip-advice owner page.
+ * Keep the native share controls as the discoverable entry point, but do not
+ * duplicate that addon's selection editor here.
+ */
+function AdviceShareEntry({ tripId, onClose }: { tripId: number; onClose: () => void }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const plugin = usePluginStore((s) => s.getById('trip-advice'))
+  const available = plugin?.type === 'trip-page'
+  const toast = useToast()
+  const [link, setLink] = useState<{ tripId: number; token: string | null; failed: boolean } | null>(null)
+  useEffect(() => {
+    if (!available) return
+    let cancelled = false
+    apiClient.get<{ token?: unknown; enabled?: unknown; expiresAt?: unknown } | null>(`/trips/${tripId}/share-link/plugins/trip-advice`)
+      .then(({ data }) => {
+        const token = data?.enabled === true && typeof data.token === 'string' && /^ta_[A-Za-z0-9_-]{32}$/.test(data.token) &&
+          typeof data.expiresAt === 'string' && Date.parse(data.expiresAt) > Date.now() ? data.token : null
+        if (!cancelled) setLink({ tripId, token, failed: false })
+      }).catch(() => { if (!cancelled) setLink({ tripId, token: null, failed: true }) })
+    return () => { cancelled = true }
+  }, [tripId, available])
+  if (!plugin || !available) return null
+  const current = link?.tripId === tripId ? link : null
+  const url = current?.token ? `${window.location.origin}/shared/${current.token}` : null
+  const title = `${plugin.name} · ${t('share.linkTitle')}`
+  const copyAdviceLink = async () => {
+    if (!url) return
+    if (await copyText(url)) toast.success(t('common.copied'))
+    else toast.error(t('common.error'))
+  }
+  return (
+    <LinkCard icon={<Link2 size={15} strokeWidth={2.2} />} title={title} hint={t('admin.plugins.perm.share:guest')}>
+      {current?.failed && <p role="alert" className="m-0 text-content-muted" style={fs(11.5)}>{t('common.error')}</p>}
+      {url && (
+        <div className="flex items-center gap-2 rounded-[10px] border border-edge bg-surface-input py-1 ps-3 pe-1">
+          <input type="text" value={url} readOnly aria-label={title} onFocus={e => e.currentTarget.select()}
+            className="min-w-0 flex-1 truncate border-0 bg-transparent font-mono text-content outline-none" style={fs(11.5)} />
+          <button type="button" aria-label={`${plugin.name} · ${t('common.copy')}`} onClick={() => void copyAdviceLink()}
+            className="inline-flex flex-none items-center gap-1.5 rounded-[8px] bg-accent px-2.5 py-1.5 font-semibold text-accent-text hover:opacity-90"
+            style={fs(11.5, 'body')}>
+            <Copy size={12} strokeWidth={2.2} />{t('common.copy')}
+          </button>
+        </div>
+      )}
+      <div>
+        <DialogButton onClick={() => { onClose(); navigate(`/trips/${tripId}?tab=plugin:trip-advice`) }} icon={<Link2 size={14} strokeWidth={2.2} />}>
+          {t('common.open')}
+        </DialogButton>
+      </div>
     </LinkCard>
   )
 }

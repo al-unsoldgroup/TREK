@@ -86,6 +86,10 @@ vi.mock('../../../src/nest/llm-parse/llm-client.factory', () => ({
 const realtime = new FakeRealtimeService();
 const broadcast = realtime.broadcastMock;
 const broadcastToUser = realtime.broadcastToUserMock;
+import { AdviceRateLimiter, PluginShareDb } from '../../../src/nest/plugin-shares/plugin-share-db';
+import { PluginShareProjectionService } from '../../../src/nest/plugin-shares/plugin-share-projection.service';
+import { PluginSharesRpc } from '../../../src/nest/plugin-shares/plugin-shares.rpc';
+import { PluginSharesService } from '../../../src/nest/plugin-shares/plugin-shares.service';
 
 // Typed from the real method rather than from the always-true body below, so a case that
 // swaps in an implementation reading the action key (HOSTRPC-015) still type-checks.
@@ -412,7 +416,8 @@ const registry = createTestPluginRegistry([
     scheduledTasksRepo,
   ),
 ]);
-const factory = new PluginRpcHostFactory(pluginAuditRepo, registry as unknown as PluginRpcRegistryService);
+const shares = new PluginSharesService(new PluginShareDb(), new PluginShareProjectionService(new PluginShareDb()), new AdviceRateLimiter());
+const factory = new PluginRpcHostFactory(pluginAuditRepo, registry as unknown as PluginRpcRegistryService, shares);
 const stubRouter: PluginCallRouter = { callPlugin: async () => undefined, emitPluginEvent: async () => {} };
 const makeHost = (id: string, ...perms: string[]) => factory.create(id, new Set(perms), stubRouter);
 /**

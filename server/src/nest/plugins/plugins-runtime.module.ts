@@ -59,6 +59,7 @@ import { PluginsService } from './plugins.service';
 import { PluginRegistryService } from './registry/registry.service';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { Module } from '@nestjs/common';
+import { PluginSharesModule } from '../plugin-shares/plugin-shares.module';
 import { DiscoveryModule } from '@nestjs/core';
 
 /**
@@ -79,6 +80,7 @@ import { DiscoveryModule } from '@nestjs/core';
  */
 @Module({
   imports: [
+    PluginSharesModule,
     // What lets PluginRpcRegistryService find the @PluginController providers at boot.
     DiscoveryModule,
     // Plan 3j Task 2 — every table `PluginRuntimeService`/`PluginsService`'s own

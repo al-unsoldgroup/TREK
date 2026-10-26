@@ -31,6 +31,9 @@
     "lint:response-contracts": "node scripts/response-contract-ratchet.mjs",
     "contracts:dto-open": "node scripts/dto-open-shapes.mjs",
     "gen:plugin-facts": "node --import tsx scripts/gen-plugin-facts.ts",
+    "gen:plugin-share": "node scripts/gen-plugin-share.mjs",
+    "check:plugin-share": "node scripts/gen-plugin-share.mjs --check",
+    "verify:advice": "node scripts/verify-advice.mjs",
     "check:plugin-facts": "node --import tsx scripts/gen-plugin-facts.ts --check",
     "gen:entities": "node --import tsx scripts/generate-entities.ts",
     "check:entities": "node --import tsx scripts/generate-entities.ts --check",
@@ -46,6 +49,7 @@
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
+    "test:integration:advice-runtime": "vitest run tests/integration/plugins/trip-advice-runtime.test.ts",
     "test:ws": "vitest run tests/websocket",
     "test:e2e": "vitest run tests/e2e",
     "test:coverage": "vitest run --coverage"

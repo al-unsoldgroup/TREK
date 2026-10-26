@@ -743,6 +743,23 @@ export const PLUGIN_METHOD_OUTPUT = {
   'plugins.call': HOST,
   'events.emit': HOST,
   'settings.get': HOST,
+  // Local trip-advice host overlay: host-composed, schema-parsed projections.
+  'publicShare.filterSuggestionKeys': HOST,
+  'publicShare.owner.cityAutocomplete': HOST,
+  'publicShare.owner.cityResolve': HOST,
+  'publicShare.owner.configure': HOST,
+  'publicShare.owner.configureNative': HOST,
+  'publicShare.owner.getCandidates': HOST,
+  'publicShare.owner.getConfig': HOST,
+  'publicShare.owner.getNative': HOST,
+  'publicShare.owner.importSuggestion': HOST,
+  'publicShare.owner.nativeAction': HOST,
+  'publicShare.owner.nativePhoto': HOST,
+  'publicShare.owner.preview': HOST,
+  'publicShare.owner.previewNative': HOST,
+  'publicShare.owner.resolveNativeSelection': HOST,
+  'publicShare.resolveSelection': HOST,
+  'publicShare.snapshot': HOST,
 } as const satisfies Record<KnownMethod | UnconditionalMethod, PluginMethodOutput>;
 
 /** The fields a plugin receives for `entity`: its published columns, then the derived keys. */

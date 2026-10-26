@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router'
-import { shareApi } from '../../api/client'
+import { publicShareApi, type PublicShareEntry } from '../../api/publicPluginShare'
 import { useExchangeRates } from '../../hooks/useExchangeRates'
 import { isSharedTripPayload, sharedTripLoadError, type SharedTripLoadError } from './sharedTripModel'
 
@@ -14,7 +14,7 @@ export function useSharedTrip() {
   const { token } = useParams<{ token: string }>()
   // The shared payload is an open-ended snapshot (trip, days, assignments, …),
   // matched 1:1 from the public share endpoint — kept loosely typed as before.
-  const [data, setData] = useState<any>(null)
+  const [entry, setEntry] = useState<PublicShareEntry | null>(null)
   // 'expired' only for the endpoint's own 404; any other failure, a proxy's
   // 404 or a 200 that is not the payload included, is 'unavailable' and keeps
   // the viewer on a retry (#2505).
@@ -29,28 +29,31 @@ export function useSharedTrip() {
 
   useEffect(() => {
     if (!token) return
-    let cancelled = false
-    shareApi
-      .getSharedTrip(token)
-      .then((payload) => {
-        if (cancelled) return
-        if (!isSharedTripPayload(payload)) {
+    const controller = new AbortController()
+    publicShareApi
+      .getEntry(token, controller.signal)
+      .then((loaded) => {
+        if (controller.signal.aborted) return
+        if (loaded.kind === 'legacy' && !isSharedTripPayload(loaded.data)) {
           setError('unavailable')
           return
         }
-        setData(payload)
+        setEntry(loaded)
         setError(null)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(sharedTripLoadError(err))
+        if (!controller.signal.aborted) setError(sharedTripLoadError(err))
       })
       .finally(() => {
-        if (!cancelled) setRetrying(false)
+        if (!controller.signal.aborted) setRetrying(false)
       })
-    return () => {
-      cancelled = true
-    }
+    return () => controller.abort()
   }, [token, attempt])
+
+  // Advice links are identified by the strict bootstrap envelope. Legacy share
+  // payloads remain open-ended and continue through the existing page below.
+  const data = entry?.kind === 'legacy' ? (entry.data as any) : null
+  const bootstrap = entry?.kind === 'plugin-share' ? entry.bootstrap : null
 
   // The failed screen stays up while the next attempt runs, so a request that
   // fails again straight away does not flash the spinner.
@@ -80,7 +83,9 @@ export function useSharedTrip() {
   // viewer has no settings store, so the base comes from the payload (#1361).
   const base = String(data?.baseCurrency || data?.trip?.currency || 'EUR').toUpperCase()
   // Anchored on the trip currency's quote, as the Costs tab converts (#2525).
-  const { convert } = useExchangeRates(base, data?.trip?.currency)
+  // Advice links have their own public network boundary. Do not initialize the
+  // legacy budget's third-party FX fetch while the advice bootstrap is active.
+  const { convert } = useExchangeRates(base, data?.trip?.currency, entry?.kind === 'legacy')
 
   const toggleDay = (id: number) => {
     setCollapsedDays(prev => {
@@ -108,6 +113,8 @@ export function useSharedTrip() {
 
   return {
     data,
+    bootstrap,
+    token,
     error,
     retry,
     retrying,

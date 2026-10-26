@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "Odczytywać wybrane dane podróży przez aktywny link do porad",
+  'admin.plugins.perm.share:publish': "Konfigurować linki z poradami dla właściciela podróży",
   'admin.smtp.title': 'E-maile i powiadomienia',
   'admin.smtp.hint': 'Konfiguracja SMTP dla powiadomień e-mail. Opcjonalnie: URL Webhooka dla Discorda, Slacka, itp.',
   'admin.smtp.testButton': 'Wyślij testowego e-maila',

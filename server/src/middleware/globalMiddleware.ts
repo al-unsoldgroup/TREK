@@ -1,4 +1,4 @@
-import { readEnv } from '../app-config';
+import { canonicalWebOrigin, readEnv } from '../app-config';
 import { httpConfig } from '../nest/app-config/tokens';
 import { logDebug, logWarn, logError } from '../nest/audit/audit-log.logger';
 import {
@@ -197,10 +197,11 @@ export function applyGlobalMiddleware(
   // a refusal is a 403 naming the cause instead of an unhandled error, which the
   // exception filter turned into a bare 500 on the login screen.
   const warnedOrigins = new Set<string>();
+  const canonicalOrigins = new Set((allowedOrigins ?? []).map(canonicalWebOrigin));
   const corsOptions: cors.CorsOptions | cors.CorsOptionsDelegate<Request> = allowedOrigins
     ? (req: Request, callback: (err: Error | null, options?: cors.CorsOptions) => void) => {
         const origin = req.headers.origin;
-        if (!origin || allowedOrigins.includes(origin) || isSameHostOrigin(origin, req.headers.host)) {
+        if (!origin || canonicalOrigins.has(canonicalWebOrigin(origin)) || isSameHostOrigin(origin, req.headers.host)) {
           callback(null, { origin: true, credentials: true });
           return;
         }

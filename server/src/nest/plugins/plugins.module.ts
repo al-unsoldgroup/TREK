@@ -6,6 +6,8 @@ import { PluginOAuthModule } from './oauth/plugin-oauth.module';
 import { PluginActivityController } from './plugin-activity.controller';
 import { PluginFrameController } from './plugin-frame.controller';
 import { PluginUserSettingsController } from './plugin-user-settings.controller';
+import { PluginSharesModule } from '../plugin-shares/plugin-shares.module';
+import { PluginSharePublicController, PluginShareOwnerController } from '../plugin-shares/plugin-shares.controller';
 import { PluginsFeedController } from './plugins-feed.controller';
 import { PluginsProxyController } from './plugins-proxy.controller';
 import { PluginsRuntimeModule } from './plugins-runtime.module';
@@ -44,9 +46,12 @@ import { Module } from '@nestjs/common';
     PluginsRuntimeModule,
     PluginOAuthModule,
     PluginContributionsModule,
+    PluginSharesModule,
     MikroOrmModule.forFeature([PluginCapabilityAudit, Plugins]),
   ],
   controllers: [
+    PluginSharePublicController,
+    PluginShareOwnerController,
     PluginsController,
     PluginsFeedController,
     PluginsProxyController,

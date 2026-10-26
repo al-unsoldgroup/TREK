@@ -27,6 +27,8 @@ export const HOOK_PERMISSION: Readonly<Record<string, string>> = {
 };
 
 export const KNOWN_PERMISSIONS: string[] = [
+  'share:guest',
+  'share:publish',
   'db:own',
   'db:read:trips',
   'db:read:users',
@@ -96,6 +98,22 @@ export const KNOWN_PERMISSIONS: string[] = [
 ];
 
 export const METHOD_PERMISSION: Readonly<Record<string, string>> = {
+  'publicShare.snapshot': 'share:guest',
+  'publicShare.filterSuggestionKeys': 'share:guest',
+  'publicShare.resolveSelection': 'share:guest',
+  'publicShare.owner.getConfig': 'share:publish',
+  'publicShare.owner.getNative': 'share:publish',
+  'publicShare.owner.configureNative': 'share:publish',
+  'publicShare.owner.previewNative': 'share:publish',
+  'publicShare.owner.nativeAction': 'share:publish',
+  'publicShare.owner.resolveNativeSelection': 'share:publish',
+  'publicShare.owner.nativePhoto': 'share:publish',
+  'publicShare.owner.getCandidates': 'share:publish',
+  'publicShare.owner.preview': 'share:publish',
+  'publicShare.owner.configure': 'share:publish',
+  'publicShare.owner.importSuggestion': 'db:write:places',
+  'publicShare.owner.cityAutocomplete': 'share:publish',
+  'publicShare.owner.cityResolve': 'share:publish',
   'db.exec': 'db:own',
   'db.query': 'db:own',
   'db.migrate': 'db:own',
@@ -210,6 +228,22 @@ export const METHOD_PERMISSION: Readonly<Record<string, string>> = {
 };
 
 export const KNOWN_METHODS: string[] = [
+  'publicShare.snapshot',
+  'publicShare.filterSuggestionKeys',
+  'publicShare.resolveSelection',
+  'publicShare.owner.getConfig',
+  'publicShare.owner.getNative',
+  'publicShare.owner.configureNative',
+  'publicShare.owner.previewNative',
+  'publicShare.owner.nativeAction',
+  'publicShare.owner.resolveNativeSelection',
+  'publicShare.owner.nativePhoto',
+  'publicShare.owner.getCandidates',
+  'publicShare.owner.preview',
+  'publicShare.owner.configure',
+  'publicShare.owner.importSuggestion',
+  'publicShare.owner.cityAutocomplete',
+  'publicShare.owner.cityResolve',
   'db.exec',
   'db.query',
   'db.migrate',
@@ -1032,6 +1066,22 @@ export const PLUGIN_METHOD_RESULT: Readonly<Record<string, string>> = {
   'plugins.call': 'host',
   'events.emit': 'host',
   'settings.get': 'host',
+  'publicShare.filterSuggestionKeys': 'host',
+  'publicShare.owner.cityAutocomplete': 'host',
+  'publicShare.owner.cityResolve': 'host',
+  'publicShare.owner.configure': 'host',
+  'publicShare.owner.configureNative': 'host',
+  'publicShare.owner.getCandidates': 'host',
+  'publicShare.owner.getConfig': 'host',
+  'publicShare.owner.getNative': 'host',
+  'publicShare.owner.importSuggestion': 'host',
+  'publicShare.owner.nativeAction': 'host',
+  'publicShare.owner.nativePhoto': 'host',
+  'publicShare.owner.preview': 'host',
+  'publicShare.owner.previewNative': 'host',
+  'publicShare.owner.resolveNativeSelection': 'host',
+  'publicShare.resolveSelection': 'host',
+  'publicShare.snapshot': 'host',
 };
 
 /**

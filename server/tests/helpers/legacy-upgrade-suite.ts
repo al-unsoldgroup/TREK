@@ -138,7 +138,11 @@ export function describeLegacyUpgrade(
       if (!snapshot) throw new Error('No schema snapshot: run under vitest (tests/global-setup.ts writes it).');
       const fresh = new Database(snapshot);
       try {
-        const upgraded = schemaShape(legacyDb);
+        // The local trip-advice overlay keeps its tables out of the migrations and
+        // creates them on first use (plugin-share.schema.ts), so a booted install
+        // has them and the migrated snapshot does not.
+        const local = /^(index )?(plugin_share_|plugin_place_imports|plugin_advice_map_tiles)/;
+        const upgraded = schemaShape(legacyDb).filter((line) => !local.test(line));
         const freshShape = schemaShape(fresh);
         expect({
           onlyUpgraded: upgraded.filter((line) => !freshShape.includes(line)),

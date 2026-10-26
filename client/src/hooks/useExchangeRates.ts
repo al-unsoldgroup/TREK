@@ -268,11 +268,11 @@ export function crossRate(rates: Record<string, number> | null | undefined, to: 
  * euro trip read as $12,346.05. Both quotes are cached like any other, so the anchor works
  * offline too; the display quote only stands in while the trip's is missing.
  */
-export function useExchangeRates(base: string, tripCurrency?: string | null) {
+export function useExchangeRates(base: string, tripCurrency?: string | null, enabled = true) {
   const upper = (base || 'EUR').toUpperCase()
   const anchor = (tripCurrency || upper).toUpperCase()
-  const rates = useRatesFor(upper)
-  const anchorRates = useRatesFor(anchor === upper ? null : anchor)
+  const rates = useRatesFor(enabled ? upper : null)
+  const anchorRates = useRatesFor(!enabled || anchor === upper ? null : anchor)
 
   const convert = useCallback(
     (amount: number, from: string | null | undefined): number => {

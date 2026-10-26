@@ -70,6 +70,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/finish-cjs.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:standalone": "node scripts/check-standalone.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run build && npm test"

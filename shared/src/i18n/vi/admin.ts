@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const admin: TranslationStrings = {
+  'admin.plugins.perm.share:guest': "Đọc dữ liệu chuyến đi đã chọn qua liên kết góp ý được bật",
+  'admin.plugins.perm.share:publish': "Cấu hình liên kết góp ý cho chủ chuyến đi",
   'admin.notifications.title': 'Thông báo',
   'admin.notifications.hint': 'Chọn một kênh thông báo. Chỉ có một người có thể hoạt động tại một thời điểm.',
   'admin.notifications.none': 'Tắt',

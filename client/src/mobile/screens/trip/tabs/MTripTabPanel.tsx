@@ -9,6 +9,12 @@ import MListsTab from './MListsTab'
 import MRoadtripTab from '../roadtrip/MRoadtripTab'
 import MJourneyDetail from '../../journey/MJourneyDetail'
 import PluginFrame from '../../../../components/Plugins/PluginFrame'
+import TripAdviceSurface from '../../../../features/tripAdvice/TripAdviceSurface'
+import { useTripAdviceOwner } from '../../../../features/tripAdvice/useTripAdviceOwner'
+
+function NativeTripAdviceOwner({ tripId }: { tripId: number }) {
+  return <TripAdviceSurface controller={useTripAdviceOwner(tripId)} />
+}
 
 /**
  * Routes the active non-plan trip tab to its panel. `tab` is the legacy id the
@@ -40,16 +46,19 @@ export default function MTripTabPanel({ planner, shell, tab }: MTripTabPanelProp
   // color-scheme is pinned for the same reason both settings mounts pin it:
   // Chromium paints a white canvas behind a transparent frame otherwise.
   if (tab.startsWith('plugin:')) {
+    const tripId = Number(planner.tripId)
     return (
       <div className="absolute inset-0">
-        <PluginFrame
-          pluginId={tab.slice('plugin:'.length)}
-          tripId={planner.tripId != null ? String(planner.tripId) : null}
-          dayId={planner.pluginTabDayId != null ? String(planner.pluginTabDayId) : null}
-          fill
-          surface="trip-tab"
-          className="h-full w-full [color-scheme:light]"
-        />
+        {tab === 'plugin:trip-advice' && Number.isSafeInteger(tripId) && tripId > 0
+          ? <NativeTripAdviceOwner tripId={tripId} />
+          : <PluginFrame
+              pluginId={tab.slice('plugin:'.length)}
+              tripId={planner.tripId != null ? String(planner.tripId) : null}
+              dayId={planner.pluginTabDayId != null ? String(planner.pluginTabDayId) : null}
+              fill
+              surface="trip-tab"
+              className="h-full w-full [color-scheme:light]"
+            />}
       </div>
     )
   }

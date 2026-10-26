@@ -60,6 +60,7 @@ export function makeDeps(): HostDeps {
 export function allRpcControllers(): object[] {
   const anyService = () => new Proxy({}, { get: () => vi.fn(() => undefined) }) as unknown as never;
   return [
+    new PluginSharesRpc(anyService()),
     new TagsRpc(anyService()),
     new CategoriesRpc(anyService()),
     new WeatherRpc(anyService()),
@@ -110,3 +111,4 @@ export function allRpcControllers(): object[] {
     new PluginHooks(anyService()),
   ];
 }
+import { PluginSharesRpc } from '../../src/nest/plugin-shares/plugin-shares.rpc';

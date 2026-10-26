@@ -130,6 +130,7 @@ describe('plugin boot vs registry scan ordering', () => {
     const hostFactory = new PluginRpcHostFactory(
       t.repo(PluginCapabilityAudit),
       registry as unknown as PluginRpcRegistryService,
+      { validatePrincipal() { throw new Error('Public shares unavailable in boot fixture'); } } as never,
     );
     const userSettings = new PluginUserSettingsService(
       (t as TestOrm).repo(PluginSettingsFields),
@@ -255,6 +256,7 @@ describe('plugin boot vs registry scan ordering', () => {
       const hostFactory2 = new PluginRpcHostFactory(
         t2.repo(PluginCapabilityAudit),
         registry2 as unknown as PluginRpcRegistryService,
+        { validatePrincipal() { throw new Error('Public shares unavailable in boot fixture'); } } as never,
       );
       // Built directly on t2 (not createTestAddonsService's sharedTestOrm) so
       // its repositories share t2's allowGlobalContext: false ORM.
