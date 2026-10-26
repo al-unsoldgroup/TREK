@@ -8,6 +8,7 @@ import { SettingsWritesService } from './settings-writes.service';
 import { AdminDefaultUserSettingsController, SettingsController } from './settings.controller';
 import { SettingsMcp } from './settings.mcp';
 import { SettingsService } from './settings.service';
+import { TravelProfileMcp } from './travel-profile.mcp';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { Module } from '@nestjs/common';
 
@@ -37,7 +38,7 @@ import { Module } from '@nestjs/common';
     MikroOrmModule.forFeature([AppSettings, Settings]),
   ],
   controllers: [SettingsController, AdminDefaultUserSettingsController],
-  providers: [SettingsService, SettingsWritesService, SettingsMcp],
+  providers: [SettingsService, SettingsWritesService, SettingsMcp, TravelProfileMcp],
   exports: [SettingsService],
 })
 export class SettingsModule {}

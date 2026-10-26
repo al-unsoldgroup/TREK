@@ -1278,6 +1278,11 @@ export const user: CaseGroup = {
   prefix: 'BCP-USER',
   cases: [...atlasCases, ...dawarichCases, ...journeyCases, ...vacayCases, ...collectionCases, ...bookCases],
   exempt: [
+    {
+      tool: 'set_travel_profile',
+      reason: 'writes a private per-user setting no screen renders, so there is nothing to follow live',
+      args: () => ({ patch: { cabin: 'economy' } }),
+    },
     { tool: 'create_journey_share_link', reason: TOKEN_ONLY, needs: ['journey'], args: onJourney },
     {
       tool: 'delete_journey_share_link',

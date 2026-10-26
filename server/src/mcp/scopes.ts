@@ -13,6 +13,8 @@ export const SCOPES = {
   COLLECTIONS_WRITE: 'collections:write',
   ATLAS_READ: 'atlas:read',
   ATLAS_WRITE: 'atlas:write',
+  PROFILE_READ: 'profile:read',
+  PROFILE_WRITE: 'profile:write',
   PACKING_READ: 'packing:read',
   PACKING_WRITE: 'packing:write',
   TODOS_READ: 'todos:read',
@@ -137,6 +139,16 @@ export const SCOPE_INFO: Record<Scope, ScopeInfo> = {
     label: 'Manage Atlas',
     description: 'Mark countries and regions visited, manage bucket list',
     group: 'Atlas',
+  },
+  'profile:read': {
+    label: 'View travel profile',
+    description: 'Read travel preferences, loyalty programs, and constraints',
+    group: 'Travel Profile',
+  },
+  'profile:write': {
+    label: 'Manage travel profile',
+    description: 'Update travel preferences, loyalty programs, and constraints',
+    group: 'Travel Profile',
   },
   'packing:read': {
     label: 'View packing lists',

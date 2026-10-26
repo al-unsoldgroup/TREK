@@ -5,6 +5,7 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.places': 'Lieux',
   'oauth.scope.group.collections': 'Collections', // same-as-en
   'oauth.scope.group.atlas': 'Atlas',
+  'oauth.scope.group.profile': 'Profil de voyage',
   'oauth.scope.group.packing': 'Bagages',
   'oauth.scope.group.todos': 'Tâches',
   'oauth.scope.group.budget': 'Budget', // same-as-en
@@ -38,6 +39,10 @@ const oauth: TranslationStrings = {
   'oauth.scope.atlas:read.description': 'Lire les pays visités, régions et liste de souhaits',
   'oauth.scope.atlas:write.label': "Gérer l'Atlas",
   'oauth.scope.atlas:write.description': 'Marquer des pays et régions visités, gérer la liste de souhaits',
+  'oauth.scope.profile:read.label': 'Voir le profil de voyage',
+  'oauth.scope.profile:read.description': 'Consulter les préférences de voyage, programmes de fidélité et contraintes',
+  'oauth.scope.profile:write.label': 'Gérer le profil de voyage',
+  'oauth.scope.profile:write.description': 'Mettre à jour les préférences de voyage, programmes de fidélité et contraintes',
   'oauth.scope.packing:read.label': 'Voir les listes de bagages',
   'oauth.scope.packing:read.description': 'Lire les articles, sacs et assignations de catégories',
   'oauth.scope.packing:write.label': 'Gérer les listes de bagages',

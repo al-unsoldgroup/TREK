@@ -24,6 +24,8 @@ export const SCOPE_GROUPS: Record<string, ScopeKeys> = {
   'collections:write':   { labelKey: 'oauth.scope.collections:write.label',   descriptionKey: 'oauth.scope.collections:write.description',   groupKey: 'oauth.scope.group.collections' },
   'atlas:read':          { labelKey: 'oauth.scope.atlas:read.label',          descriptionKey: 'oauth.scope.atlas:read.description',          groupKey: 'oauth.scope.group.atlas' },
   'atlas:write':         { labelKey: 'oauth.scope.atlas:write.label',         descriptionKey: 'oauth.scope.atlas:write.description',         groupKey: 'oauth.scope.group.atlas' },
+  'profile:read':        { labelKey: 'oauth.scope.profile:read.label',        descriptionKey: 'oauth.scope.profile:read.description',        groupKey: 'oauth.scope.group.profile' },
+  'profile:write':       { labelKey: 'oauth.scope.profile:write.label',       descriptionKey: 'oauth.scope.profile:write.description',       groupKey: 'oauth.scope.group.profile' },
   'packing:read':        { labelKey: 'oauth.scope.packing:read.label',        descriptionKey: 'oauth.scope.packing:read.description',        groupKey: 'oauth.scope.group.packing' },
   'packing:write':       { labelKey: 'oauth.scope.packing:write.label',       descriptionKey: 'oauth.scope.packing:write.description',       groupKey: 'oauth.scope.group.packing' },
   'todos:read':          { labelKey: 'oauth.scope.todos:read.label',          descriptionKey: 'oauth.scope.todos:read.description',          groupKey: 'oauth.scope.group.todos' },

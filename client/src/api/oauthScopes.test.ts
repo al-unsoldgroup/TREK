@@ -22,6 +22,7 @@ describe('SCOPE_GROUPS', () => {
       'places:read', 'places:write',
       'collections:read', 'collections:write',
       'atlas:read', 'atlas:write',
+      'profile:read', 'profile:write',
       'packing:read', 'packing:write',
       'todos:read', 'todos:write',
       'budget:read', 'budget:write',
@@ -74,6 +75,7 @@ describe('SCOPE_GROUP_NAMES', () => {
     const expected = [
       'oauth.scope.group.trips',
       'oauth.scope.group.places',
+      'oauth.scope.group.profile',
       'oauth.scope.group.packing',
       'oauth.scope.group.budget',
     ]

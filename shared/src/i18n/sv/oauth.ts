@@ -5,6 +5,7 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.places': 'Platser',
   'oauth.scope.group.collections': 'Samlingar',
   'oauth.scope.group.atlas': 'Atlas',
+  'oauth.scope.group.profile': 'Reseprofil',
   'oauth.scope.group.packing': 'Packning',
   'oauth.scope.group.todos': 'Att göra',
   'oauth.scope.group.budget': 'Budget', // same-as-en
@@ -37,6 +38,10 @@ const oauth: TranslationStrings = {
   'oauth.scope.atlas:read.description': 'Läs om besökta länder, regioner och bucketlist',
   'oauth.scope.atlas:write.label': 'Hantera Atlas',
   'oauth.scope.atlas:write.description': 'Markera besökta länder och regioner, hantera bucketlist',
+  'oauth.scope.profile:read.label': 'Visa reseprofil',
+  'oauth.scope.profile:read.description': 'Läs resepreferenser, lojalitetsprogram och begränsningar',
+  'oauth.scope.profile:write.label': 'Hantera reseprofil',
+  'oauth.scope.profile:write.description': 'Uppdatera resepreferenser, lojalitetsprogram och begränsningar',
   'oauth.scope.packing:read.label': 'Visa packlistor',
   'oauth.scope.packing:read.description': 'Läs om packningsföremål, väskor och kategoritilldelningar',
   'oauth.scope.packing:write.label': 'Hantera packlistor',
