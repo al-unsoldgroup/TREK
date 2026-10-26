@@ -20,20 +20,28 @@ import PluginFrame from '../../../../components/Plugins/PluginFrame'
  */
 export default function MTripTabPanel({ planner, shell, tab }: MTripTabPanelProps) {
   // Trip-page plugin tab — the same sandboxed frame the desktop planner mounts,
-  // between the floating top controls and the dock. Both clearances come from the
-  // variables TabScroller uses, so the frame cannot drift away from the native
-  // tabs: the top one kept the plugin's first row under the z-42 back button, and
-  // the bottom one was a copy of 84px that ignored the safe area on the devices
-  // that have one. The frame also states its surface, so the plugin knows it is
-  // expected to fill and scroll itself rather than report a height.
+  // running edge to edge UNDER the floating controls and the dock, exactly as
+  // every native mobile screen does. Boxing the frame inside those two clearances
+  // was the safe first move and it reads wrong: a full-bleed plugin (a map, most
+  // obviously) stops short of the screen on both ends and leaves a dead band the
+  // native tabs do not have.
+  //
+  // The clearances are not lost, they are handed over: `trek:context` already
+  // carries viewport.insets for this exact surface, computed from the same
+  // --m-safe-top / --bottom-nav-h variables TabScroller uses. A plugin pads its
+  // own chrome by them and lets its background run the whole way, which is the
+  // only arrangement that can put content behind a floating control. A plugin
+  // that ignores them puts its first row under the back button — the contract is
+  // stated in the context payload, not enforced here.
+  //
+  // The frame also states its surface, so the plugin knows it is expected to fill
+  // and scroll itself rather than report a height.
   //
   // color-scheme is pinned for the same reason both settings mounts pin it:
   // Chromium paints a white canvas behind a transparent frame otherwise.
   if (tab.startsWith('plugin:')) {
     return (
-      <div
-        className="absolute inset-0 pt-[calc(var(--m-safe-top,12px)+58px)] pb-[calc(var(--bottom-nav-h,84px)+22px)]"
-      >
+      <div className="absolute inset-0">
         <PluginFrame
           pluginId={tab.slice('plugin:'.length)}
           tripId={planner.tripId != null ? String(planner.tripId) : null}
