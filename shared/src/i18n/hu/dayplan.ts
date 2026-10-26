@@ -1,6 +1,7 @@
 import type { TranslationStrings } from '../types';
 
 const dayplan: TranslationStrings = {
+  'dayplan.pluginScheduleOpen': '{label} (megnyitás itt: {name})',
   'dayplan.icsTooltip': 'Naptár exportálása (ICS)',
   'dayplan.emptyDay': 'Nincs tervezett hely erre a napra',
   'dayplan.addPlaceHere': 'Hely hozzáadása ehhez a naphoz',

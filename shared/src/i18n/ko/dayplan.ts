@@ -1,6 +1,7 @@
 import type { TranslationStrings } from '../types';
 
 const dayplan: TranslationStrings = {
+  'dayplan.pluginScheduleOpen': '{label} ({name}에서 열기)',
   'dayplan.icsTooltip': '캘린더 내보내기 (ICS)',
   'dayplan.emptyDay': '이 날에 계획된 장소가 없습니다',
   'dayplan.addPlaceHere': '이 날짜에 장소 추가',

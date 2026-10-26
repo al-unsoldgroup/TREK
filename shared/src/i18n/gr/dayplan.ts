@@ -1,6 +1,7 @@
 import type { TranslationStrings } from '../types';
 
 const dayplan: TranslationStrings = {
+  'dayplan.pluginScheduleOpen': '{label} (άνοιγμα στο {name})',
   'dayplan.icsTooltip': 'Εξαγωγή ημερολογίου (ICS)',
   'dayplan.emptyDay': 'Δεν υπάρχουν προγραμματισμένα μέρη για αυτή την ημέρα',
   'dayplan.addPlaceHere': 'Προσθήκη τόπου σε αυτήν την ημέρα',

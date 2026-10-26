@@ -73,7 +73,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
     dawarichEnabled, dawarichTrailShown, toggleDawarichTrail, dawarichTrail, dawarichHiddenDates,
     followTrack, roadtripViaCounts,
     allowedFileTypes, tripMembers, setTripMembers, refreshMembers, loadAccommodations,
-    TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
+    TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange, openPluginTab, pluginTabDayId,
     leftWidth, rightWidth,
     leftHidden, rightHidden, toggleLeft, toggleRight,
     startResizeLeft, startResizeRight, nudgeLeft, nudgeRight, resizeMin, resizeMax,
@@ -368,6 +368,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                   onAddReservation={(dayId) => { setEditingReservation(null); tripActions.setSelectedDay(dayId); setShowReservationModal(true) }}
                   onAddTransport={can('day_edit', trip) ? (dayId) => { setTransportModalDayId(dayId); setEditingTransport(null); setTransitPrefill(null); setTransportModalAutomated(false); setShowTransportModal(true) } : undefined}
                   onOpenTransit={(r) => setTransitJourney(r)}
+                  onOpenPluginTab={openPluginTab}
                   onPlanTransit={can('day_edit', trip) && tripHasDates ? (dayId) => { setTransportModalDayId(dayId); setEditingTransport(null); setTransitPrefill(null); setTransportModalAutomated(true); setShowTransportModal(true) } : undefined}
                   onPlanTransitLeg={can('day_edit', trip) && tripHasDates ? ({ dayId, ...leg }) => { setTransportModalDayId(dayId); setEditingTransport(null); setTransitPrefill(leg); setTransportModalAutomated(true); setShowTransportModal(true) } : undefined}
                   onEditTransport={can('day_edit', trip) ? (reservation) => { setEditingTransport(reservation); setTransportModalDayId(reservation.day_id ?? null); setShowTransportModal(true) } : undefined}
@@ -786,7 +787,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
 
         {activeTab.startsWith('plugin:') && (
           <div style={{ position: 'absolute', top: 0, insetInline: 0, bottom: 'var(--bottom-nav-h)', overflow: 'hidden' }}>
-            <PluginFrame pluginId={activeTab.slice('plugin:'.length)} tripId={String(tripId)} fill surface="trip-tab" className="w-full h-full" />
+            <PluginFrame pluginId={activeTab.slice('plugin:'.length)} tripId={String(tripId)} dayId={pluginTabDayId != null ? String(pluginTabDayId) : null} fill surface="trip-tab" className="w-full h-full" />
           </div>
         )}
       </div>

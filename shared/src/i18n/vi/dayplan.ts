@@ -1,6 +1,7 @@
 import type { TranslationStrings } from '../types';
 
 const dayplan: TranslationStrings = {
+  'dayplan.pluginScheduleOpen': '{label} (mở trong {name})',
   'dayplan.icsTooltip': 'Xuất lịch (ICS)',
   'dayplan.emptyDay': 'Không có địa điểm nào được lên kế hoạch cho ngày này',
   'dayplan.addPlaceHere': 'Thêm địa điểm vào ngày này',

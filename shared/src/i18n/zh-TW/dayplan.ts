@@ -1,6 +1,7 @@
 import type { TranslationStrings } from '../types';
 
 const dayplan: TranslationStrings = {
+  'dayplan.pluginScheduleOpen': '{label}（在 {name} 中開啟）',
   'dayplan.icsTooltip': '匯出日曆 (ICS)',
   'dayplan.emptyDay': '當天暫無計劃',
   'dayplan.addPlaceHere': '新增地點到這一天',
