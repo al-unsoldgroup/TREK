@@ -425,6 +425,14 @@ const typeset = {
 /** Kilometres or miles. Stored metric; the element converts when it draws. */
 export const bookUnitsSchema = z.enum(['metric', 'imperial']);
 
+// Tool importers require one schema in `items`, not Draft 7's positional array.
+// Keep the tuple parser (and its distinct latitude/longitude bounds); only the
+// advertised form uses a homogeneous number schema, with the order documented.
+const bookMapCoordinateSchema = z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)]).meta({
+  items: { type: 'number', minimum: -180, maximum: 180 },
+  description: '[latitude, longitude] in degrees. Latitude: -90 to 90; longitude: -180 to 180.',
+});
+
 export const bookMapElementSchema = z.object({
   ...elementBase,
   ...typeset,
@@ -552,10 +560,7 @@ export const bookMapElementSchema = z.object({
    * point every fifteen metres, and a book carrying every GPS fix of a
    * three-week trip is a document nobody can save.
    */
-  path: z
-    .array(z.array(z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)])).max(MAX_PATH_POINTS))
-    .max(MAX_PATH_SEGMENTS)
-    .default([]),
+  path: z.array(z.array(bookMapCoordinateSchema).max(MAX_PATH_POINTS)).max(MAX_PATH_SEGMENTS).default([]),
   /**
    * The roads each leg actually took, when somebody asked for them.
    *
@@ -575,15 +580,7 @@ export const bookMapElementSchema = z.object({
    * routing service for its line at print time is a page that changes when a
    * road is rerouted, and prints empty when the export runs offline.
    */
-  roads: z
-    .array(
-      z
-        .array(z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)]))
-        .max(200)
-        .nullable(),
-    )
-    .max(400)
-    .default([]),
+  roads: z.array(z.array(bookMapCoordinateSchema).max(200).nullable()).max(400).default([]),
   /**
    * How much room to leave around what is drawn, as a share of its own extent.
    *
