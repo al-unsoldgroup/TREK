@@ -338,24 +338,12 @@ export type BookPageDigest = z.infer<typeof bookPageDigestSchema>;
 /*
  * ── A page as restore_book_page takes it back ───────────────────────────
  *
- * The same page as `bookPreviousSpreadSchema`, written so its schema states
- * each field once: what every element has, then what each kind adds, and no
- * defaults, since the page comes back whole as the change answered it. A page
- * holds two lists of elements (placed and parked), and spelled out kind by
- * kind the tool's schema, which every client loads with tools/list, outgrew
- * its size. It takes the same values: restoreBookPage parses the page again as
- * a spread, which sets every default, before it puts it back.
+ * The same page as `bookPreviousSpreadSchema`, without top-level defaults:
+ * restoreBookPage parses it again as a spread before putting it back. Each
+ * element alternative states its complete object shape. Factoring common
+ * fields into intersections made this tool fail ChatGPT's schema import.
+ * The schema-size test keeps both element lists within a bounded tool payload.
  */
-const ELEMENT_BASE = {
-  id: true,
-  frame: true,
-  rotation: true,
-  opacity: true,
-  locked: true,
-  group: true,
-  hidden: true,
-} as const;
-
 /** An element's fields with their defaults left to the spread's own parse. */
 function restoredFields(schema: z.ZodObject): z.ZodObject {
   const shape = Object.entries(schema.shape).map(([key, field]) => [
@@ -364,54 +352,19 @@ function restoredFields(schema: z.ZodObject): z.ZodObject {
   ]);
   return z.object(Object.fromEntries(shape) as z.ZodRawShape);
 }
-const TRAVEL_TYPE = {
-  font: true,
-  color: true,
-  accent: true,
-  textScale: true,
-  weight: true,
-  stale: true,
-  token: true,
-  accentToken: true,
-  fontRole: true,
-} as const;
-const kindIn = (schema: z.ZodObject) => restoredFields(schema.omit(ELEMENT_BASE));
-const travelIn = (schema: z.ZodObject) => restoredFields(schema.omit({ ...ELEMENT_BASE, ...TRAVEL_TYPE }));
-// Keep the intersection parser, but advertise common object fields alongside anyOf.
-// This is the same conjunction without allOf, which ChatGPT tool import rejects,
-// and avoids repeating the common fields in every alternative.
-function restoredIntersection(common: z.ZodObject, kinds: z.ZodType) {
-  const commonInput = z.toJSONSchema(common, { target: 'draft-7', io: 'input' });
-  const kindsInput = z.toJSONSchema(kinds, { target: 'draft-7', io: 'input' });
-  delete commonInput.$schema;
-  delete kindsInput.$schema;
-  return z.intersection(common, kinds).meta({ ...commonInput, ...kindsInput, allOf: undefined });
-}
-const restoredElementIn = restoredIntersection(
-  restoredFields(bookPhotoElementSchema.pick(ELEMENT_BASE)),
-  z
-    .union([
-      kindIn(bookPhotoElementSchema),
-      kindIn(bookTextElementSchema),
-      kindIn(bookShapeElementSchema),
-      kindIn(bookIconElementSchema),
-      kindIn(bookStickerElementSchema),
-      kindIn(bookLineElementSchema),
-      restoredIntersection(
-        restoredFields(bookMapElementSchema.pick(TRAVEL_TYPE)),
-        z
-          .union([
-            travelIn(bookMapElementSchema),
-            travelIn(bookStatsElementSchema),
-            travelIn(bookCountriesElementSchema),
-            travelIn(bookBadgeElementSchema),
-            travelIn(bookListElementSchema),
-          ])
-          .describe('A travel element: the type the five share, then its own fields.'),
-      ),
-    ])
-    .describe("What the element's kind adds to the fields every element has."),
-);
+const restoredElementIn = z.union([
+  restoredFields(bookPhotoElementSchema),
+  restoredFields(bookTextElementSchema),
+  restoredFields(bookShapeElementSchema),
+  restoredFields(bookIconElementSchema),
+  restoredFields(bookStickerElementSchema),
+  restoredFields(bookLineElementSchema),
+  restoredFields(bookMapElementSchema),
+  restoredFields(bookStatsElementSchema),
+  restoredFields(bookCountriesElementSchema),
+  restoredFields(bookBadgeElementSchema),
+  restoredFields(bookListElementSchema),
+]);
 const restoredElementsIn = z.array(restoredElementIn).max(MAX_SPREAD_ELEMENTS).optional();
 const restoredPageIn = z.object({
   index: bookPreviousSpreadSchema.shape.index,

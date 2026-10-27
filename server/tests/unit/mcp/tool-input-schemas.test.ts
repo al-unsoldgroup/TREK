@@ -87,12 +87,12 @@ describe('MCP tool input schemas', () => {
   });
 
   it('MCP-SCHEMA-003: restore_book_page, the one tool that takes whole book pages, stays under its size ceiling', () => {
-    // Every client loads it with tools/list, though only an undo calls it. Measured at about 34 000
-    // characters; a new element kind or field on a book page grows it, and this says so.
+    // Complete element alternatives avoid intersections rejected by ChatGPT. Measured at about
+    // 53 000 characters; retain a 60 KB ceiling rather than unbounded schema growth.
     const restore = [...schemas].find(([key]) => key.endsWith('#restore_book_page'))?.[1];
     const size = JSON.stringify(restore ?? null).length;
     expect(size).toBeGreaterThan(10_000);
-    expect(size).toBeLessThan(40_000);
+    expect(size).toBeLessThan(60_000);
   });
 
   it('MCP-SCHEMA-004: the page edit and the design revision, which take every page operation, stay under their ceiling', () => {

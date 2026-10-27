@@ -22,15 +22,31 @@ function intersectionPaths(value: unknown, path = '$'): string[] {
   ]);
 }
 
+function checkElementAlternatives(value: unknown): number {
+  if (!value || typeof value !== 'object') return 0;
+  const entries = Object.entries(value);
+  const properties = entries.find(([key]) => key === 'properties')?.[1];
+  const isElement = properties && typeof properties === 'object' && 'kind' in properties;
+  if (isElement) {
+    expect(value).toMatchObject({
+      type: 'object',
+      properties: { id: expect.anything(), frame: expect.anything() },
+      required: expect.arrayContaining(['id', 'frame', 'kind']),
+    });
+  }
+  return (isElement ? 1 : 0) + entries.reduce((count, [, child]) => count + checkElementAlternatives(child), 0);
+}
+
 describe('book restore MCP schema', () => {
   it('advertises arrays with a single items schema and no tuple-only keywords', () => {
     const schema = z.toJSONSchema(restoreBookPageRequestSchema, { target: 'draft-7', io: 'input' });
     expect(arraySchemaIssues(schema)).toEqual([]);
   });
 
-  it('advertises shared element fields alongside their alternatives without allOf', () => {
+  it('advertises eleven complete element alternatives in both lists, without intersections', () => {
     const schema = z.toJSONSchema(restoreBookPageRequestSchema, { target: 'draft-7', io: 'input' });
     expect(intersectionPaths(schema)).toEqual([]);
+    expect(checkElementAlternatives(schema)).toBe(22);
   });
 
   it('keeps latitude/longitude order, bounds and tuple length when parsing map geometry', () => {
