@@ -377,9 +377,17 @@ const TRAVEL_TYPE = {
 } as const;
 const kindIn = (schema: z.ZodObject) => restoredFields(schema.omit(ELEMENT_BASE));
 const travelIn = (schema: z.ZodObject) => restoredFields(schema.omit({ ...ELEMENT_BASE, ...TRAVEL_TYPE }));
-// Each union says what it holds: a described union stays one part of the intersection instead of
-// zod writing the shared fields out into every kind again.
-const restoredElementIn = z.intersection(
+// Keep the intersection parser, but advertise common object fields alongside anyOf.
+// This is the same conjunction without allOf, which ChatGPT tool import rejects,
+// and avoids repeating the common fields in every alternative.
+function restoredIntersection(common: z.ZodObject, kinds: z.ZodType) {
+  const commonInput = z.toJSONSchema(common, { target: 'draft-7', io: 'input' });
+  const kindsInput = z.toJSONSchema(kinds, { target: 'draft-7', io: 'input' });
+  delete commonInput.$schema;
+  delete kindsInput.$schema;
+  return z.intersection(common, kinds).meta({ ...commonInput, ...kindsInput, allOf: undefined });
+}
+const restoredElementIn = restoredIntersection(
   restoredFields(bookPhotoElementSchema.pick(ELEMENT_BASE)),
   z
     .union([
@@ -389,7 +397,7 @@ const restoredElementIn = z.intersection(
       kindIn(bookIconElementSchema),
       kindIn(bookStickerElementSchema),
       kindIn(bookLineElementSchema),
-      z.intersection(
+      restoredIntersection(
         restoredFields(bookMapElementSchema.pick(TRAVEL_TYPE)),
         z
           .union([

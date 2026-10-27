@@ -430,6 +430,7 @@ export const bookUnitsSchema = z.enum(['metric', 'imperial']);
 // advertised form uses a homogeneous number schema, with the order documented.
 const bookMapCoordinateSchema = z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)]).meta({
   items: { type: 'number', minimum: -180, maximum: 180 },
+  additionalItems: undefined,
   description: '[latitude, longitude] in degrees. Latitude: -90 to 90; longitude: -180 to 180.',
 });
 
